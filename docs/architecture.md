@@ -1,0 +1,73 @@
+# Architecture
+
+## Scope and implementation posture
+
+This document establishes logical ownership for implementation. The Python [capture boundary](../src/capture/README.md) implements packet observations, source contracts, ingestion, and an iterable source. The [analysis boundary](../src/analysis/README.md) implements Ethernet II and IPv4 transport decoding, checksum validation, packet analysis, IPv4 TCP/UDP flow identity/direction/tracking, raw statistics through directional inter-arrival accumulation, and volume, packet-size, duration, rate, and global inter-arrival features. The subsystem map below includes future responsibilities beyond that implemented scope. Detection, application parsing, reassembly, network capture, PCAP ingestion, and downstream runtime subsystems remain unimplemented. No concurrency mechanism, transport, database, or deployment topology is selected.
+
+Begin with a modular application. Keep module contracts independent of capture libraries, database drivers, and presentation frameworks so later implementation choices can evolve within these boundaries. Split modules into processes or services only when measured requirements justify it.
+
+## Subsystem ownership
+
+| # | Future subsystem | Established owner | Planned internal area and responsibility |
+| --- | --- | --- | --- |
+| 1 | Packet capture | [capture](../src/capture/README.md) | Acquire packet bytes and capture metadata; report acquisition loss and source state. |
+| 2 | Ethernet and Layer 2 analysis | [analysis](../src/analysis/README.md) | Layer 2 decoding and link metadata. |
+| 3 | IP and Layer 3 analysis | [analysis](../src/analysis/README.md) | Network-layer decoding and bounded IP fragment handling. |
+| 4 | TCP/UDP and Layer 4 analysis | [analysis](../src/analysis/README.md) | Transport decoding and protocol-specific validation. |
+| 5 | Session and flow tracking | [analysis](../src/analysis/README.md) | Flow identity, direction, lifecycle, and bounded transport reassembly state. |
+| 6 | Application protocol analysis | [analysis](../src/analysis/README.md) | Application observations from available datagrams or reconstructed streams. |
+| 7 | Feature extraction | [analysis](../src/analysis/README.md) | Defined packet, flow, and window measurements with units and provenance. |
+| 8 | Signature-based detection | [detection](../src/detection/README.md) | Pattern matching over approved analysis inputs. |
+| 9 | Rule-based detection | [detection](../src/detection/README.md) | Explicit predicates over structured observations and features. |
+| 10 | Threshold detection | [detection](../src/detection/README.md) | Configured limits over bounded counters and time windows. |
+| 11 | Statistical anomaly detection | [detection](../src/detection/README.md) | Baselines and statistical deviation with explicit assumptions. |
+| 12 | Behavioral detection | [detection](../src/detection/README.md) | Stateful entity or sequence evaluation within bounded windows. |
+| 13 | Threat-intelligence enrichment | [enrichment](../src/enrichment/README.md) | Indicator context, source attribution, confidence, and freshness. |
+| 14 | Event correlation | [events](../src/events/README.md) | Associate observations and findings by entity, flow, and time. |
+| 15 | Risk scoring | [events](../src/events/README.md) | Explainable assessment of findings, correlations, and available context. |
+| 16 | Alert management | [events](../src/events/README.md) | Alert identity, deduplication, suppression, and lifecycle. |
+| 17 | Event storage | [storage](../src/storage/README.md) | Persist and query observations, findings, correlations, and alerts. |
+| 18 | PCAP management | [storage](../src/storage/README.md) | Evidence files, indexing, rotation, retention, and retrieval. |
+| 19 | Dashboard integration | [integrations](../src/integrations/README.md) | Presentation-facing adapters over supported queries and alert operations. |
+| 20 | Automated testing | [tests](../tests/README.md) | Unit, contract, integration, regression, and performance verification. |
+| 21 | VM-based security testing | [labs](../labs/README.md) | Controlled end-to-end experiments in isolated, authorized networks. |
+
+## Planned data flow
+
+```text
+Packet source -> capture -> analysis -> detection -> events -> integration consumers
+
+Analysis observations / detector findings -> enrichment -> events
+Capture evidence ---------------------> storage: PCAP management
+Analysis / detection / event records -> storage: event persistence
+Integration queries ------------------> storage: supported query interface
+```
+
+The enrichment branch is optional: observations or findings supply lookup subjects, and attributed context becomes available to event processing. Missing or stale intelligence must remain distinguishable from a clean result. The diagram represents information flow, not synchronous calls or an implemented scheduling model.
+
+Packet observations, protocol observations, flow summaries, feature records, findings, enrichment records, correlations, risk assessments, and alerts are distinct conceptual outputs. An individual detector finding is not automatically an alert. Correlation links evidence; scoring assesses risk; alert management owns notification eligibility and lifecycle.
+
+PCAP evidence and structured event records have different storage and retention needs. Event records should refer to evidence by stable identifiers instead of embedding packet bytes. Packet acquisition owns access to a source; PCAP management owns evidence files. A future offline replay adapter must feed the same capture-to-analysis contract used for live observations.
+
+## Dependency and state boundaries
+
+- Capture does not decode protocols or decide whether traffic is malicious.
+- Analysis owns protocol and flow state; feature extraction consumes its outputs without duplicating parsing or session ownership.
+- Detectors consume defined observations or features and emit findings. They may own detector-specific windows or baselines, but do not mutate analysis state or manage alerts.
+- Enrichment owns intelligence access and caching. Protocol parsers and detectors must not embed provider-specific network clients.
+- Event processing owns correlation state, scoring policy, and alert transitions. Its policies must remain independent of dashboard rendering and storage engines.
+- Storage implements persistence and query boundaries. Integrations use supported operations instead of reaching into detector state or database internals.
+- Future application composition will connect these modules and provide configuration and lifecycle management. Its location and implementation are deferred until an executable entry point is needed.
+
+Define small, versioned contracts as the first consumers are implemented. Place shared contracts only when there are real consumers; avoid a general-purpose shared module with unclear ownership. Implementation dependencies should remain acyclic, using narrow interfaces at storage and integration boundaries.
+
+## Cross-cutting requirements for later tasks
+
+- Preserve sensor/source identity, capture time, processing time where needed, and provenance across transformations. Specify identifier and schema evolution rules before persisting records.
+- Treat malformed, truncated, unsupported, duplicated, and out-of-order traffic explicitly. Missing visibility, packet loss, encrypted payloads, and partial sessions must not silently become evidence of benign traffic.
+- Bound buffers, fragment and stream reassembly, flow tables, detector windows, and enrichment caches. Define timeouts, overload behavior, and loss accounting before sustained capture is enabled.
+- Specify event-time and clock assumptions for reproducible windowing and correlation. Record configuration, rule, and baseline versions needed to explain findings and scores.
+- Separate capture privileges from analysis and presentation where the chosen platform permits it. Define authentication, authorization, retention, and sensitive-data handling when the corresponding runtime boundaries are implemented.
+- Make operational health observable independently of security findings. Define failure handling, shutdown, recovery, and delivery guarantees with the execution model rather than assuming lossless or exactly-once processing.
+
+These are design requirements for subsequent work, not capabilities delivered by this repository scaffold. Machine learning, active response, SIEM adapters, and dashboard implementation are not introduced by this task.

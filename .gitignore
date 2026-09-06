@@ -216,3 +216,19 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+.DS_Store
+.env.*
+!.env.example
+/artifacts/
+*.pcap
+*.pcapng
+*.cap
+*.qcow2
+*.vdi
+*.vmdk
+*.vhd
+*.vhdx
+*.ova
+*.ovf
+*.iso
