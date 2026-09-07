@@ -62,6 +62,10 @@ def packet_at(seconds: float, reverse: bool = False, captured: int = 60, origina
     return packet
 
 
+def state_components(state: CoordinatedFlowState) -> tuple:
+    return tuple(value for value in vars(state).values() if value is not None)
+
+
 class FlowFeatureSnapshotTests(unittest.TestCase):
     def test_bidirectional_snapshot_uses_all_established_feature_families(self) -> None:
         coordinator = FlowStateCoordinator()
@@ -222,6 +226,8 @@ class FlowFeatureSnapshotTests(unittest.TestCase):
         self.assertNotIn("identity", vars(snapshot))
         self.assertNotIn("coordinator", vars(snapshot))
         self.assertNotIn("directional_inter_arrival_statistics", vars(snapshot))
+        self.assertNotIn("tcp_control_statistics", vars(snapshot))
+        self.assertIsNone(snapshot.coordinated_state.tcp_control_statistics)
 
     def test_canonical_utc_temporal_families_remain_semantically_distinct(self) -> None:
         coordinator = FlowStateCoordinator()
@@ -246,7 +252,7 @@ class FlowFeatureSnapshotTests(unittest.TestCase):
     def test_directional_extraction_errors_propagate_without_mutating_state(self) -> None:
         coordinator = FlowStateCoordinator()
         state = coordinator.record(packet_at(0))
-        before = [vars(value).copy() for value in (coordinator, state, *vars(state).values())]
+        before = [vars(value).copy() for value in (coordinator, state, *state_components(state))]
         with patch(
             "analysis.flow_feature_snapshot.extract_directional_inter_arrival_features",
             side_effect=DirectionalInterArrivalFeaturesError("invalid directional moments"),
@@ -254,7 +260,7 @@ class FlowFeatureSnapshotTests(unittest.TestCase):
             with self.assertRaises(DirectionalInterArrivalFeaturesError):
                 extract_flow_feature_snapshot(coordinator)
         directional_extractor.assert_called_once_with(state.directional_inter_arrival_statistics)
-        for value, original in zip((coordinator, state, *vars(state).values()), before):
+        for value, original in zip((coordinator, state, *state_components(state)), before):
             self.assertEqual(vars(value), original)
 
     def test_no_direct_construction_replacement_or_arbitrary_feature_injection(self) -> None:
@@ -305,7 +311,7 @@ class FlowFeatureSnapshotTests(unittest.TestCase):
         coordinator = FlowStateCoordinator()
         coordinator.record(packet_at(0))
         state = coordinator.record(packet_at(1, True))
-        sources = (coordinator, state, state.identity) + tuple(vars(state).values())
+        sources = (coordinator, state, state.identity) + state_components(state)
         before = [vars(value).copy() for value in sources]
         first = extract_flow_feature_snapshot(coordinator)
         second = extract_flow_feature_snapshot(coordinator)
@@ -340,7 +346,7 @@ class FlowFeatureSnapshotTests(unittest.TestCase):
     def test_real_feature_overflow_propagates_without_changing_published_state(self) -> None:
         coordinator = FlowStateCoordinator()
         state = coordinator.record(packet_at(0, original=10 ** 400))
-        sources = (coordinator, state, state.identity) + tuple(vars(state).values())
+        sources = (coordinator, state, state.identity) + state_components(state)
         before = [vars(value).copy() for value in sources]
         with self.assertRaises(PacketSizeFeaturesError):
             extract_flow_feature_snapshot(coordinator)

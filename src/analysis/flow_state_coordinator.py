@@ -11,6 +11,7 @@ from analysis.flow_inter_arrival_statistics import FlowInterArrivalStatistics, u
 from analysis.flow_packet_size_statistics import FlowPacketSizeStatistics, update_flow_packet_size_statistics
 from analysis.flow_statistics import FlowStatistics, update_flow_statistics
 from analysis.packet_analysis import PacketAnalysis
+from analysis.tcp_control_statistics import TCPControlStatistics, update_tcp_control_statistics
 
 
 class FlowCoordinationError(ValueError):
@@ -24,6 +25,7 @@ class CoordinatedFlowState:
     flow_packet_size_statistics: FlowPacketSizeStatistics
     flow_inter_arrival_statistics: FlowInterArrivalStatistics
     directional_inter_arrival_statistics: DirectionalInterArrivalStatistics
+    tcp_control_statistics: Optional[TCPControlStatistics]
 
     def __post_init__(self) -> None:
         for name, value, expected in (
@@ -36,6 +38,15 @@ class CoordinatedFlowState:
         ):
             if type(value) is not expected:
                 raise TypeError(f"{name} must be exactly a {expected.__name__}")
+        tcp_control = self.tcp_control_statistics
+        if tcp_control is not None and type(tcp_control) is not TCPControlStatistics:
+            raise TypeError("tcp_control_statistics must be exactly a TCPControlStatistics or None")
+        if self.identity.protocol == 6 and tcp_control is None:
+            raise FlowCoordinationError("TCP coordinated state requires TCP control statistics")
+        if self.identity.protocol == 17 and tcp_control is not None:
+            raise FlowCoordinationError("UDP coordinated state requires absent TCP control statistics")
+        if tcp_control is not None and tcp_control.identity.protocol != 6:
+            raise FlowCoordinationError("TCP control statistics must represent TCP protocol 6")
         for value in (
             self.directional_flow_statistics,
             self.flow_packet_size_statistics,
@@ -44,6 +55,8 @@ class CoordinatedFlowState:
         ):
             if value.identity != self.identity:
                 raise FlowCoordinationError("all accumulator identities must match")
+        if tcp_control is not None and tcp_control.identity != self.identity:
+            raise FlowCoordinationError("TCP control statistics identity must match")
         packet_count = self.flow_statistics.packet_count
         if any(value.packet_count != packet_count for value in (
             self.flow_packet_size_statistics,
@@ -51,6 +64,8 @@ class CoordinatedFlowState:
             self.directional_inter_arrival_statistics,
         )):
             raise FlowCoordinationError("all accumulator packet counts must match")
+        if tcp_control is not None and tcp_control.packet_count != packet_count:
+            raise FlowCoordinationError("TCP control packet count must match")
         directional = self.directional_flow_statistics
         packet_sizes = self.flow_packet_size_statistics
         directional_intervals = self.directional_inter_arrival_statistics
@@ -60,6 +75,10 @@ class CoordinatedFlowState:
             directional_packet_count = getattr(directional, f"{direction}_packet_count")
             if getattr(packet_sizes, f"{direction}_packet_count") != directional_packet_count:
                 raise FlowCoordinationError("packet-size directional counts must match directional flow counts")
+            if tcp_control is not None and getattr(
+                tcp_control, f"{direction}_packet_count"
+            ) != directional_packet_count:
+                raise FlowCoordinationError("TCP control directional counts must match directional flow counts")
             interval_count = getattr(directional_intervals, f"{direction}_inter_arrival_count")
             observed = int(getattr(directional_intervals, f"last_{direction}_captured_at") is not None)
             if interval_count + observed != directional_packet_count:
@@ -127,6 +146,9 @@ class FlowStateCoordinator:
             directional_inter_arrival_statistics=update_directional_inter_arrival_statistics(
                 None if current is None else current.directional_inter_arrival_statistics, analysis, identity,
             ),
+            tcp_control_statistics=update_tcp_control_statistics(
+                None if current is None else current.tcp_control_statistics, analysis, identity,
+            ) if identity.protocol == 6 else None,
         )
         self._state = candidate
         return candidate

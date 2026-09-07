@@ -15,6 +15,8 @@ from analysis import (
     FlowStatisticsError,
     IPv4Packet,
     PacketAnalysis,
+    TCPControlStatistics,
+    TCPControlStatisticsError,
     TCPPacket,
     UDPPacket,
     extract_flow_duration_features,
@@ -26,6 +28,7 @@ from analysis import (
     update_flow_inter_arrival_statistics,
     update_flow_packet_size_statistics,
     update_flow_statistics,
+    update_tcp_control_statistics,
 )
 from capture.packet_observation import CaptureSource, PacketObservation
 
@@ -67,6 +70,40 @@ def packet_at(seconds: float, reverse: bool = False, captured: int = 60) -> Pack
     return packet
 
 
+def tcp_packet_at(
+    seconds: float,
+    reverse: bool = False,
+    captured: int = 60,
+    **flags,
+) -> PacketAnalysis:
+    packet = replace(
+        TCP_ANALYSIS,
+        observation=replace(
+            OBSERVATION,
+            captured_at=TIMESTAMP + timedelta(seconds=seconds),
+            captured_length=captured,
+            original_length=captured + 40,
+            raw_bytes=bytes(captured),
+        ),
+        tcp=replace(TCP_ANALYSIS.tcp, **flags),
+    )
+    if reverse:
+        packet = replace(
+            packet,
+            ipv4=replace(
+                TCP_ANALYSIS.ipv4,
+                source_address=TCP_ANALYSIS.ipv4.destination_address,
+                destination_address=TCP_ANALYSIS.ipv4.source_address,
+            ),
+            tcp=replace(packet.tcp, source_port=443, destination_port=12345),
+        )
+    return packet
+
+
+def state_components(state: CoordinatedFlowState) -> tuple:
+    return tuple(value for value in vars(state).values() if value is not None)
+
+
 class FlowStateCoordinatorTests(unittest.TestCase):
     def assert_atomic_failure(self, coordinator, packet, error) -> None:
         current = coordinator.state
@@ -74,7 +111,7 @@ class FlowStateCoordinatorTests(unittest.TestCase):
         objects.extend(value for value in (packet.ipv4, packet.tcp, packet.udp) if value is not None)
         if current is not None:
             objects.extend([current, current.identity])
-            objects.extend(vars(current).values())
+            objects.extend(state_components(current))
         before = [vars(value).copy() for value in objects]
         with self.assertRaises(error):
             coordinator.record(packet)
@@ -82,7 +119,7 @@ class FlowStateCoordinatorTests(unittest.TestCase):
         for value, original in zip(objects, before):
             self.assertEqual(vars(value), original)
 
-    def test_empty_and_first_packet_publish_all_five_accumulators(self) -> None:
+    def test_empty_and_first_packet_publish_protocol_correct_state(self) -> None:
         for packet in (UDP_ANALYSIS, TCP_ANALYSIS, packet_at(0, True)):
             coordinator = FlowStateCoordinator()
             self.assertIsNone(coordinator.state)
@@ -91,8 +128,13 @@ class FlowStateCoordinatorTests(unittest.TestCase):
             self.assertIs(coordinator.state, state)
             self.assertEqual(state.identity, flow_identity_from_packet(packet))
             self.assertIs(state.identity, state.flow_statistics.identity)
-            for accumulator in vars(state).values():
+            for accumulator in state_components(state):
                 self.assertIs(accumulator.identity, state.identity)
+            if state.identity.protocol == 6:
+                self.assertIs(type(state.tcp_control_statistics), TCPControlStatistics)
+                self.assertIs(state.tcp_control_statistics.identity, state.identity)
+            else:
+                self.assertIsNone(state.tcp_control_statistics)
             self.assertEqual(state.flow_statistics.packet_count, 1)
             self.assertEqual(state.flow_statistics.captured_bytes, 60)
             self.assertEqual(state.flow_statistics.original_bytes, 100)
@@ -119,6 +161,7 @@ class FlowStateCoordinatorTests(unittest.TestCase):
             self.assertEqual(state.flow_packet_size_statistics.packet_count, count)
             self.assertEqual(state.flow_inter_arrival_statistics.packet_count, count)
             self.assertEqual(state.directional_inter_arrival_statistics.packet_count, count)
+            self.assertIsNone(state.tcp_control_statistics)
             directional = state.directional_flow_statistics
             self.assertEqual(directional.forward_packet_count + directional.reverse_packet_count, count)
             if count == 2:
@@ -149,6 +192,114 @@ class FlowStateCoordinatorTests(unittest.TestCase):
         self.assertEqual((timing.forward_min_inter_arrival_seconds, timing.forward_max_inter_arrival_seconds), (3.0, 4.0))
         self.assertEqual(timing.last_forward_captured_at, TIMESTAMP + timedelta(seconds=7))
         self.assertEqual(timing.last_reverse_captured_at, TIMESTAMP + timedelta(seconds=4))
+
+    def test_tcp_control_state_tracks_flags_directions_and_identity_atomically(self) -> None:
+        packets = (
+            tcp_packet_at(0, syn=True),
+            tcp_packet_at(1, True, syn=True, ack=True, cwr=True, ece=True),
+            tcp_packet_at(2, ns=True, urg=True, ack=True, psh=True, rst=True, fin=True),
+            tcp_packet_at(3, True, **{
+                "ns": True, "cwr": True, "ece": True, "urg": True, "ack": True,
+                "psh": True, "rst": True, "syn": True, "fin": True,
+            }),
+        )
+        coordinator = FlowStateCoordinator()
+        first_identity = None
+        for count, packet in enumerate(packets, 1):
+            previous = coordinator.state
+            previous_components = () if previous is None else state_components(previous)
+            previous_values = [vars(value).copy() for value in previous_components]
+            state = coordinator.record(packet)
+            tcp_control = state.tcp_control_statistics
+            self.assertIs(type(tcp_control), TCPControlStatistics)
+            self.assertEqual(tcp_control.packet_count, count)
+            self.assertEqual(tcp_control.packet_count, state.flow_statistics.packet_count)
+            self.assertEqual(
+                (tcp_control.forward_packet_count, tcp_control.reverse_packet_count),
+                (state.directional_flow_statistics.forward_packet_count,
+                 state.directional_flow_statistics.reverse_packet_count),
+            )
+            self.assertIs(tcp_control.identity, state.identity)
+            if first_identity is None:
+                first_identity = state.identity
+            self.assertIs(state.identity, first_identity)
+            if previous is not None:
+                self.assertIsNot(state, previous)
+                self.assertIsNot(tcp_control, previous.tcp_control_statistics)
+                for value, original in zip(previous_components, previous_values):
+                    self.assertEqual(vars(value), original)
+        self.assertEqual((tcp_control.forward_packet_count, tcp_control.reverse_packet_count), (2, 2))
+        self.assertEqual(
+            (tcp_control.forward_ns_count, tcp_control.forward_urg_count,
+             tcp_control.forward_ack_count, tcp_control.forward_psh_count,
+             tcp_control.forward_rst_count, tcp_control.forward_syn_count,
+             tcp_control.forward_fin_count, tcp_control.forward_syn_ack_count),
+            (1, 1, 1, 1, 1, 1, 1, 0),
+        )
+        self.assertEqual(
+            (tcp_control.reverse_ns_count, tcp_control.reverse_cwr_count,
+             tcp_control.reverse_ece_count, tcp_control.reverse_urg_count,
+             tcp_control.reverse_ack_count, tcp_control.reverse_psh_count,
+             tcp_control.reverse_rst_count, tcp_control.reverse_syn_count,
+             tcp_control.reverse_fin_count, tcp_control.reverse_syn_ack_count),
+            (1, 2, 2, 1, 2, 1, 1, 2, 1, 2),
+        )
+
+    def test_tcp_updater_result_is_published_only_with_complete_candidate(self) -> None:
+        coordinator = FlowStateCoordinator()
+        for packet in (tcp_packet_at(0, syn=True), tcp_packet_at(1, True, syn=True, ack=True)):
+            previous = coordinator.state
+            results = []
+
+            def observe(current, analysis, identity):
+                self.assertIs(coordinator.state, previous)
+                self.assertIs(current, None if previous is None else previous.tcp_control_statistics)
+                self.assertIs(analysis, packet)
+                if previous is None:
+                    self.assertEqual(identity, flow_identity_from_packet(packet))
+                else:
+                    self.assertIs(identity, previous.identity)
+                result = update_tcp_control_statistics(current, analysis, identity)
+                self.assertIs(coordinator.state, previous)
+                results.append(result)
+                return result
+
+            with patch(
+                "analysis.flow_state_coordinator.update_tcp_control_statistics",
+                side_effect=observe,
+            ) as updater:
+                state = coordinator.record(packet)
+            updater.assert_called_once()
+            self.assertIs(state.tcp_control_statistics, results[0])
+            self.assertIs(state.identity, results[0].identity)
+            self.assertIs(coordinator.state, state)
+
+    def test_tcp_control_update_failure_preserves_empty_or_published_state(self) -> None:
+        for populated in (False, True):
+            coordinator = FlowStateCoordinator()
+            if populated:
+                coordinator.record(tcp_packet_at(0, syn=True))
+            packet = tcp_packet_at(1 if populated else 0, ack=True)
+            with patch(
+                "analysis.flow_state_coordinator.update_tcp_control_statistics",
+                side_effect=TCPControlStatisticsError("rejected TCP control observation"),
+            ):
+                self.assert_atomic_failure(coordinator, packet, TCPControlStatisticsError)
+
+    def test_repeated_tcp_publication_is_deterministic(self) -> None:
+        packets = (
+            tcp_packet_at(0, syn=True),
+            tcp_packet_at(1, True, syn=True, ack=True),
+            tcp_packet_at(3, ack=True, psh=True),
+        )
+        left = FlowStateCoordinator()
+        right = FlowStateCoordinator()
+        for packet in packets:
+            left_state = left.record(packet)
+            right_state = right.record(packet)
+            self.assertEqual(left_state, right_state)
+            self.assertIsNot(left_state, right_state)
+            self.assertIsNot(left_state.tcp_control_statistics, right_state.tcp_control_statistics)
 
     def test_unidirectional_repeated_zero_fractional_and_microsecond_intervals(self) -> None:
         for reverse in (False, True):
@@ -266,10 +417,11 @@ class FlowStateCoordinatorTests(unittest.TestCase):
         with self.assertRaises(AttributeError):
             del coordinator.state
 
-    def test_frozen_state_retains_only_five_sources_and_validates_types_and_identities(self) -> None:
-        state = FlowStateCoordinator().record(UDP_ANALYSIS)
+    def test_frozen_state_retains_six_sources_and_validates_types_and_identities(self) -> None:
+        state = FlowStateCoordinator().record(TCP_ANALYSIS)
         names = ("flow_statistics", "directional_flow_statistics", "flow_packet_size_statistics",
-                 "flow_inter_arrival_statistics", "directional_inter_arrival_statistics")
+                 "flow_inter_arrival_statistics", "directional_inter_arrival_statistics",
+                 "tcp_control_statistics")
         self.assertEqual(tuple(field.name for field in fields(state)), names)
         self.assertEqual(tuple(vars(state)), names)
         other = replace(state.identity, source_port=12346)
@@ -279,9 +431,15 @@ class FlowStateCoordinatorTests(unittest.TestCase):
                 setattr(state, name, value)
             with self.assertRaises(FrozenInstanceError):
                 delattr(state, name)
-            for invalid in (None, True, 1, {}, SimpleNamespace(**vars(value))):
+            for invalid in (True, 1, {}, SimpleNamespace(**vars(value))):
                 with self.assertRaises(TypeError):
                     replace(state, **{name: invalid})
+            if name == "tcp_control_statistics":
+                with self.assertRaises(FlowCoordinationError):
+                    replace(state, **{name: None})
+            else:
+                with self.assertRaises(TypeError):
+                    replace(state, **{name: None})
             with self.assertRaises(FlowCoordinationError):
                 replace(state, **{name: replace(value, identity=other)})
         copy = CoordinatedFlowState(**vars(state))
@@ -358,13 +516,49 @@ class FlowStateCoordinatorTests(unittest.TestCase):
                 directional_intervals, last_captured_at=TIMESTAMP + timedelta(seconds=5),
             )),
         )
-        before = [vars(value).copy() for value in vars(state).values()]
+        before = [vars(value).copy() for value in state_components(state)]
         for label, name, value in disagreements:
             with self.subTest(label=label):
                 with self.assertRaises(FlowCoordinationError):
                     replace(state, **{name: value})
-        for value, original in zip(vars(state).values(), before):
+        for value, original in zip(state_components(state), before):
             self.assertEqual(vars(value), original)
+
+    def test_public_state_constructor_enforces_tcp_presence_and_cross_family_counts(self) -> None:
+        tcp_coordinator = FlowStateCoordinator()
+        tcp_coordinator.record(tcp_packet_at(0))
+        tcp_state = tcp_coordinator.record(tcp_packet_at(1, True))
+        udp_state = FlowStateCoordinator().record(UDP_ANALYSIS)
+        tcp_control = tcp_state.tcp_control_statistics
+        different_identity = replace(tcp_state.identity, source_port=12346)
+        mismatched_identity = replace(tcp_control, identity=different_identity)
+        mismatched_packet_count = replace(
+            tcp_control,
+            packet_count=tcp_control.packet_count + 1,
+            forward_packet_count=tcp_control.forward_packet_count + 1,
+        )
+        mismatched_direction = replace(
+            tcp_control,
+            forward_packet_count=2,
+            reverse_packet_count=0,
+        )
+        for label, state, changes in (
+            ("TCP absence", tcp_state, {"tcp_control_statistics": None}),
+            ("UDP presence", udp_state, {"tcp_control_statistics": tcp_control}),
+            ("identity", tcp_state, {"tcp_control_statistics": mismatched_identity}),
+            ("packet count", tcp_state, {"tcp_control_statistics": mismatched_packet_count}),
+            ("directional counts", tcp_state, {"tcp_control_statistics": mismatched_direction}),
+        ):
+            with self.subTest(label=label):
+                with self.assertRaises(FlowCoordinationError):
+                    replace(state, **changes)
+        with self.assertRaises(TypeError):
+            replace(tcp_state, tcp_control_statistics=SimpleNamespace(**vars(tcp_control)))
+        with patch.object(TCPControlStatistics, "__post_init__", return_value=None):
+            non_tcp_control = replace(tcp_control, identity=udp_state.identity)
+        with self.assertRaises(FlowCoordinationError):
+            replace(tcp_state, tcp_control_statistics=non_tcp_control)
+        self.assertEqual(replace(udp_state), udp_state)
 
     def test_coordinator_publications_satisfy_cross_family_invariants_for_edge_cases(self) -> None:
         sequences = (
@@ -375,10 +569,11 @@ class FlowStateCoordinatorTests(unittest.TestCase):
             ((0, False, 60), (1, True, 80), (3, False, 100), (3, True, 120)),
         )
         for sequence in sequences:
-            with self.subTest(sequence=sequence):
-                coordinator = FlowStateCoordinator()
-                for seconds, reverse, captured in sequence:
-                    state = coordinator.record(packet_at(seconds, reverse, captured))
+            for packet_factory in (packet_at, tcp_packet_at):
+                with self.subTest(sequence=sequence, protocol=packet_factory.__name__):
+                    coordinator = FlowStateCoordinator()
+                    for seconds, reverse, captured in sequence:
+                        state = coordinator.record(packet_factory(seconds, reverse, captured))
                 flow = state.flow_statistics
                 directional = state.directional_flow_statistics
                 packet_sizes = state.flow_packet_size_statistics
@@ -434,6 +629,15 @@ class FlowStateCoordinatorTests(unittest.TestCase):
                      directional_intervals.last_captured_at),
                     (flow.last_captured_at,) * 3,
                 )
+                if flow.identity.protocol == 6:
+                    tcp_control = state.tcp_control_statistics
+                    self.assertEqual(tcp_control.packet_count, flow.packet_count)
+                    self.assertEqual(
+                        (tcp_control.forward_packet_count, tcp_control.reverse_packet_count),
+                        (directional.forward_packet_count, directional.reverse_packet_count),
+                    )
+                else:
+                    self.assertIsNone(state.tcp_control_statistics)
 
     def test_zero_duration_admission_does_not_change_feature_error_or_zero_interval_semantics(self) -> None:
         coordinator = FlowStateCoordinator()
@@ -462,7 +666,9 @@ class FlowStateCoordinatorTests(unittest.TestCase):
                               udp=replace(packet.udp, checksum=1234),
                               ipv4_checksum_valid=False, udp_checksum_valid=True)
             previous = left.state
-            sources_before = None if previous is None else [vars(value).copy() for value in vars(previous).values()]
+            sources_before = None if previous is None else [
+                vars(value).copy() for value in state_components(previous)
+            ]
             actual = left.record(packet)
             equivalent = right.record(changed)
             self.assertEqual(actual, equivalent)
@@ -471,7 +677,7 @@ class FlowStateCoordinatorTests(unittest.TestCase):
             for value, original in zip(objects, before):
                 self.assertEqual(vars(value), original)
             if previous is not None:
-                for value, original in zip(vars(previous).values(), sources_before):
+                for value, original in zip(state_components(previous), sources_before):
                     self.assertEqual(vars(value), original)
             self.assertEqual(tuple(vars(left)), ("_state",))
             for value in vars(actual).values():
