@@ -4,9 +4,9 @@ NIDS-NetOps is a network intrusion detection system project intended for product
 
 ## Current status
 
-The accepted baseline includes capture contracts, synchronous ingestion, an iterable packet source, Ethernet II/IPv4/TCP/UDP/ICMPv4 decoding and checksum validation, and single-packet analysis. IPv4 TCP/UDP flow analysis provides canonical identity and direction, coordinated raw flow state, directional TCP control observations, protocol-neutral observation windows, and immutable typed feature snapshots. The application layer composes one packet-source run with analysis and observation-window lifecycle management and synchronously emits closed windows.
+The accepted baseline includes capture contracts, synchronous ingestion, an iterable packet source, Ethernet II/IPv4/TCP/UDP/ICMPv4 decoding and checksum validation, and single-packet analysis. IPv4 TCP/UDP flow analysis provides canonical identity and direction, coordinated raw flow state, directional TCP control observations, protocol-neutral observation windows, and immutable typed feature snapshots. The application layer composes one packet-source run with analysis and observation-window lifecycle management and synchronously emits closed windows. Detection includes deterministic flow-volume and flow-rate threshold evaluation over closed feature snapshots with exact raw evidence and bounded security interpretations.
 
-The complete deterministic suite contains 422 passing tests. Code uses only the Python standard library and supports Python 3.9 or newer. Network capture, PCAP ingestion, application parsing, reassembly, TCP connection state, detection, machine learning, storage, and interfaces are not implemented. Packaging and deployment remain undecided. Production quality is a design objective, not a claim of operational readiness.
+The complete deterministic suite contains 446 passing tests. Code uses only the Python standard library and supports Python 3.9 or newer. Network capture, PCAP ingestion, application parsing, reassembly, TCP connection state, other detector families, detector orchestration, machine learning, storage, and interfaces are not implemented. Packaging and deployment remain undecided. Production quality is a design objective, not a claim of operational readiness.
 
 ## Repository structure
 
@@ -17,7 +17,7 @@ The complete deterministic suite contains 422 passing tests. Code uses only the 
 | [src/capture/](src/capture/README.md) | Packet observation and capture-source contracts, packet ingestion, and future packet acquisition. |
 | [src/analysis/](src/analysis/README.md) | Layer 2–4 decoding, checksum validation, packet/flow analysis, raw statistics, and explicit feature families. |
 | [src/application/](src/application/README.md) | Synchronous composition of one capture-source run with packet analysis and observation-window lifecycle. |
-| [src/detection/](src/detection/README.md) | Future signature, rule, threshold, statistical, and behavioral detection. |
+| [src/detection/](src/detection/README.md) | Deterministic flow threshold detection and future detector-specific contracts. |
 | [src/enrichment/](src/enrichment/README.md) | Future threat-intelligence context. |
 | [src/events/](src/events/README.md) | Future correlation, risk scoring, and alert lifecycle. |
 | [src/storage/](src/storage/README.md) | Future event persistence and PCAP evidence management. |
@@ -32,7 +32,7 @@ Every established directory contains documentation defining its purpose. Additio
 
 Start with one cohesive system organized into explicit internal modules. Module boundaries do not imply separate services, processes, queues, or deployment units. Capture supplies packet observations; analysis produces protocol, flow, and feature observations; detectors produce findings; event processing correlates findings, assesses risk, and manages alerts. Enrichment provides external context, storage preserves records and evidence, and integration adapters expose supported views to external consumers.
 
-The [architecture guide](docs/architecture.md) defines all 21 subsystem boundaries. Capture primitives, the analysis components described above, and the narrow capture-session composition boundary are implemented; detection and downstream records remain conceptual.
+The [architecture guide](docs/architecture.md) defines all 21 subsystem boundaries. Capture primitives, the analysis components described above, the narrow capture-session composition boundary, and deterministic flow threshold evaluation are implemented; other detection and downstream records remain conceptual.
 
 ## Development philosophy
 
