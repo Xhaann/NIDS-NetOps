@@ -289,6 +289,152 @@ class FlowStateCoordinatorTests(unittest.TestCase):
             self.assertIs(getattr(copy, name), getattr(state, name))
         self.assertIs(copy.identity, state.identity)
 
+    def test_public_state_constructor_rejects_cross_family_disagreement(self) -> None:
+        coordinator = FlowStateCoordinator()
+        for seconds, reverse, captured in ((0, False, 60), (1, True, 80),
+                                            (3, False, 100), (4, True, 120)):
+            state = coordinator.record(packet_at(seconds, reverse, captured))
+        flow = state.flow_statistics
+        directional = state.directional_flow_statistics
+        packet_sizes = state.flow_packet_size_statistics
+        intervals = state.flow_inter_arrival_statistics
+        directional_intervals = state.directional_inter_arrival_statistics
+        disagreements = (
+            ("flow packet count", "flow_statistics", replace(flow, packet_count=5)),
+            ("packet-size packet count", "flow_packet_size_statistics",
+             replace(packet_sizes, packet_count=5)),
+            ("global-IAT packet count", "flow_inter_arrival_statistics",
+             replace(intervals, packet_count=5, inter_arrival_count=4)),
+            ("directional-IAT packet count", "directional_inter_arrival_statistics", replace(
+                directional_intervals, packet_count=5, forward_inter_arrival_count=2,
+            )),
+            ("directional packet count", "directional_flow_statistics",
+             replace(directional, forward_packet_count=3)),
+            ("packet-size directional count", "flow_packet_size_statistics",
+             replace(packet_sizes, forward_packet_count=3)),
+            ("directional interval allocation", "directional_inter_arrival_statistics", replace(
+                directional_intervals,
+                forward_inter_arrival_count=2,
+                reverse_inter_arrival_count=0,
+                reverse_inter_arrival_sum_seconds=0.0,
+                reverse_inter_arrival_sum_seconds_squared=0.0,
+                reverse_min_inter_arrival_seconds=0.0,
+                reverse_max_inter_arrival_seconds=0.0,
+            )),
+            ("global captured bytes", "flow_statistics", replace(flow, captured_bytes=361)),
+            ("packet-size global captured bytes", "flow_packet_size_statistics",
+             replace(packet_sizes, captured_bytes=361)),
+            ("directional captured bytes", "directional_flow_statistics", replace(
+                directional, forward_captured_bytes=161, reverse_captured_bytes=199,
+            )),
+            ("packet-size directional captured bytes", "flow_packet_size_statistics", replace(
+                packet_sizes, forward_captured_bytes=161, reverse_captured_bytes=199,
+            )),
+            ("global original bytes", "flow_statistics", replace(flow, original_bytes=521)),
+            ("packet-size global original bytes", "flow_packet_size_statistics",
+             replace(packet_sizes, original_bytes=521)),
+            ("directional original bytes", "directional_flow_statistics", replace(
+                directional, forward_original_bytes=241, reverse_original_bytes=279,
+            )),
+            ("packet-size directional original bytes", "flow_packet_size_statistics", replace(
+                packet_sizes, forward_original_bytes=241, reverse_original_bytes=279,
+            )),
+            ("flow first timestamp", "flow_statistics", replace(
+                flow, first_captured_at=TIMESTAMP + timedelta(microseconds=1),
+            )),
+            ("global-IAT first timestamp", "flow_inter_arrival_statistics", replace(
+                intervals, first_captured_at=TIMESTAMP + timedelta(microseconds=1),
+            )),
+            ("directional-IAT first timestamp", "directional_inter_arrival_statistics", replace(
+                directional_intervals, first_captured_at=TIMESTAMP + timedelta(microseconds=1),
+            )),
+            ("flow last timestamp", "flow_statistics", replace(
+                flow, last_captured_at=TIMESTAMP + timedelta(seconds=5),
+            )),
+            ("global-IAT last timestamp", "flow_inter_arrival_statistics", replace(
+                intervals, last_captured_at=TIMESTAMP + timedelta(seconds=5),
+            )),
+            ("directional-IAT last timestamp", "directional_inter_arrival_statistics", replace(
+                directional_intervals, last_captured_at=TIMESTAMP + timedelta(seconds=5),
+            )),
+        )
+        before = [vars(value).copy() for value in vars(state).values()]
+        for label, name, value in disagreements:
+            with self.subTest(label=label):
+                with self.assertRaises(FlowCoordinationError):
+                    replace(state, **{name: value})
+        for value, original in zip(vars(state).values(), before):
+            self.assertEqual(vars(value), original)
+
+    def test_coordinator_publications_satisfy_cross_family_invariants_for_edge_cases(self) -> None:
+        sequences = (
+            ((0, False, 0),),
+            ((0, False, 60), (0, False, 80)),
+            ((0, False, 60), (1, True, 80)),
+            ((0, True, 60), (0, True, 80), (1.5, True, 100)),
+            ((0, False, 60), (1, True, 80), (3, False, 100), (3, True, 120)),
+        )
+        for sequence in sequences:
+            with self.subTest(sequence=sequence):
+                coordinator = FlowStateCoordinator()
+                for seconds, reverse, captured in sequence:
+                    state = coordinator.record(packet_at(seconds, reverse, captured))
+                flow = state.flow_statistics
+                directional = state.directional_flow_statistics
+                packet_sizes = state.flow_packet_size_statistics
+                intervals = state.flow_inter_arrival_statistics
+                directional_intervals = state.directional_inter_arrival_statistics
+                self.assertEqual(
+                    (flow.packet_count, packet_sizes.packet_count, intervals.packet_count,
+                     directional_intervals.packet_count),
+                    (len(sequence),) * 4,
+                )
+                self.assertEqual(
+                    directional.forward_packet_count + directional.reverse_packet_count,
+                    flow.packet_count,
+                )
+                for direction in ("forward", "reverse"):
+                    packet_count = getattr(directional, direction + "_packet_count")
+                    self.assertEqual(getattr(packet_sizes, direction + "_packet_count"), packet_count)
+                    observed = int(getattr(
+                        directional_intervals, "last_" + direction + "_captured_at",
+                    ) is not None)
+                    self.assertEqual(
+                        getattr(directional_intervals, direction + "_inter_arrival_count") + observed,
+                        packet_count,
+                    )
+                for length in ("captured", "original"):
+                    total = getattr(flow, length + "_bytes")
+                    self.assertEqual(getattr(packet_sizes, length + "_bytes"), total)
+                    self.assertEqual(
+                        getattr(directional, "forward_" + length + "_bytes")
+                        + getattr(directional, "reverse_" + length + "_bytes"),
+                        total,
+                    )
+                    for direction in ("forward", "reverse"):
+                        self.assertEqual(
+                            getattr(packet_sizes, direction + "_" + length + "_bytes"),
+                            getattr(directional, direction + "_" + length + "_bytes"),
+                        )
+                self.assertEqual(intervals.inter_arrival_count, flow.packet_count - 1)
+                self.assertEqual(
+                    directional_intervals.forward_inter_arrival_count
+                    + directional_intervals.reverse_inter_arrival_count,
+                    flow.packet_count
+                    - int(directional_intervals.last_forward_captured_at is not None)
+                    - int(directional_intervals.last_reverse_captured_at is not None),
+                )
+                self.assertEqual(
+                    (flow.first_captured_at, intervals.first_captured_at,
+                     directional_intervals.first_captured_at),
+                    (flow.first_captured_at,) * 3,
+                )
+                self.assertEqual(
+                    (flow.last_captured_at, intervals.last_captured_at,
+                     directional_intervals.last_captured_at),
+                    (flow.last_captured_at,) * 3,
+                )
+
     def test_zero_duration_admission_does_not_change_feature_error_or_zero_interval_semantics(self) -> None:
         coordinator = FlowStateCoordinator()
         for count in (1, 2):

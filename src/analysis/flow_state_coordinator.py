@@ -44,6 +44,51 @@ class CoordinatedFlowState:
         ):
             if value.identity != self.identity:
                 raise FlowCoordinationError("all accumulator identities must match")
+        packet_count = self.flow_statistics.packet_count
+        if any(value.packet_count != packet_count for value in (
+            self.flow_packet_size_statistics,
+            self.flow_inter_arrival_statistics,
+            self.directional_inter_arrival_statistics,
+        )):
+            raise FlowCoordinationError("all accumulator packet counts must match")
+        directional = self.directional_flow_statistics
+        packet_sizes = self.flow_packet_size_statistics
+        directional_intervals = self.directional_inter_arrival_statistics
+        if directional.forward_packet_count + directional.reverse_packet_count != packet_count:
+            raise FlowCoordinationError("directional packet counts must sum to packet_count")
+        for direction in ("forward", "reverse"):
+            directional_packet_count = getattr(directional, f"{direction}_packet_count")
+            if getattr(packet_sizes, f"{direction}_packet_count") != directional_packet_count:
+                raise FlowCoordinationError("packet-size directional counts must match directional flow counts")
+            interval_count = getattr(directional_intervals, f"{direction}_inter_arrival_count")
+            observed = int(getattr(directional_intervals, f"last_{direction}_captured_at") is not None)
+            if interval_count + observed != directional_packet_count:
+                raise FlowCoordinationError("directional interval counts must match directional packet counts")
+        for length in ("captured", "original"):
+            total_name = f"{length}_bytes"
+            total = getattr(self.flow_statistics, total_name)
+            if getattr(packet_sizes, total_name) != total:
+                raise FlowCoordinationError(f"global {length}-byte totals must match")
+            directional_total = (
+                getattr(directional, f"forward_{length}_bytes")
+                + getattr(directional, f"reverse_{length}_bytes")
+            )
+            if directional_total != total:
+                raise FlowCoordinationError(f"directional {length}-byte totals must sum to the global total")
+            for direction in ("forward", "reverse"):
+                if getattr(packet_sizes, f"{direction}_{length}_bytes") != getattr(
+                    directional, f"{direction}_{length}_bytes",
+                ):
+                    raise FlowCoordinationError(
+                        f"packet-size {direction} {length}-byte totals must match directional flow totals"
+                    )
+        for name in ("first_captured_at", "last_captured_at"):
+            timestamp = getattr(self.flow_statistics, name)
+            if any(getattr(value, name) != timestamp for value in (
+                self.flow_inter_arrival_statistics,
+                directional_intervals,
+            )):
+                raise FlowCoordinationError(f"all accumulator {name} values must match")
 
     @property
     def identity(self) -> FlowIdentity:
