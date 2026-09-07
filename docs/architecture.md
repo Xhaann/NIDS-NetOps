@@ -68,7 +68,15 @@ The [packet-analysis outcome](../src/analysis/packet_analysis_outcome.py) is an 
 
 The outcome recognizes only existing structural decoder failures, unsupported analysis scope, explicitly insufficient available bytes, and explicit checksum mismatches. It does not broadly catch programming errors, add parser or checksum rules, or reinterpret UDP checksum omission as mismatch. Unknown IPv4 protocols retain the existing successful network-layer analysis result. The classification describes the implemented analysis attempt and carries no maliciousness, attack, severity, confidence, or RFC-wide compliance conclusion.
 
-This boundary is stateless, performs no acquisition, lifecycle management, feature extraction, or detection, and retains no packet history. It supplies the missing failure-preserving analytical input for a later network-integrity detector without implementing that detector or changing the current application orchestration.
+This boundary is stateless, performs no acquisition, lifecycle management, feature extraction, or detection, and retains no packet history. It supplies the failure-preserving analytical input consumed by the packet-integrity detector without changing the current application orchestration.
+
+## Deterministic packet-integrity detection
+
+The [packet-integrity detector](../src/detection/packet_integrity.py) consumes one exact immutable `PacketAnalysisOutcome`. Successful analysis produces `NO_MATCH`; structural and explicit integrity failures produce `MATCH`; and incomplete or unsupported analysis produces `NOT_EVALUABLE`. The fixed predicate is not configurable, and detector configuration contains only exact nonblank identity and version strings.
+
+Raw evidence retains the exact outcome and configuration and projects packet provenance without reconstructing observations or analyses. Protocol is exposed only from a successful retained IPv4 analysis; the detector does not parse raw bytes to recover it from a failed outcome. Existing failure descriptions pass through unchanged. A separate typed interpretation describes only the implemented analytical predicate and makes no maliciousness, attack, intent, endpoint-role, protocol-stack, or RFC-wide conclusion.
+
+The detector is packet-local, synchronous, deterministic, stateless, and constant-memory. It performs no packet decoding, checksum validation, flow processing, history retention, network or filesystem access, orchestration, correlation, alerting, or response behavior.
 
 ## Coordinated flow-state ownership
 

@@ -9,6 +9,15 @@ from detection.flow_volume_threshold import (
     FlowVolumeThresholdInterpretation,
     evaluate_flow_volume_threshold,
 )
+from detection.packet_integrity import (
+    PacketIntegrityConfiguration,
+    PacketIntegrityDecision,
+    PacketIntegrityError,
+    PacketIntegrityEvaluation,
+    PacketIntegrityEvidence,
+    PacketIntegrityInterpretation,
+    evaluate_packet_integrity,
+)
 from detection.tcp_control_threshold import (
     TCPControlMetric,
     TCPControlThresholdComparison,
@@ -30,6 +39,12 @@ __all__ = [
     "FlowVolumeThresholdEvaluation",
     "FlowVolumeThresholdEvidence",
     "FlowVolumeThresholdInterpretation",
+    "PacketIntegrityConfiguration",
+    "PacketIntegrityDecision",
+    "PacketIntegrityError",
+    "PacketIntegrityEvaluation",
+    "PacketIntegrityEvidence",
+    "PacketIntegrityInterpretation",
     "TCPControlMetric",
     "TCPControlThresholdComparison",
     "TCPControlThresholdConfiguration",
@@ -39,5 +54,6 @@ __all__ = [
     "TCPControlThresholdEvidence",
     "TCPControlThresholdInterpretation",
     "evaluate_flow_volume_threshold",
+    "evaluate_packet_integrity",
     "evaluate_tcp_control_threshold",
 ]

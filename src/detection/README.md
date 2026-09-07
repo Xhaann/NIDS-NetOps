@@ -1,6 +1,6 @@
 # Detection boundary
 
-This directory owns detector-specific evaluation contracts. The first implemented detector evaluates deterministic flow-volume and flow-rate thresholds over finalized analysis windows. It does not provide a generic detector framework, event correlation, alerting, or a numerical vector boundary.
+This directory owns detector-specific evaluation contracts. Implemented detectors evaluate packet-local integrity outcomes, flow-volume and flow-rate thresholds over finalized analysis windows, and raw TCP control-counter thresholds. It does not provide a generic detector framework, event correlation, alerting, or a numerical vector boundary.
 
 | Family | Responsibility |
 | --- | --- |
@@ -12,7 +12,21 @@ This directory owns detector-specific evaluation contracts. The first implemente
 
 Detectors consume [analysis](../analysis/README.md) outputs through explicit contracts and produce immutable evaluations with detector identity/version, supporting evidence, and a bounded interpretation. Severity and confidence require separately defined meanings and are not supplied by the current detector. Each detector owns only its detection-specific state, not protocol or session state.
 
-The families may share input contracts but remain independently testable and configurable. [Event processing](../events/README.md) owns cross-finding correlation, risk scoring, deduplication, and alert lifecycle. External intelligence access belongs to [enrichment](../enrichment/README.md). No signature, statistical, behavioral, training, or model implementation is established here.
+The families use detector-specific input contracts and remain independently testable and configurable. [Event processing](../events/README.md) owns cross-finding correlation, risk scoring, deduplication, and alert lifecycle. External intelligence access belongs to [enrichment](../enrichment/README.md). No signature, statistical, behavioral, training, or model implementation is established here.
+
+## Packet integrity and structural outcomes
+
+[packet_integrity.py](packet_integrity.py) exports `PacketIntegrityConfiguration`, `PacketIntegrityDecision`, `PacketIntegrityEvidence`, `PacketIntegrityInterpretation`, `PacketIntegrityEvaluation`, `PacketIntegrityError`, and `evaluate_packet_integrity(outcome, configuration) -> PacketIntegrityEvaluation`.
+
+The evaluator accepts exactly one immutable `PacketAnalysisOutcome` and one exact frozen configuration containing only nonblank detector identity and version strings. It accepts successful, structural-failure, integrity-failure, incomplete, and unsupported outcomes across the existing packet-analysis scope. It does not accept observations, analyses, bytes, flow windows, feature snapshots, or aggregate state as separate inputs.
+
+The fixed predicate maps successful analysis to `NO_MATCH`; `STRUCTURAL_FAILURE` and `INTEGRITY_FAILURE` to `MATCH`; and `INCOMPLETE` and `UNSUPPORTED` to `NOT_EVALUABLE`. An unsupported or insufficient observation is not treated as a violation. IPv4 UDP checksum omission remains the existing successful analysis outcome and therefore produces `NO_MATCH`; no checksum is recomputed or reinterpreted by detection.
+
+Raw evidence retains the exact outcome and exact configuration. Read-only properties expose the exact observation and successful analysis when present, capture timestamp, capture source, link type, captured and original lengths, existing failure classification and unchanged description, detector identity and version, derived decision, and the IPv4 protocol number only when available from a successful retained analysis. The detector does not parse raw bytes to recover missing protocol context.
+
+Security interpretation is a separate closed enum. It states only that no supported violation was observed, that a supported structural or integrity violation was observed, or that analysis was not evaluable. A match describes the current implemented analysis predicate and does not establish maliciousness, an attack, exploit, scan, flood, intent, endpoint role, protocol-stack compromise, or RFC-wide noncompliance.
+
+Evaluation is synchronous, packet-local, deterministic, stateless, immutable, and constant-memory. The detector performs no decoding, checksum validation, flow processing, packet history, caching, filesystem or network access, orchestration, persistence, alerting, or response behavior.
 
 ## Flow-volume and flow-rate thresholds
 
