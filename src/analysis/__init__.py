@@ -24,6 +24,14 @@ from analysis.flow_inter_arrival_statistics import (
     FlowInterArrivalStatisticsError,
     update_flow_inter_arrival_statistics,
 )
+from analysis.flow_observation_window import (
+    FlowObservationWindow,
+    FlowObservationWindowClosureReason,
+    FlowObservationWindowError,
+    FlowObservationWindowKey,
+    FlowObservationWindowManager,
+    FlowObservationWindowUpdate,
+)
 from analysis.flow_packet_size_statistics import (
     FlowPacketSizeStatistics,
     FlowPacketSizeStatisticsError,
@@ -79,6 +87,12 @@ __all__ = [
     "FlowIdentityError",
     "FlowInterArrivalStatistics",
     "FlowInterArrivalStatisticsError",
+    "FlowObservationWindow",
+    "FlowObservationWindowClosureReason",
+    "FlowObservationWindowError",
+    "FlowObservationWindowKey",
+    "FlowObservationWindowManager",
+    "FlowObservationWindowUpdate",
     "FlowPacket",
     "FlowPacketSizeStatistics",
     "FlowPacketSizeStatisticsError",
