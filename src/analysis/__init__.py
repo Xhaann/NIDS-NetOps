@@ -52,6 +52,12 @@ from analysis.inter_arrival_features import (
 from analysis.ipv4 import IPv4DecodeError, IPv4Packet, decode_ipv4
 from analysis.ipv4_checksum import validate_ipv4_checksum
 from analysis.packet_analysis import PacketAnalysis, PacketAnalysisError, analyze_packet
+from analysis.packet_analysis_outcome import (
+    PacketAnalysisFailureClassification,
+    PacketAnalysisOutcome,
+    PacketAnalysisOutcomeError,
+    analyze_packet_outcome,
+)
 from analysis.packet_size_features import PacketSizeFeatures, PacketSizeFeaturesError, extract_packet_size_features
 from analysis.tcp import TCPDecodeError, TCPPacket, decode_tcp
 from analysis.tcp_checksum import TCPChecksumValidationError, validate_tcp_checksum
@@ -114,6 +120,9 @@ __all__ = [
     "IPv4Packet",
     "PacketAnalysis",
     "PacketAnalysisError",
+    "PacketAnalysisFailureClassification",
+    "PacketAnalysisOutcome",
+    "PacketAnalysisOutcomeError",
     "PacketSizeFeatures",
     "PacketSizeFeaturesError",
     "TCPDecodeError",
@@ -125,6 +134,7 @@ __all__ = [
     "UDPChecksumValidationError",
     "UDPPacket",
     "analyze_packet",
+    "analyze_packet_outcome",
     "decode_ethernet",
     "decode_icmp",
     "decode_ipv4",

@@ -62,6 +62,14 @@ PCAP evidence and structured event records have different storage and retention 
 
 Define small, versioned contracts as the first consumers are implemented. Place shared contracts only when there are real consumers; avoid a general-purpose shared module with unclear ownership. Implementation dependencies should remain acyclic, using narrow interfaces at storage and integration boundaries.
 
+## Failure-preserving packet analysis
+
+The [packet-analysis outcome](../src/analysis/packet_analysis_outcome.py) is an optional immutable boundary around the existing single-packet analysis operation. `analyze_packet()` retains its established behavior and continues to return one exact `PacketAnalysis` or propagate an exception. `analyze_packet_outcome()` calls that operation once and retains the exact supplied `PacketObservation`; success retains the exact returned analysis, while a recognized failure retains no partial analysis and instead records one bounded classification and deterministic description.
+
+The outcome recognizes only existing structural decoder failures, unsupported analysis scope, explicitly insufficient available bytes, and explicit checksum mismatches. It does not broadly catch programming errors, add parser or checksum rules, or reinterpret UDP checksum omission as mismatch. Unknown IPv4 protocols retain the existing successful network-layer analysis result. The classification describes the implemented analysis attempt and carries no maliciousness, attack, severity, confidence, or RFC-wide compliance conclusion.
+
+This boundary is stateless, performs no acquisition, lifecycle management, feature extraction, or detection, and retains no packet history. It supplies the missing failure-preserving analytical input for a later network-integrity detector without implementing that detector or changing the current application orchestration.
+
 ## Coordinated flow-state ownership
 
 The analysis [flow-state coordinator](../src/analysis/flow_state_coordinator.py) owns synchronous admission for a single flow. It constructs candidates through the five immutable protocol-neutral global volume, directional volume, packet-size, global inter-arrival, and directional inter-arrival accumulators and, for TCP, the TCP control accumulator. A packet is admitted only when all applicable candidates succeed; one replacement publishes the complete immutable state. Failures propagate without replacing any published component. Calls must be sequential and non-overlapping; no concurrency or durability guarantee is introduced.

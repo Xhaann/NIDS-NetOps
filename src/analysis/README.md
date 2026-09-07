@@ -1,6 +1,6 @@
 # Traffic analysis boundary
 
-This directory implements Ethernet II, IPv4, TCP, UDP, and generic ICMPv4 decoding and checksum validation, single-packet analysis, canonical IPv4 TCP/UDP flow identity and direction, in-memory tracking, and explicit raw accumulation and feature boundaries. Raw accumulation includes global and directional volume, packet-size statistics, global and directional inter-arrival statistics, and directional TCP control observations. Implemented features cover volume and directional balance, packet sizes, duration, rates, and global and directional inter-arrival statistics. Each module's exact scope is documented below.
+This directory implements Ethernet II, IPv4, TCP, UDP, and generic ICMPv4 decoding and checksum validation, single-packet analysis and failure-preserving analysis outcomes, canonical IPv4 TCP/UDP flow identity and direction, in-memory tracking, and explicit raw accumulation and feature boundaries. Raw accumulation includes global and directional volume, packet-size statistics, global and directional inter-arrival statistics, and directional TCP control observations. Implemented features cover volume and directional balance, packet sizes, duration, rates, and global and directional inter-arrival statistics. Each module's exact scope is documented below.
 
 Additional link formats, fragment and stream reassembly, TCP connection state, flow expiration, and application parsing remain unimplemented.
 
@@ -17,6 +17,18 @@ A checksum result of `True` or `False` is preserved directly from its validator;
 Transport/ICMP decoders are called before their checksum guards. The current decoders reject non-initial fragments, so those existing decode errors propagate and no transport/ICMP checksum validator runs. If a decoder returns a model for such a fragment, its checksum result remains `None`. Initial fragments with MF set may be checked subject to existing decoder requirements; checks cover only the represented bytes, without fragment reassembly.
 
 This boundary contains orchestration only. It does not alter observations or packet bytes, perform stream reassembly, connection/flow tracking, application parsing, feature extraction, or detection, or assign threat verdicts, severity, or alerts. Capture remains responsible for acquisition. No additional link formats, EtherTypes, or protocol decoders are introduced.
+
+## Failure-preserving packet-analysis outcome
+
+`analysis` additionally exports `analyze_packet_outcome(observation: PacketObservation) -> PacketAnalysisOutcome`, `PacketAnalysisOutcome`, `PacketAnalysisFailureClassification`, and `PacketAnalysisOutcomeError` from [packet_analysis_outcome.py](packet_analysis_outcome.py). The existing `analyze_packet()` contract remains unchanged for callers that require its exact successful return or exception behavior. The outcome helper is the separate boundary for a caller that must preserve a recognized unsuccessful analysis attempt as immutable analytical evidence.
+
+Every outcome retains the exact supplied `PacketObservation`. Success retains the exact `PacketAnalysis` returned by `analyze_packet()` and has no failure classification or description. Failure has no `PacketAnalysis`, has exactly one classification, and has a deterministic nonblank description. The frozen model rejects mixed success/failure states, nonexact model types, blank failure descriptions, and a successful analysis that does not retain the same observation object.
+
+The bounded classifications are `STRUCTURAL_FAILURE`, `UNSUPPORTED`, `INCOMPLETE`, and `INTEGRITY_FAILURE`. They cover only conditions established by the current top-level analysis and decoder messages: invalid implemented header structure; unsupported link, network, protocol-decoder, or non-initial-fragment scope; explicitly insufficient available bytes; and explicit checksum mismatches. Unknown exceptions and unrecognized messages within existing broad exception classes continue to propagate rather than becoming packet evidence. No new structural or checksum rule is introduced.
+
+An IPv4 UDP zero checksum remains a successful analysis with `udp_checksum_valid is False` because the existing boolean validator cannot distinguish omission from mismatch without inspecting the decoded checksum field; the outcome helper uses that field and does not label omission as an integrity failure. Unknown IPv4 protocol numbers likewise retain the existing successful network-layer analysis behavior. A failure classification records what happened under implemented analysis rules and does not establish maliciousness, an attack type, intent, or RFC-wide noncompliance.
+
+This boundary keeps no state or packet history and does not perform detection. A future network-integrity detector may consume it, but that detector and its security predicate are outside this feature.
 
 ## Bidirectional flow identity
 
