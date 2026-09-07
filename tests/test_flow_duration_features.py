@@ -42,8 +42,9 @@ class FlowDurationFeaturesTests(unittest.TestCase):
                 self.assertEqual(result.duration_seconds,
                                  (statistics.last_captured_at - statistics.first_captured_at).total_seconds())
 
-    def test_different_timezone_offsets_follow_datetime_subtraction(self) -> None:
-        end = (CAPTURED_AT + timedelta(seconds=1.5)).astimezone(timezone(timedelta(hours=5, minutes=30)))
+    def test_explicit_caller_conversion_to_utc_preserves_elapsed_time(self) -> None:
+        local = (CAPTURED_AT + timedelta(seconds=1.5)).astimezone(timezone(timedelta(hours=5, minutes=30)))
+        end = local.astimezone(timezone.utc)
         statistics = replace(STATISTICS, last_captured_at=end)
         self.assertEqual(extract_flow_duration_features(statistics).duration_seconds, 1.5)
 

@@ -125,9 +125,9 @@ class FlowInterArrivalStatisticsTests(unittest.TestCase):
             self.assertEqual(current, FlowInterArrivalStatistics(
                 self.identity, count, TIMESTAMP, timestamp, count - 1, total, squares, minimum, maximum))
 
-    def test_microsecond_large_intervals_and_timezone_offsets_use_datetime_subtraction(self) -> None:
+    def test_microsecond_large_intervals_and_named_utc_use_datetime_subtraction(self) -> None:
         for delta in (timedelta(microseconds=1), timedelta(seconds=1.234567), timedelta(days=1000000)):
-            timestamp = (TIMESTAMP + delta).astimezone(timezone(timedelta(hours=5, minutes=30)))
+            timestamp = (TIMESTAMP + delta).astimezone(timezone(timedelta(0), "UTC alias"))
             packet = replace(TCP_ANALYSIS, observation=replace(OBSERVATION, captured_at=timestamp))
             result = update_flow_inter_arrival_statistics(self.current, packet, self.identity)
             interval = (timestamp - TIMESTAMP).total_seconds()

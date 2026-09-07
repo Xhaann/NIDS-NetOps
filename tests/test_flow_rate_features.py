@@ -59,7 +59,7 @@ class FlowRateFeaturesTests(unittest.TestCase):
             ({"original_bytes": 3000}, FlowRateFeatures(2.0, 200.0, 600.0)),
             ({"last_captured_at": CAPTURED_AT + timedelta(seconds=10)}, FlowRateFeatures(1.0, 100.0, 200.0)),
             ({"identity": replace(IDENTITY, protocol=17)}, FlowRateFeatures(2.0, 200.0, 400.0)),
-            ({"last_captured_at": STATISTICS.last_captured_at.astimezone(timezone(timedelta(hours=5, minutes=30)))},
+            ({"last_captured_at": STATISTICS.last_captured_at.astimezone(timezone(timedelta(0), "UTC alias"))},
              FlowRateFeatures(2.0, 200.0, 400.0)),
         ):
             with self.subTest(changes=changes):

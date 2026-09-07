@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 
@@ -35,10 +35,14 @@ class PacketObservation:
     source: CaptureSource
 
     def __post_init__(self) -> None:
-        if not isinstance(self.captured_at, datetime):
-            raise TypeError("captured_at must be a datetime")
-        if self.captured_at.tzinfo is None or self.captured_at.utcoffset() is None:
-            raise ValueError("captured_at must be timezone-aware")
+        if type(self.captured_at) is not datetime:
+            raise TypeError("captured_at must be a datetime of the exact built-in type")
+        if self.captured_at.tzinfo is None:
+            raise ValueError("captured_at must be timezone-aware UTC")
+        if type(self.captured_at.tzinfo) is not timezone:
+            raise ValueError("captured_at must use a fixed UTC datetime.timezone")
+        if self.captured_at.utcoffset() != timedelta(0):
+            raise ValueError("captured_at must have a zero UTC offset")
         if self.link_type is not None and not isinstance(self.link_type, LinkType):
             raise TypeError("link_type must be a LinkType or None")
         if not isinstance(self.source, CaptureSource):

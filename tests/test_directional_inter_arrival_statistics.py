@@ -170,12 +170,12 @@ class DirectionalInterArrivalStatisticsTests(unittest.TestCase):
             for suffix in AGGREGATE_SUFFIXES:
                 self.assertEqual(getattr(zero, f"{direction}_{suffix}"), 0.0)
 
-    def test_fractional_microsecond_and_offset_timestamps_use_direct_subtraction(self) -> None:
+    def test_fractional_microsecond_and_named_utc_timestamps_use_direct_subtraction(self) -> None:
         for reverse in (False, True):
             current = update_directional_inter_arrival_statistics(None, packet_at(0, reverse), self.identity)
             for seconds in (0.000001, 1.5, 2.345678):
                 packet = packet_at(seconds, reverse)
-                timestamp = packet.observation.captured_at.astimezone(timezone(timedelta(hours=5, minutes=30)))
+                timestamp = packet.observation.captured_at.astimezone(timezone(timedelta(0), "UTC alias"))
                 packet = replace(packet, observation=replace(packet.observation, captured_at=timestamp))
                 result = update_directional_inter_arrival_statistics(current, packet, self.identity)
                 direction = "reverse" if reverse else "forward"
@@ -228,7 +228,7 @@ class DirectionalInterArrivalStatisticsTests(unittest.TestCase):
             self.assert_atomic_failure(DirectionalInterArrivalStatisticsError, current, packet_at(3, reverse), self.identity)
             self.assert_atomic_failure(DirectionalInterArrivalStatisticsError, current, packet_at(-1, reverse), self.identity)
 
-    def test_nonfinite_negative_intervals_and_aggregate_overflow_are_rejected_atomically(self) -> None:
+    def test_defensive_interval_and_overflow_rejection_after_observation_validation_bypass(self) -> None:
         for reverse in (False, True):
             current = update_directional_inter_arrival_statistics(None, packet_at(0, reverse), self.identity)
             prefix = "reverse" if reverse else "forward"
@@ -242,7 +242,11 @@ class DirectionalInterArrivalStatisticsTests(unittest.TestCase):
                         return SyntheticDelta()
 
                 timestamp = SyntheticTimestamp(2026, 9, 6, 12, 0, 1, tzinfo=timezone.utc)
-                packet = replace(packet_at(1, reverse), observation=replace(OBSERVATION, captured_at=timestamp))
+                with self.assertRaises(TypeError):
+                    replace(OBSERVATION, captured_at=timestamp)
+                with patch.object(PacketObservation, "__post_init__", return_value=None):
+                    observation = replace(OBSERVATION, captured_at=timestamp)
+                packet = replace(packet_at(1, reverse), observation=observation)
                 source = current
                 if interval in (1e154, 1e308):
                     source = replace(current, packet_count=2, **{

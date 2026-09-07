@@ -144,11 +144,11 @@ class FlowStatisticsTests(unittest.TestCase):
                 self.assertEqual(initial.captured_bytes, 3)
                 self.assertEqual(initial.original_bytes, 30)
 
-    def test_capture_order_is_not_sorted_and_offsets_are_preserved(self) -> None:
+    def test_capture_order_is_not_sorted_and_utc_timestamps_are_preserved(self) -> None:
         first = OBSERVATION.captured_at
         current = replace(self.current, last_captured_at=first + timedelta(seconds=10))
         for timestamp in (
-            (first + timedelta(seconds=5)).astimezone(timezone(timedelta(hours=5, minutes=30))),
+            (first + timedelta(seconds=5)).astimezone(timezone(timedelta(0), "UTC alias")),
             first,
         ):
             analysis = replace(TCP_ANALYSIS, observation=replace(OBSERVATION, captured_at=timestamp))

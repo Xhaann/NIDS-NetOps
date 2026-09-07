@@ -11,6 +11,21 @@ class UnknownOffset(tzinfo):
         return None
 
 
+class EquivalentUTC(tzinfo):
+    def utcoffset(self, dt: Optional[datetime]) -> timedelta:
+        return timedelta(0)
+
+
+class MalformedOffset(tzinfo):
+    def utcoffset(self, dt: Optional[datetime]) -> str:
+        return "zero"
+
+
+class RaisingOffset(tzinfo):
+    def utcoffset(self, dt: Optional[datetime]) -> timedelta:
+        raise RuntimeError("offset must not be evaluated")
+
+
 class PacketObservationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.raw_bytes = b"\x00\xff\x80\x01"
@@ -77,19 +92,55 @@ class PacketObservationTests(unittest.TestCase):
             replace(self.observation, captured_length=None)
 
     def test_naive_timestamps_are_rejected(self) -> None:
-        for timestamp in (
-            datetime(2026, 9, 6),
-            datetime(2026, 9, 6, tzinfo=UnknownOffset()),
-        ):
-            with self.subTest(timestamp=timestamp):
-                with self.assertRaisesRegex(ValueError, "timezone-aware"):
+        with self.assertRaisesRegex(ValueError, "timezone-aware UTC"):
+            replace(self.observation, captured_at=datetime(2026, 9, 6))
+
+    def test_positive_and_negative_non_utc_offsets_are_rejected_without_conversion(self) -> None:
+        before = vars(self.observation).copy()
+        for offset in (timedelta(hours=5, minutes=30), timedelta(hours=-7),
+                       timedelta(microseconds=1), timedelta(microseconds=-1)):
+            timestamp = self.timestamp.astimezone(timezone(offset))
+            with self.subTest(offset=offset):
+                with self.assertRaisesRegex(ValueError, "zero UTC offset"):
+                    replace(self.observation, captured_at=timestamp)
+            self.assertEqual(timestamp.utcoffset(), offset)
+        self.assertEqual(vars(self.observation), before)
+
+    def test_builtin_utc_and_distinct_named_zero_offsets_preserve_exact_timestamp(self) -> None:
+        named_utc = timezone(timedelta(0), "UTC alias")
+        self.assertIsNot(named_utc, timezone.utc)
+        for zone in (timezone.utc, named_utc):
+            for microsecond in (0, 1, 500000, 999999):
+                timestamp = self.timestamp.replace(tzinfo=zone, microsecond=microsecond)
+                observation = replace(self.observation, captured_at=timestamp)
+                self.assertIs(observation.captured_at, timestamp)
+                self.assertIs(observation.captured_at.tzinfo, zone)
+                self.assertEqual(observation.captured_at.utcoffset(), timedelta(0))
+
+    def test_custom_unknown_and_malformed_timezone_behaviors_are_rejected(self) -> None:
+        for zone in (EquivalentUTC(), UnknownOffset(), MalformedOffset(), RaisingOffset()):
+            timestamp = self.timestamp.replace(tzinfo=zone)
+            with self.subTest(kind=type(zone)):
+                with self.assertRaisesRegex(ValueError, "fixed UTC datetime.timezone"):
                     replace(self.observation, captured_at=timestamp)
 
-    def test_non_utc_timestamp_is_preserved(self) -> None:
-        timestamp = self.timestamp.astimezone(timezone(timedelta(hours=5, minutes=30)))
-        observation = replace(self.observation, captured_at=timestamp)
-        self.assertIs(observation.captured_at, timestamp)
-        self.assertEqual(observation.captured_at.utcoffset(), timedelta(hours=5, minutes=30))
+    def test_datetime_subclasses_cannot_override_elapsed_time_arithmetic(self) -> None:
+        class AlternateArithmetic(datetime):
+            def __sub__(self, other):
+                return timedelta(0)
+
+        timestamp = AlternateArithmetic(2026, 9, 6, 12, tzinfo=timezone.utc)
+        with self.assertRaisesRegex(TypeError, "exact built-in type"):
+            replace(self.observation, captured_at=timestamp)
+
+    def test_caller_must_explicitly_convert_non_utc_timestamps(self) -> None:
+        local = self.timestamp.astimezone(timezone(timedelta(hours=-4)))
+        with self.assertRaises(ValueError):
+            replace(self.observation, captured_at=local)
+        converted = local.astimezone(timezone.utc)
+        observation = replace(self.observation, captured_at=converted)
+        self.assertIs(observation.captured_at, converted)
+        self.assertEqual(observation.captured_at, self.timestamp)
 
     def test_timestamp_requires_datetime(self) -> None:
         for value in (None, 0, "2026-09-06T12:00:00Z"):
