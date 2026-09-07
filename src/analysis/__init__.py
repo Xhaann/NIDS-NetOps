@@ -47,6 +47,11 @@ from analysis.packet_analysis import PacketAnalysis, PacketAnalysisError, analyz
 from analysis.packet_size_features import PacketSizeFeatures, PacketSizeFeaturesError, extract_packet_size_features
 from analysis.tcp import TCPDecodeError, TCPPacket, decode_tcp
 from analysis.tcp_checksum import TCPChecksumValidationError, validate_tcp_checksum
+from analysis.tcp_control_statistics import (
+    TCPControlStatistics,
+    TCPControlStatisticsError,
+    update_tcp_control_statistics,
+)
 from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
@@ -99,6 +104,8 @@ __all__ = [
     "PacketSizeFeaturesError",
     "TCPDecodeError",
     "TCPChecksumValidationError",
+    "TCPControlStatistics",
+    "TCPControlStatisticsError",
     "TCPPacket",
     "UDPDecodeError",
     "UDPChecksumValidationError",
@@ -124,6 +131,7 @@ __all__ = [
     "update_flow_packet_size_statistics",
     "update_directional_flow_statistics",
     "update_directional_inter_arrival_statistics",
+    "update_tcp_control_statistics",
     "validate_icmp_checksum",
     "validate_ipv4_checksum",
     "validate_tcp_checksum",

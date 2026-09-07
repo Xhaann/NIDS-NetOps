@@ -1,8 +1,8 @@
 # Traffic analysis boundary
 
-This directory implements Ethernet II, IPv4, TCP, UDP, and generic ICMPv4 decoding and checksum validation, single-packet analysis, canonical IPv4 TCP/UDP flow identity and direction, in-memory tracking, and explicit raw accumulation and feature boundaries. Raw accumulation includes global and directional volume, packet-size statistics, and global and directional inter-arrival statistics. Implemented features cover volume and directional balance, packet sizes, duration, rates, and global inter-arrival statistics. Each module's exact scope is documented below.
+This directory implements Ethernet II, IPv4, TCP, UDP, and generic ICMPv4 decoding and checksum validation, single-packet analysis, canonical IPv4 TCP/UDP flow identity and direction, in-memory tracking, and explicit raw accumulation and feature boundaries. Raw accumulation includes global and directional volume, packet-size statistics, global and directional inter-arrival statistics, and standalone directional TCP control observations. Implemented features cover volume and directional balance, packet sizes, duration, rates, and global and directional inter-arrival statistics. Each module's exact scope is documented below.
 
-Additional link formats, fragment and stream reassembly, TCP connection state, flow expiration, application parsing, and directional inter-arrival feature extraction remain unimplemented.
+Additional link formats, fragment and stream reassembly, TCP connection state, flow expiration, and application parsing remain unimplemented.
 
 ## Single-packet analysis
 
@@ -81,6 +81,16 @@ The stateless update delegates flow membership and direction to `flow_direction_
 Byte totals use only `PacketObservation.captured_length` and `original_length`. Unknown `original_length=None` raises `DirectionalFlowStatisticsError`; no substitute length is invented. A mismatched current identity raises the same statistics error. Packet membership failures retain `FlowDirectionError`, and unsupported or incomplete packet layers retain `FlowIdentityError`. Checksum results, timestamps, and payload contents do not affect accumulation when capture metadata is fixed.
 
 This remains raw accumulation. The model retains no packet objects, raw bytes, direction state, or timestamps. It calculates no duration, rates, averages, minimums, maximums, or TCP flag statistics. It adds no feature extraction, detection, TCP state tracking, reassembly, persistence, or concurrency, and changes no existing tracker, statistics, identity, or direction implementation.
+
+## TCP control observation statistics
+
+`analysis` exports `TCPControlStatistics`, `TCPControlStatisticsError(ValueError)`, and `update_tcp_control_statistics(current: Optional[TCPControlStatistics], analysis: PacketAnalysis, identity: FlowIdentity) -> TCPControlStatistics` from [tcp_control_statistics.py](tcp_control_statistics.py). This standalone TCP-specific raw accumulator counts the nine decoded TCP control bits independently for canonical forward and reverse directions. It also counts packets where SYN and ACK occur together because that co-occurrence cannot be recovered from the two marginal counts.
+
+The frozen model retains the TCP flow identity, total and directional packet counts, eighteen directional flag counts, and two directional SYN+ACK counts. Every counter is an exact nonnegative integer. Directional packet counts sum to the total; each flag count is bounded by its directional packet count; and each SYN+ACK count is bounded by both corresponding SYN and ACK counts. The updater delegates membership and direction to the existing identity and direction operations, retains the supplied identity on the first update and the current identity thereafter, and returns a new value without mutating its inputs.
+
+The state records observed flags only. Flags are not mutually exclusive, a packet with no flags is valid, and forward/reverse remain canonical endpoint directions rather than client/server roles. Checksums, timestamps, sequence and acknowledgment numbers, window size, options, and payload do not affect accounting. No connection establishment, handshake, termination, retransmission, attack behavior, or suspiciousness is inferred.
+
+Memory remains constant because only the identity and fixed scalar counters are retained. No packet, payload, timestamp, history, collection, cache, or hidden state is stored. This accumulator is not yet part of `FlowStateCoordinator`, `CoordinatedFlowState`, `FlowFeatureSnapshot`, or any numerical feature family. Detection and machine-learning semantics remain outside the analysis layer.
 
 ## Raw-statistics input for future features
 
