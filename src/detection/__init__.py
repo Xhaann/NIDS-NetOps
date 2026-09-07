@@ -9,6 +9,17 @@ from detection.flow_volume_threshold import (
     FlowVolumeThresholdInterpretation,
     evaluate_flow_volume_threshold,
 )
+from detection.tcp_control_threshold import (
+    TCPControlMetric,
+    TCPControlThresholdComparison,
+    TCPControlThresholdConfiguration,
+    TCPControlThresholdDecision,
+    TCPControlThresholdError,
+    TCPControlThresholdEvaluation,
+    TCPControlThresholdEvidence,
+    TCPControlThresholdInterpretation,
+    evaluate_tcp_control_threshold,
+)
 
 __all__ = [
     "FlowVolumeMetric",
@@ -19,5 +30,14 @@ __all__ = [
     "FlowVolumeThresholdEvaluation",
     "FlowVolumeThresholdEvidence",
     "FlowVolumeThresholdInterpretation",
+    "TCPControlMetric",
+    "TCPControlThresholdComparison",
+    "TCPControlThresholdConfiguration",
+    "TCPControlThresholdDecision",
+    "TCPControlThresholdError",
+    "TCPControlThresholdEvaluation",
+    "TCPControlThresholdEvidence",
+    "TCPControlThresholdInterpretation",
     "evaluate_flow_volume_threshold",
+    "evaluate_tcp_control_threshold",
 ]
