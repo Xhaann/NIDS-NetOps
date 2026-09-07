@@ -2,7 +2,7 @@
 
 ## Scope and implementation posture
 
-This document establishes logical ownership for implementation. The Python [capture boundary](../src/capture/README.md) implements packet observations, source contracts, ingestion, and an iterable source. The [analysis boundary](../src/analysis/README.md) implements Ethernet II and IPv4 transport decoding, checksum validation, packet analysis, IPv4 TCP/UDP flow identity/direction/tracking, coordinated raw statistics through directional inter-arrival and TCP control observation accumulation, and volume, packet-size, duration, rate, global inter-arrival, and directional inter-arrival features. The subsystem map below includes future responsibilities beyond that implemented scope. Detection, application parsing, reassembly, network capture, PCAP ingestion, and downstream runtime subsystems remain unimplemented. No concurrency mechanism, transport, database, or deployment topology is selected.
+This document establishes logical ownership for implementation. The Python [capture boundary](../src/capture/README.md) implements packet observations, source contracts, ingestion, and an iterable source. The [analysis boundary](../src/analysis/README.md) implements Ethernet II and IPv4 transport decoding, checksum validation, packet analysis, IPv4 TCP/UDP flow identity/direction/tracking, coordinated raw statistics through directional inter-arrival and TCP control observation accumulation, protocol-neutral observation windows, and typed numerical feature families. The [application boundary](../src/application/README.md) synchronously composes one packet-source run with packet analysis and observation-window lifecycle. The subsystem map below includes future responsibilities beyond that implemented scope. Detection, application parsing, reassembly, network capture, PCAP ingestion, and downstream runtime subsystems remain unimplemented. No concurrency mechanism, transport, database, or deployment topology is selected.
 
 Begin with a modular application. Keep module contracts independent of capture libraries, database drivers, and presentation frameworks so later implementation choices can evolve within these boundaries. Split modules into processes or services only when measured requirements justify it.
 
@@ -35,7 +35,8 @@ Begin with a modular application. Keep module contracts independent of capture l
 ## Planned data flow
 
 ```text
-Packet source -> capture -> analysis -> detection -> events -> integration consumers
+Application orchestration: packet source -> capture -> analysis
+Analysis -> detection -> events -> integration consumers
 
 Analysis observations / detector findings -> enrichment -> events
 Capture evidence ---------------------> storage: PCAP management
@@ -57,7 +58,7 @@ PCAP evidence and structured event records have different storage and retention 
 - Enrichment owns intelligence access and caching. Protocol parsers and detectors must not embed provider-specific network clients.
 - Event processing owns correlation state, scoring policy, and alert transitions. Its policies must remain independent of dashboard rendering and storage engines.
 - Storage implements persistence and query boundaries. Integrations use supported operations instead of reaching into detector state or database internals.
-- Future application composition will connect these modules and provide configuration and lifecycle management. Its location and implementation are deferred until an executable entry point is needed.
+- Application composition owns only the implemented synchronous binding among one source run, packet analysis, and one observation-window manager. Broader configuration, executable startup, and downstream subsystem lifecycle remain future work.
 
 Define small, versioned contracts as the first consumers are implemented. Place shared contracts only when there are real consumers; avoid a general-purpose shared module with unclear ownership. Implementation dependencies should remain acyclic, using narrow interfaces at storage and integration boundaries.
 
@@ -75,7 +76,13 @@ The [flow feature snapshot](../src/analysis/flow_feature_snapshot.py) reads one 
 
 The protocol-neutral [flow observation-window boundary](../src/analysis/flow_observation_window.py) distinguishes canonical flow identity from one bounded accumulation period. One manager owns the active windows for one explicitly identified capture session and delegates each accepted TCP or UDP packet to exactly one `FlowStateCoordinator`. A packet continues its identity's active window when its capture-time gap is less than the configured positive inactivity interval; a gap at or above the interval closes that window and starts a new sequence-numbered window. The manager rejects timestamps below its latest accepted canonical UTC capture time, uses no processing clock, and does not scan unrelated identities for expiration.
 
-Explicit segmentation and capture-session end close immutable windows without reopening or retaining them in the manager. Session end closes active windows in ascending sequence-number order and permanently ends admission. TCP flags have no lifecycle meaning, UDP has no transaction inference, and ICMP remains outside the current TCP/UDP flow-identity contract. Window lifecycle is not integrated into capture ingestion, flow feature snapshots, or feature inputs.
+Explicit segmentation and capture-session end close immutable windows without reopening or retaining them in the manager. Session end closes active windows in ascending sequence-number order and permanently ends admission. TCP flags have no lifecycle meaning, UDP has no transaction inference, and ICMP remains outside the current TCP/UDP flow-identity contract. Application orchestration now composes this lifecycle with capture ingestion; flow feature snapshots and feature inputs remain separate.
+
+## Capture-session application composition
+
+The [application flow-observation session](../src/application/flow_observation_session.py) binds one caller-identified capture session to one `FlowObservationWindowManager`. It delegates source lifecycle and ordered `PacketObservation` delivery to unchanged `consume()`, applies `analyze_packet()` once per observation, and passes each exact result to the manager. Inactivity closures are delivered synchronously before the next source observation. After `consume()` has attempted source cleanup, application orchestration ends the manager session and delivers remaining closures in the manager's order.
+
+Closed-window delivery provides synchronous backpressure and at-most-once attempts. The application layer retains no packet or closed-window history, queue, retry state, or feature output. Existing component exceptions propagate without translation. After downstream delivery fails, the source is stopped and lifecycle state is finalized without invoking the failed consumer again. Skipping malformed or unsupported packets is **UNDEFINED POLICY**. TCP and UDP use the same path, TCP flags have no lifecycle meaning, and unsupported ICMP flow identity remains an analysis error.
 
 ## Cross-cutting requirements for later tasks
 

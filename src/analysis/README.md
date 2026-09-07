@@ -248,7 +248,7 @@ The latest successfully admitted capture timestamp is a nondecreasing session fr
 
 `close(identity)` emits an immutable window closed for `EXPLICIT_SEGMENTATION`, and a later packet with that identity creates a new window. `end_capture_session()` closes every active window for `CAPTURE_SESSION_END` in ascending sequence-number order, removes all active entries, and permanently rejects later recording. Repeated session end returns an empty tuple. `active_windows()` exposes freshly constructed immutable wrappers in sequence order without exposing coordinators or the active mapping. Closed windows are returned to callers and are not retained internally.
 
-The manager retains a fixed coordinator, key, and mapping entry per active identity plus scalar session state, giving `O(A)` retained state for `A` active identities and `O(1)` state per window independent of packet count. It retains no packet, closed-window, feature, flag, or payload history. Capture ingestion, `FlowTracker`, `FlowFeatureInput`, and the seven-field `FlowFeatureSnapshot` remain unchanged; composing source-session completion with lifecycle closure is a separate milestone.
+The manager retains a fixed coordinator, key, and mapping entry per active identity plus scalar session state, giving `O(A)` retained state for `A` active identities and `O(1)` state per window independent of packet count. It retains no packet, closed-window, feature, flag, or payload history. `FlowTracker`, `FlowFeatureInput`, and the seven-field `FlowFeatureSnapshot` remain unchanged. The [application composition boundary](../application/README.md) now connects source-session completion with lifecycle closure without moving capture ownership into analysis.
 
 ## Typed flow feature snapshots
 
