@@ -17,6 +17,7 @@ from analysis.directional_inter_arrival_statistics import (
 from analysis.flow_direction import FlowDirection, FlowDirectionError, flow_direction_from_packet
 from analysis.flow_duration_features import FlowDurationFeatures, FlowDurationFeaturesError, extract_flow_duration_features
 from analysis.flow_feature_input import FlowFeatureInput, FlowFeatureInputError, flow_feature_input_from_statistics
+from analysis.flow_feature_snapshot import FlowFeatureSnapshot, FlowFeatureSnapshotError, extract_flow_feature_snapshot
 from analysis.flow_identity import FlowIdentity, FlowIdentityError, flow_identity_from_packet
 from analysis.flow_inter_arrival_statistics import (
     FlowInterArrivalStatistics,
@@ -29,6 +30,7 @@ from analysis.flow_packet_size_statistics import (
     update_flow_packet_size_statistics,
 )
 from analysis.flow_statistics import FlowStatistics, FlowStatisticsError, update_flow_statistics
+from analysis.flow_state_coordinator import CoordinatedFlowState, FlowCoordinationError, FlowStateCoordinator
 from analysis.flow_rate_features import FlowRateFeatures, FlowRateFeaturesError, extract_flow_rate_features
 from analysis.flow_tracker import FlowPacket, FlowSnapshot, FlowTracker, FlowTrackingError
 from analysis.flow_volume_features import FlowVolumeFeatures, FlowVolumeFeaturesError, extract_flow_volume_features
@@ -49,6 +51,9 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "CoordinatedFlowState",
+    "FlowCoordinationError",
+    "FlowStateCoordinator",
     "DirectionalFlowStatistics",
     "DirectionalFlowStatisticsError",
     "DirectionalInterArrivalFeatures",
@@ -63,6 +68,8 @@ __all__ = [
     "FlowDurationFeaturesError",
     "FlowFeatureInput",
     "FlowFeatureInputError",
+    "FlowFeatureSnapshot",
+    "FlowFeatureSnapshotError",
     "FlowIdentity",
     "FlowIdentityError",
     "FlowInterArrivalStatistics",
@@ -104,6 +111,7 @@ __all__ = [
     "decode_udp",
     "extract_directional_inter_arrival_features",
     "extract_flow_volume_features",
+    "extract_flow_feature_snapshot",
     "extract_flow_duration_features",
     "extract_flow_rate_features",
     "extract_packet_size_features",

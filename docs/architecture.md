@@ -61,6 +61,16 @@ PCAP evidence and structured event records have different storage and retention 
 
 Define small, versioned contracts as the first consumers are implemented. Place shared contracts only when there are real consumers; avoid a general-purpose shared module with unclear ownership. Implementation dependencies should remain acyclic, using narrow interfaces at storage and integration boundaries.
 
+## Coordinated flow-state ownership
+
+The analysis [flow-state coordinator](../src/analysis/flow_state_coordinator.py) owns synchronous admission for a single flow. It constructs candidates through the five existing immutable global volume, directional volume, packet-size, global inter-arrival, and directional inter-arrival accumulators. A packet is admitted only when all candidates succeed; one replacement publishes the complete immutable state. Failures propagate without replacing any published component. Calls must be sequential and non-overlapping; no concurrency or durability guarantee is introduced.
+
+The coordinator retains only the current bundle of authoritative accumulator references. It derives the canonical identity on first admission and preserves that exact object thereafter. It introduces no numerical copies, packet history, or provenance identifier. Shared admission history follows from coordinated construction, not from equal identities, equal statistics, or manually assembling a bundle. Existing extractors consume the published components without changing their mathematical contracts.
+
+`FlowTracker` continues to own its existing independent multi-flow packet-count and first/latest-analysis tracking. Extending it would change its acceptance semantics or require a second state store. A standalone immutable bundle would provide storage but no admission owner; independent accumulators alone would leave publication uncoordinated. A dedicated mutable single-flow owner publishing immutable state establishes the required guarantee while leaving those existing APIs unchanged. Directional inter-arrival state participates because its previous directional timestamps, aggregates, and derived feature family require the same admission history.
+
+The [flow feature snapshot](../src/analysis/flow_feature_snapshot.py) reads one current publication through an exact coordinator instance and eagerly applies the established volume, packet-size, duration, rate, global inter-arrival, and directional inter-arrival extractors. It retains that exact state and the typed extractor results. It accepts no independently assembled state or precomputed feature combination through its public construction API. Rate absence is specifically `None` for validated zero duration. Directional absence remains five `None` values per direction with no intervals, while observed zero-second intervals remain real `0.0` values. All extraction errors propagate. Snapshot identity is exposed through the coordinated state, with no second provenance system. The snapshot does not own admission, flatten values, or define an ML or detection contract.
+
 ## Cross-cutting requirements for later tasks
 
 - Preserve sensor/source identity, capture time, processing time where needed, and provenance across transformations. Specify identifier and schema evolution rules before persisting records.
