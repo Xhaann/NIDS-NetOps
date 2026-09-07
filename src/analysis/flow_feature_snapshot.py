@@ -8,8 +8,9 @@ from analysis.directional_inter_arrival_features import (
 from analysis.flow_duration_features import FlowDurationFeatures, extract_flow_duration_features
 from analysis.flow_feature_input import flow_feature_input_from_statistics
 from analysis.flow_identity import FlowIdentity
+from analysis.flow_observation_window import FlowObservationWindow
 from analysis.flow_rate_features import FlowRateFeatures, extract_flow_rate_features
-from analysis.flow_state_coordinator import CoordinatedFlowState, FlowStateCoordinator
+from analysis.flow_state_coordinator import CoordinatedFlowState
 from analysis.flow_volume_features import FlowVolumeFeatures, extract_flow_volume_features
 from analysis.inter_arrival_features import InterArrivalFeatures, extract_inter_arrival_features
 from analysis.packet_size_features import PacketSizeFeatures, extract_packet_size_features
@@ -21,7 +22,7 @@ class FlowFeatureSnapshotError(ValueError):
 
 @dataclass(frozen=True, init=False)
 class FlowFeatureSnapshot:
-    coordinated_state: CoordinatedFlowState
+    observation_window: FlowObservationWindow
     flow_volume_features: FlowVolumeFeatures
     packet_size_features: PacketSizeFeatures
     flow_duration_features: FlowDurationFeatures
@@ -30,21 +31,21 @@ class FlowFeatureSnapshot:
     directional_inter_arrival_features: DirectionalInterArrivalFeatures
 
     def __init__(self) -> None:
-        raise TypeError("use extract_flow_feature_snapshot(coordinator)")
+        raise TypeError("use extract_flow_feature_snapshot(window)")
+
+    @property
+    def coordinated_state(self) -> CoordinatedFlowState:
+        return self.observation_window.coordinated_state
 
     @property
     def identity(self) -> FlowIdentity:
-        return self.coordinated_state.identity
+        return self.observation_window.identity
 
 
-def extract_flow_feature_snapshot(coordinator: FlowStateCoordinator) -> FlowFeatureSnapshot:
-    if type(coordinator) is not FlowStateCoordinator:
-        raise TypeError("coordinator must be exactly a FlowStateCoordinator")
-    state = coordinator.state
-    if state is None:
-        raise FlowFeatureSnapshotError("coordinator has no published state")
-    if type(state) is not CoordinatedFlowState:
-        raise TypeError("published state must be exactly a CoordinatedFlowState")
+def extract_flow_feature_snapshot(window: FlowObservationWindow) -> FlowFeatureSnapshot:
+    if type(window) is not FlowObservationWindow:
+        raise TypeError("window must be exactly a FlowObservationWindow")
+    state = window.coordinated_state
     volume_input = flow_feature_input_from_statistics(
         state.flow_statistics, state.directional_flow_statistics,
     )
@@ -69,7 +70,7 @@ def extract_flow_feature_snapshot(coordinator: FlowStateCoordinator) -> FlowFeat
     if duration.duration_seconds != 0.0 and type(rates) is not FlowRateFeatures:
         raise TypeError("rate extractor must return exactly a FlowRateFeatures")
     snapshot = object.__new__(FlowFeatureSnapshot)
-    object.__setattr__(snapshot, "coordinated_state", state)
+    object.__setattr__(snapshot, "observation_window", window)
     object.__setattr__(snapshot, "flow_volume_features", volume)
     object.__setattr__(snapshot, "packet_size_features", sizes)
     object.__setattr__(snapshot, "flow_duration_features", duration)

@@ -16,4 +16,4 @@ Existing source, decoding, analysis, identity, coordination, lifecycle, and down
 
 TCP and UDP use the same path. TCP flags do not control lifecycle, UDP has no transaction inference, and TCP control state remains absent for UDP. ICMP packet analysis exists, but the current flow identity contract rejects ICMP and that error propagates. Skipping invalid or unsupported packets is **UNDEFINED POLICY**.
 
-Feature extraction, snapshot creation, explicit segmentation during a running source, durable delivery, retries, rejected-packet routing, live capture, and packet-loss accounting are not part of this layer.
+The application boundary continues to emit exact `FlowObservationWindow` objects and does not perform feature extraction. Downstream consumers may independently pass an emitted closed window to `extract_flow_feature_snapshot()`, which retains that exact window as provenance. Active windows are also valid provisional extraction inputs through the analysis API. Explicit segmentation during a running source, durable delivery, retries, rejected-packet routing, live capture, packet-loss accounting, ML vectorization, and serialization are not part of this layer.

@@ -6,7 +6,7 @@ NIDS-NetOps is a network intrusion detection system project intended for product
 
 The accepted baseline includes capture contracts, synchronous ingestion, an iterable packet source, Ethernet II/IPv4/TCP/UDP/ICMPv4 decoding and checksum validation, and single-packet analysis. IPv4 TCP/UDP flow analysis provides canonical identity and direction, coordinated raw flow state, directional TCP control observations, protocol-neutral observation windows, and immutable typed feature snapshots. The application layer composes one packet-source run with analysis and observation-window lifecycle management and synchronously emits closed windows.
 
-The complete deterministic suite contains 420 passing tests. Code uses only the Python standard library and supports Python 3.9 or newer. Network capture, PCAP ingestion, application parsing, reassembly, TCP connection state, detection, machine learning, storage, and interfaces are not implemented. Packaging and deployment remain undecided. Production quality is a design objective, not a claim of operational readiness.
+The complete deterministic suite contains 422 passing tests. Code uses only the Python standard library and supports Python 3.9 or newer. Network capture, PCAP ingestion, application parsing, reassembly, TCP connection state, detection, machine learning, storage, and interfaces are not implemented. Packaging and deployment remain undecided. Production quality is a design objective, not a claim of operational readiness.
 
 ## Repository structure
 
