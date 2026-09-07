@@ -1,3 +1,8 @@
+from detection.detection_finding import (
+    DetectionFinding,
+    DetectionFindingError,
+    detection_finding_from_evaluation,
+)
 from detection.flow_volume_threshold import (
     FlowVolumeMetric,
     FlowVolumeThresholdComparison,
@@ -31,6 +36,8 @@ from detection.tcp_control_threshold import (
 )
 
 __all__ = [
+    "DetectionFinding",
+    "DetectionFindingError",
     "FlowVolumeMetric",
     "FlowVolumeThresholdComparison",
     "FlowVolumeThresholdConfiguration",
@@ -53,6 +60,7 @@ __all__ = [
     "TCPControlThresholdEvaluation",
     "TCPControlThresholdEvidence",
     "TCPControlThresholdInterpretation",
+    "detection_finding_from_evaluation",
     "evaluate_flow_volume_threshold",
     "evaluate_packet_integrity",
     "evaluate_tcp_control_threshold",

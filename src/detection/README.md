@@ -14,6 +14,16 @@ Detectors consume [analysis](../analysis/README.md) outputs through explicit con
 
 The families use detector-specific input contracts and remain independently testable and configurable. [Event processing](../events/README.md) owns cross-finding correlation, risk scoring, deduplication, and alert lifecycle. External intelligence access belongs to [enrichment](../enrichment/README.md). No signature, statistical, behavioral, training, or model implementation is established here.
 
+## Immutable detector findings
+
+[detection_finding.py](detection_finding.py) exports `DetectionFinding`, `DetectionFindingError`, and `detection_finding_from_evaluation(evaluation) -> DetectionFinding`. The conversion accepts exactly a current packet-integrity, flow-volume threshold, or TCP-control threshold evaluation. It does not define a common detector input or execute a detector.
+
+The frozen finding stores exactly detector identity, detector version, the exact detector-specific decision enum member, the exact raw evidence object, and the exact detector-specific security interpretation object. It validates nonblank exact-string metadata against evidence metadata, preserves the current detector family across decision, evidence, and interpretation, and enforces the established decision-to-interpretation mapping. Evidence decision is compared when the evidence contract exposes it. No detector predicate is recomputed.
+
+Detector-specific evidence remains authoritative for packet, flow, metric, threshold, and lifecycle provenance. The finding neither duplicates nor flattens those values and creates no dictionary, text, byte, serialization, or universal feature representation. Separate detector decision enum types and input contracts remain intact.
+
+`DetectionFinding` is a normalized immutable detector result. It is not an alert, event correlation, risk score, incident, attack classification, or persistence record. It has no finding identifier, severity, confidence, priority, response, deduplication, aggregation, networking, filesystem access, or orchestration behavior. Future event and correlation policy may consume findings through a separately approved contract.
+
 ## Packet integrity and structural outcomes
 
 [packet_integrity.py](packet_integrity.py) exports `PacketIntegrityConfiguration`, `PacketIntegrityDecision`, `PacketIntegrityEvidence`, `PacketIntegrityInterpretation`, `PacketIntegrityEvaluation`, `PacketIntegrityError`, and `evaluate_packet_integrity(outcome, configuration) -> PacketIntegrityEvaluation`.
