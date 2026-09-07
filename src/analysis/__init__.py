@@ -4,6 +4,11 @@ from analysis.directional_flow_statistics import (
     update_directional_flow_statistics,
 )
 from analysis.ethernet import EthernetDecodeError, EthernetFrame, decode_ethernet
+from analysis.directional_inter_arrival_features import (
+    DirectionalInterArrivalFeatures,
+    DirectionalInterArrivalFeaturesError,
+    extract_directional_inter_arrival_features,
+)
 from analysis.directional_inter_arrival_statistics import (
     DirectionalInterArrivalStatistics,
     DirectionalInterArrivalStatisticsError,
@@ -46,6 +51,8 @@ from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_check
 __all__ = [
     "DirectionalFlowStatistics",
     "DirectionalFlowStatisticsError",
+    "DirectionalInterArrivalFeatures",
+    "DirectionalInterArrivalFeaturesError",
     "DirectionalInterArrivalStatistics",
     "DirectionalInterArrivalStatisticsError",
     "EthernetDecodeError",
@@ -95,6 +102,7 @@ __all__ = [
     "decode_ipv4",
     "decode_tcp",
     "decode_udp",
+    "extract_directional_inter_arrival_features",
     "extract_flow_volume_features",
     "extract_flow_duration_features",
     "extract_flow_rate_features",

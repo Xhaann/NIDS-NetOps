@@ -198,6 +198,18 @@ Identity and direction delegate to `flow_identity_from_packet()` and `flow_direc
 
 Every update returns a new immutable value with a fixed number of fields. It retains no packets, observations, raw bytes, history collections, caches, or hidden state. This is raw accumulation only, with no directional feature extraction, inter-arrival rates, detection, or machine learning.
 
+## Directional inter-arrival features
+
+`analysis` exports `DirectionalInterArrivalFeatures`, `DirectionalInterArrivalFeaturesError(ValueError)`, and `extract_directional_inter_arrival_features(statistics: DirectionalInterArrivalStatistics) -> DirectionalInterArrivalFeatures` from [directional_inter_arrival_features.py](directional_inter_arrival_features.py). The extractor requires exactly the existing raw directional statistics model and rejects subclasses, mocks, unrelated objects, inconsistent counts, and malformed aggregates.
+
+The frozen model contains ten fields, with the five forward fields followed by the five reverse fields. Each direction has `mean_inter_arrival_seconds`, `variance_inter_arrival_seconds`, `standard_deviation_inter_arrival_seconds`, `min_inter_arrival_seconds`, and `max_inter_arrival_seconds`, prefixed by its direction. The five values for one direction are either all exact finite nonnegative floats or all `None`. No identity or raw source field is retained.
+
+For a direction with interval count `n > 0`, mean is its accumulated sum divided by `n`, population variance is its accumulated sum of squares divided by `n` minus the squared mean, standard deviation is the square root of that variance, and minimum and maximum are copied from the raw accumulator. A small negative variance caused by floating-point cancellation is clamped only within the same ULP-derived bound used by global inter-arrival features. A materially negative or non-finite result raises `DirectionalInterArrivalFeaturesError`.
+
+For a direction with no intervals, all five values are `None`. This applies when the direction is unseen and when exactly one packet has been observed in that direction. An observed zero-second interval instead produces real `0.0` values, preserving the distinction between available zero-valued data and unavailable statistics. Forward and reverse availability are independent for unidirectional and bidirectional flows.
+
+Extraction uses only the fixed-size directional aggregates, is deterministic, and retains no packet or timestamp history. Global `InterArrivalFeatures` remain a separate family over adjacent packets regardless of direction. Counts, sums, durations, rates, ratios, percentiles, histograms, detection semantics, and machine-learning representations are not added. Integration into `FlowFeatureSnapshot` is intentionally deferred because the standalone family is complete and changing that separate snapshot contract is not required here.
+
 ## Ethernet II decoder
 
 `analysis` exports `decode_ethernet(observation: PacketObservation) -> EthernetFrame`, `EthernetFrame`, and `EthernetDecodeError` from [ethernet.py](ethernet.py). The decoder consumes the existing capture observation model and requires explicit `LinkType(1)`. Unknown (`None`) and non-Ethernet link types raise `EthernetDecodeError`; the decoder never infers a format from packet contents.
