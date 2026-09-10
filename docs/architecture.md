@@ -214,6 +214,18 @@ Each call returns a flat tuple of the exact findings in input order and per-inpu
 
 The session does not accept raw packets or bare flow windows, perform packet analysis or feature extraction, own a flow/window lifecycle, or alter detector and finding schemas. Active snapshots remain rejected by existing detector validation. Capture/observation sessions still emit closed windows without automatic detection; callers explicitly produce semantic inputs and invoke detection. No new detector, protocol-specific execution path, reassembly, correlation, alerting, or response boundary is introduced.
 
+## Explicit application detection pipeline
+
+The [detection pipeline](../src/application/detection_pipeline.py) exports one opt-in `run_detection_pipeline()` function over an existing `PacketSource` and caller-supplied `DetectionSession`. It shares the flow-observation session's private lifecycle runner, preserving one source consumption, one observation-window manager, and existing cleanup and closure ordering. The public flow-observation function still analyzes and emits closed windows without detection.
+
+For each observation, the pipeline calls `analyze_packet_outcome()` once, invokes `DetectionSession.run_packets()` with that exact semantic outcome, and supplies the outcome's analysis to normal flow admission. Recognized failure outcomes receive packet detection but contribute no flow state because their analysis is absent. Raised exceptions propagate; successful analyses with unsupported flow transport retain existing admission errors. The pipeline neither repeats packet analysis nor adds protocol-specific admission rules.
+
+For each closed window delivered by the shared runner, the pipeline calls the existing snapshot extractor once and passes the exact snapshot to `DetectionSession.run_closed_flows()`. Active windows never enter this path. Capture still owns acquisition, analysis still owns packet semantics, flow lifecycle and feature derivation, and detector orchestration still owns execution order and semantics through `DetectionSession`. IPv4 and IPv6 use the same composition. Non-first fragments without transport and ICMPv6 remain outside TCP/UDP flow detection; extension traversal and fragmentation handling remain entirely within packet analysis.
+
+The immutable result retains separate ordered tuples of packet and flow findings, preserving duplicates, exact evidence and configuration references, and existing detector order. Execution is synchronous with local result buffers and no retained history. Errors return no partial result or synthetic finding and are never retried. Existing source-cleanup and window-finalization exception precedence is preserved; packet-detector failure suppresses further detection during cleanup, while downstream feature/detection failures use the runner's existing stop-delivery behavior. The [application contract](../src/application/README.md#explicit-detection-pipeline) specifies these boundaries.
+
+This composition adds no parsing, feature formulas, individual detector calls, new detector family, finding fields, hidden flow state, reassembly, correlation, alerting, persistence, or background execution. Detection remains explicit, and invoking capture or flow observation alone does not execute this pipeline.
+
 ## Cross-cutting requirements for later tasks
 
 - Preserve sensor/source identity, capture time, processing time where needed, and provenance across transformations. Specify identifier and schema evolution rules before persisting records.

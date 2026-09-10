@@ -87,7 +87,8 @@ class DetectorOrchestrationTests(unittest.TestCase):
         self.assertIs(application.run_closed_flow_detectors, detector_orchestration.run_closed_flow_detectors)
         self.assertEqual(
             application.__all__,
-            ["DetectionSession", "run_closed_flow_detectors", "run_flow_observation_session", "run_packet_detectors"],
+            ["DetectionPipelineResult", "DetectionSession", "run_closed_flow_detectors", "run_detection_pipeline",
+             "run_flow_observation_session", "run_packet_detectors"],
         )
 
     def test_packet_evaluates_and_normalizes_exact_objects_once(self) -> None:

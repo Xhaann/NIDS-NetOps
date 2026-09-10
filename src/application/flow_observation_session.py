@@ -1,11 +1,11 @@
 from datetime import timedelta
-from typing import Callable
+from typing import Callable, Optional
 
 from analysis.flow_observation_window import (
     FlowObservationWindow,
     FlowObservationWindowManager,
 )
-from analysis.packet_analysis import analyze_packet
+from analysis.packet_analysis import PacketAnalysis, analyze_packet
 from capture.packet_ingestion import consume
 from capture.packet_observation import PacketObservation
 from capture.packet_source import PacketSource
@@ -18,6 +18,23 @@ def run_flow_observation_session(
     inactivity_timeout: timedelta,
     closed_window_consumer: Callable[[FlowObservationWindow], None],
 ) -> None:
+    _run_flow_observation_session(
+        source,
+        capture_session_id=capture_session_id,
+        inactivity_timeout=inactivity_timeout,
+        closed_window_consumer=closed_window_consumer,
+        analyze_observation=analyze_packet,
+    )
+
+
+def _run_flow_observation_session(
+    source: PacketSource,
+    *,
+    capture_session_id: str,
+    inactivity_timeout: timedelta,
+    closed_window_consumer: Callable[[FlowObservationWindow], None],
+    analyze_observation: Callable[[PacketObservation], Optional[PacketAnalysis]],
+) -> None:
     manager = FlowObservationWindowManager(
         capture_session_id,
         inactivity_timeout,
@@ -26,7 +43,9 @@ def run_flow_observation_session(
 
     def record_observation(observation: PacketObservation) -> None:
         nonlocal downstream_delivery_failed
-        analysis = analyze_packet(observation)
+        analysis = analyze_observation(observation)
+        if analysis is None:
+            return
         update = manager.record(analysis)
         for window in update.closed_windows:
             try:
