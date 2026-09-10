@@ -102,10 +102,10 @@ class PacketAnalysisTests(unittest.TestCase):
                         analyze_packet(replace(observation, link_type=link_type))
             decoder.assert_not_called()
 
-    def test_non_ipv4_ether_types_are_rejected_before_ipv4_decoding(self) -> None:
+    def test_unsupported_ether_types_are_rejected_before_ip_decoding(self) -> None:
         observation = make_observation(6, TCP_BYTES)
         with patch.object(packet_analysis, "decode_ipv4") as decoder:
-            for ether_type in (0, 0x0806, 0x86DD):
+            for ether_type in (0, 0x0806, 0xFFFF):
                 with self.subTest(ether_type=ether_type):
                     raw_bytes = observation.raw_bytes[:12] + ether_type.to_bytes(2, "big")
                     raw_bytes += observation.raw_bytes[14:]

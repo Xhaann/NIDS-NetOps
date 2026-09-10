@@ -120,7 +120,7 @@ class PacketAnalysisOutcomeTests(unittest.TestCase):
             replace(observation, link_type=None),
             with_raw_bytes(
                 observation,
-                observation.raw_bytes[:12] + b"\x86\xdd" + observation.raw_bytes[14:],
+                observation.raw_bytes[:12] + b"\x08\x06" + observation.raw_bytes[14:],
             ),
         )
         for value in unsupported:

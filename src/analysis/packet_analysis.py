@@ -6,6 +6,7 @@ from analysis.icmp import ICMPMessage, decode_icmp
 from analysis.icmp_checksum import validate_icmp_checksum
 from analysis.ipv4 import IPv4Packet, decode_ipv4
 from analysis.ipv4_checksum import validate_ipv4_checksum
+from analysis.ipv6 import IPv6Packet, decode_ipv6
 from analysis.tcp import TCPPacket, decode_tcp
 from analysis.tcp_checksum import validate_tcp_checksum
 from analysis.udp import UDPPacket, decode_udp
@@ -29,6 +30,7 @@ class PacketAnalysis:
     tcp_checksum_valid: Optional[bool] = None
     udp_checksum_valid: Optional[bool] = None
     icmp_checksum_valid: Optional[bool] = None
+    ipv6: Optional[IPv6Packet] = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.observation, PacketObservation):
@@ -36,6 +38,7 @@ class PacketAnalysis:
         for name, value, model in (
             ("ethernet", self.ethernet, EthernetFrame),
             ("ipv4", self.ipv4, IPv4Packet),
+            ("ipv6", self.ipv6, IPv6Packet),
             ("tcp", self.tcp, TCPPacket),
             ("udp", self.udp, UDPPacket),
             ("icmp", self.icmp, ICMPMessage),
@@ -50,6 +53,13 @@ class PacketAnalysis:
         ):
             if value is not None and type(value) is not bool:
                 raise TypeError(f"{name} must be a boolean or None")
+        if self.ipv6 is not None and any(value is not None for value in (
+            self.ipv4, self.tcp, self.udp, self.icmp, self.ipv4_checksum_valid,
+            self.tcp_checksum_valid, self.udp_checksum_valid, self.icmp_checksum_valid,
+        )):
+            raise PacketAnalysisError(
+                "IPv6 base-header analysis cannot include IPv4, transport, or checksum results"
+            )
 
 
 def analyze_packet(observation: PacketObservation) -> PacketAnalysis:
@@ -58,8 +68,11 @@ def analyze_packet(observation: PacketObservation) -> PacketAnalysis:
     if observation.link_type != LinkType(1):
         raise PacketAnalysisError("Packet analysis requires Ethernet LinkType(1)")
     ethernet = decode_ethernet(observation)
+    if ethernet.ether_type == 0x86DD:
+        ipv6 = decode_ipv6(ethernet)
+        return PacketAnalysis(observation=observation, ethernet=ethernet, ipv6=ipv6)
     if ethernet.ether_type != 0x0800:
-        raise PacketAnalysisError("Packet analysis requires IPv4 EtherType 0x0800")
+        raise PacketAnalysisError("Packet analysis requires IPv4 EtherType 0x0800 or IPv6 EtherType 0x86DD")
     ipv4 = decode_ipv4(ethernet)
     ipv4_checksum_valid = validate_ipv4_checksum(ipv4)
     tcp = None

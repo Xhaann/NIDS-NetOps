@@ -5,6 +5,7 @@ from typing import Optional
 from analysis.ethernet import EthernetDecodeError
 from analysis.icmp import ICMPDecodeError
 from analysis.ipv4 import IPv4DecodeError
+from analysis.ipv6 import IPv6DecodeError
 from analysis.packet_analysis import PacketAnalysis, PacketAnalysisError, analyze_packet
 from analysis.tcp import TCPDecodeError
 from analysis.udp import UDPDecodeError
@@ -71,7 +72,7 @@ class PacketAnalysisOutcome:
 
 _PACKET_ANALYSIS_UNSUPPORTED_MESSAGES = (
     "Packet analysis requires Ethernet LinkType(1)",
-    "Packet analysis requires IPv4 EtherType 0x0800",
+    "Packet analysis requires IPv4 EtherType 0x0800 or IPv6 EtherType 0x86DD",
 )
 
 _ETHERNET_UNSUPPORTED_MESSAGES = (
@@ -80,6 +81,10 @@ _ETHERNET_UNSUPPORTED_MESSAGES = (
 
 _IPV4_UNSUPPORTED_MESSAGES = (
     "IPv4 decoding requires EtherType 0x0800",
+)
+
+_IPV6_UNSUPPORTED_MESSAGES = (
+    "IPv6 decoding requires EtherType 0x86DD",
 )
 
 _TCP_UNSUPPORTED_MESSAGES = (
@@ -103,6 +108,11 @@ _IPV4_INCOMPLETE_MESSAGES = (
     "IPv4 total length exceeds available bytes",
 )
 
+_IPV6_INCOMPLETE_MESSAGES = (
+    "IPv6 header is too short: expected at least 40 bytes",
+    "IPv6 payload length exceeds available bytes",
+)
+
 _TCP_INCOMPLETE_MESSAGES = (
     "TCP header is too short: expected at least 20 bytes",
     "TCP header length exceeds available IPv4 payload",
@@ -123,6 +133,10 @@ _IPV4_STRUCTURAL_MESSAGES = (
     "IPv4 total length is smaller than header length",
 )
 
+_IPV6_STRUCTURAL_MESSAGES = (
+    "IPv6 version must be 6",
+)
+
 _TCP_STRUCTURAL_MESSAGES = (
     "TCP data offset must be at least 5",
 )
@@ -140,18 +154,21 @@ def _classify_known_failure(
         (PacketAnalysisError, _PACKET_ANALYSIS_UNSUPPORTED_MESSAGES),
         (EthernetDecodeError, _ETHERNET_UNSUPPORTED_MESSAGES),
         (IPv4DecodeError, _IPV4_UNSUPPORTED_MESSAGES),
+        (IPv6DecodeError, _IPV6_UNSUPPORTED_MESSAGES),
         (TCPDecodeError, _TCP_UNSUPPORTED_MESSAGES),
         (UDPDecodeError, _UDP_UNSUPPORTED_MESSAGES),
         (ICMPDecodeError, _ICMP_UNSUPPORTED_MESSAGES),
     )
     incomplete = (
         (IPv4DecodeError, _IPV4_INCOMPLETE_MESSAGES),
+        (IPv6DecodeError, _IPV6_INCOMPLETE_MESSAGES),
         (TCPDecodeError, _TCP_INCOMPLETE_MESSAGES),
         (UDPDecodeError, _UDP_INCOMPLETE_MESSAGES),
         (ICMPDecodeError, _ICMP_INCOMPLETE_MESSAGES),
     )
     structural = (
         (IPv4DecodeError, _IPV4_STRUCTURAL_MESSAGES),
+        (IPv6DecodeError, _IPV6_STRUCTURAL_MESSAGES),
         (TCPDecodeError, _TCP_STRUCTURAL_MESSAGES),
         (UDPDecodeError, _UDP_STRUCTURAL_MESSAGES),
     )
@@ -196,6 +213,7 @@ def analyze_packet_outcome(observation: PacketObservation) -> PacketAnalysisOutc
         PacketAnalysisError,
         EthernetDecodeError,
         IPv4DecodeError,
+        IPv6DecodeError,
         TCPDecodeError,
         UDPDecodeError,
         ICMPDecodeError,

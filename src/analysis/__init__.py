@@ -56,6 +56,7 @@ from analysis.inter_arrival_features import (
 )
 from analysis.ipv4 import IPv4DecodeError, IPv4Packet, decode_ipv4
 from analysis.ipv4_checksum import validate_ipv4_checksum
+from analysis.ipv6 import IPv6DecodeError, IPv6Packet, decode_ipv6
 from analysis.packet_analysis import PacketAnalysis, PacketAnalysisError, analyze_packet
 from analysis.packet_analysis_outcome import (
     PacketAnalysisFailureClassification,
@@ -123,6 +124,8 @@ __all__ = [
     "InterArrivalFeaturesError",
     "IPv4DecodeError",
     "IPv4Packet",
+    "IPv6DecodeError",
+    "IPv6Packet",
     "PacketAnalysis",
     "PacketAnalysisError",
     "PacketAnalysisFailureClassification",
@@ -143,6 +146,7 @@ __all__ = [
     "decode_ethernet",
     "decode_icmp",
     "decode_ipv4",
+    "decode_ipv6",
     "decode_tcp",
     "decode_udp",
     "extract_directional_inter_arrival_features",
