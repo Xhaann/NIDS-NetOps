@@ -1,6 +1,6 @@
 # Packet capture boundary
 
-This directory owns the packet observation and capture-source contracts, synchronous packet ingestion, and local acquisition from caller-supplied byte records. Network-interface capture is not implemented.
+This directory owns the packet observation and capture-source contracts, synchronous packet ingestion, local acquisition from caller-supplied byte records, and incremental classic PCAP file ingestion. Network-interface capture is not implemented.
 
 ## Packet observation contract
 
@@ -63,8 +63,24 @@ Construction retains the input without iterating it. `start()` obtains its itera
 
 An `OSError` from obtaining or advancing the iterator becomes `CaptureError` with the original exception chained as its cause. Existing `CaptureError` and other exceptions propagate unchanged. Invalid record types raise `TypeError`, consistent with `PacketObservation`; the adapter stops delivery instead of skipping the record. This adapter adds no file format or packet-capture dependency.
 
+## Classic PCAP packet source
+
+`capture` exports `PcapPacketSource(path, *, source=CaptureSource("local-pcap"))` from [pcap_packet_source.py](pcap_packet_source.py). It accepts a filesystem path to a regular classic PCAP file and implements the existing single-session `PacketSource` contract. Construction performs no acquisition; `start()` opens the file read-only and validates its entire 24-byte global header before iteration. The caller can supply an explicit `CaptureSource` identity; the same object is retained by every observation. The path does not become an inferred source identity.
+
+Supported inputs are classic PCAP version 2.4, in either byte order, with microsecond or nanosecond magic numbers. Format handling follows the [PCAP format description](https://www.ietf.org/archive/id/draft-ietf-opsawg-pcap-06.html), an Internet-Draft. Historical timezone and significant-figures fields are decoded but ignored as reserved values, including nonzero values. Snaplen must be positive. The network field must fit the existing 16-bit portable `LinkType`; unknown codes remain unchanged. Nonzero upper bits, including additional FCS metadata, are explicitly unsupported rather than silently discarded. PCAPNG, modified/older PCAP variants, compressed captures, and live interfaces are not supported.
+
+Each record has one 16-byte header followed by its exact captured bytes, without padding. Captured length must not exceed snaplen or original length, and the complete payload must exist within the file extent established at startup. Truncated headers and payloads, invalid fractional timestamps, and impossible lengths raise `CaptureError`; no record is repaired or skipped. Zero-byte records are valid and remain distinct from a zero-record capture. Original length is preserved separately, including capture truncation. Link type does not trigger Ethernet or other protocol decoding in the source.
+
+Timestamp seconds are unsigned seconds since the UTC Unix epoch. Integer `timedelta` arithmetic produces the existing canonical `datetime.timezone.utc` representation without a wall-clock read or local timezone conversion. Microsecond values are exact. Nanosecond values are truncated toward the beginning of the microsecond using integer division by 1000; the remainder cannot be represented by the existing timestamp type. Fractions must be below 1,000,000 or 1,000,000,000 for their respective resolutions. All unsigned 32-bit seconds values are representable. Record order is preserved even when timestamps repeat or decrease; any downstream monotonicity rejection remains owned by flow observation.
+
+The reader consumes only the current header and packet payload. Declared lengths are checked against the remaining file extent before payload allocation, and short reads still fail explicitly. Memory scales with one captured packet rather than the complete capture. The input must remain unchanged during execution; appended bytes beyond the startup extent are not part of that session. The reader does not write, sort, deduplicate, retain packet history, or reopen an exhausted file. Repeatable reads use fresh instances and the same stable source identity.
+
+`consume()` starts and stops the source once, including on startup, record, analysis-callback, or downstream failure. Direct callers retain the same `try`/`finally` cleanup obligation. `stop()` closes the owned handle, releases parser references, and is safe before startup and on repeated calls. Iteration before successful startup or after failure raises `RuntimeError`; stopped/exhausted sources never replay records. I/O failures become `CaptureError` with their original causes; other exceptions propagate unchanged. Cleanup errors retain normal exception precedence. Valid records already delivered before later corruption remain in the caller's memory, but ingestion raises rather than reporting successful completion or returning a repaired capture.
+
+The source works with unchanged `consume()`, flow observation, and the explicit detection pipeline. Packet analysis owns protocol interpretation; flow observation, feature extraction, and detection retain their existing ownership. No automatic detector execution, reassembly, live capture, correlation, evidence retention, or persistence is added.
+
 ## Future acquisition
 
-Live interfaces, PCAP replay, and virtual-lab adapters are deferred. They will supply the same observation contract through `PacketSource`. Packet-loss reporting remains a future concern separate from acquisition exceptions and security findings.
+Live interfaces and virtual-lab adapters are deferred. They will supply the same observation contract through `PacketSource`. Packet-loss reporting remains a future concern separate from acquisition exceptions and security findings.
 
 Capture does not parse protocols, track flows, evaluate threats, or own evidence-file retention. The [application composition boundary](../application/README.md) uses `consume()` unchanged to connect one source run to analysis and observation-window lifecycle. Future consumers also include [storage](../storage/README.md); the capture contracts do not import those subsystems. Source permissions, filtering, buffering, and implementation-specific shutdown behavior must be specified before real capture is enabled.
