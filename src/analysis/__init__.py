@@ -62,6 +62,7 @@ from analysis.ipv6_extension_headers import (
     IPv6ExtensionHeaderChain,
     validate_ipv6_extension_headers,
 )
+from analysis.ipv6_fragmentation import IPv6FragmentHeader, IPv6Fragmentation, analyze_ipv6_fragmentation
 from analysis.packet_analysis import PacketAnalysis, PacketAnalysisError, analyze_packet
 from analysis.packet_analysis_outcome import (
     PacketAnalysisFailureClassification,
@@ -132,6 +133,8 @@ __all__ = [
     "IPv6DecodeError",
     "IPv6ExtensionHeader",
     "IPv6ExtensionHeaderChain",
+    "IPv6FragmentHeader",
+    "IPv6Fragmentation",
     "IPv6Packet",
     "PacketAnalysis",
     "PacketAnalysisError",
@@ -149,6 +152,7 @@ __all__ = [
     "UDPChecksumValidationError",
     "UDPPacket",
     "analyze_packet",
+    "analyze_ipv6_fragmentation",
     "analyze_packet_outcome",
     "decode_ethernet",
     "decode_icmp",

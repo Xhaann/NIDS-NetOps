@@ -76,7 +76,7 @@ The [IPv6 decoder](../src/analysis/ipv6.py) follows the existing Ethernet-frame-
 
 `analyze_packet()` dispatches IPv6 from the existing Ethernet EtherType and retains the exact decoder result in the appended optional `PacketAnalysis.ipv6` field. IPv4 positional arguments and processing remain unchanged. IPv6 analysis contains no IPv4 model, transport model, or checksum result. The base Next Header is retained unchanged and starts the supported structural extension traversal; transport is not decoded. `analyze_packet_outcome()` classifies short base or extension headers and insufficient declared payload as `INCOMPLETE`, and wrong versions as `STRUCTURAL_FAILURE`, retaining exact observation provenance and no partial analytical model. Unrecognized exceptions still propagate.
 
-Successful packet analysis includes base-header decoding and structural traversal of the supported extension headers. Upper-layer content remains opaque. Analysis invokes no detector, flow admission, or lifecycle operation. Existing IPv4-only flow and threshold boundaries remain intact. Fragment semantics and reassembly, ICMPv6, Neighbor Discovery, IPv6 transport decoding, and IPv6 detection remain outside this feature.
+Successful packet analysis includes base-header decoding and structural traversal of the supported extension headers. Upper-layer content remains opaque. Analysis invokes no detector, flow admission, or lifecycle operation. Existing IPv4-only flow and threshold boundaries remain intact. Fragment Header semantics are analyzed in the packet-local boundary below. Reassembly, ICMPv6, Neighbor Discovery, IPv6 transport decoding, and IPv6 detection remain outside this feature.
 
 ## IPv6 extension-header representation
 
@@ -91,6 +91,16 @@ Construction checks value types and scalar domains only. It does not verify pack
 Any Next Header outside those four types terminates traversal without decoding the indicated protocol. The chain exposes the terminating value through `terminating_next_header`, including the base value when no extensions were traversed. No Next Header (59) stops traversal and leaves any trailing payload bytes untouched. AH and ESP are not parsed. Missing prefix or declared bytes raise the existing `IPv6DecodeError` and become `INCOMPLETE` outcomes, with no successful partial chain or analysis. Unexpected errors still propagate.
 
 Packet analysis retains the complete chain in the appended optional `PacketAnalysis.ipv6_extension_headers` field, whose packet context must be the exact retained IPv6 model. The base-header decoder remains independent. Extension validation stays entirely inside IPv6 packet analysis; it adds no fragment semantics or reassembly, transport decoding, ICMPv6, Neighbor Discovery, flow integration, feature extraction, detector, finding, alert, or correlation behavior.
+
+## IPv6 fragmentation analysis
+
+The [fragmentation boundary](../src/analysis/ipv6_fragmentation.py) consumes the existing extension-header chain and returns immutable `IPv6Fragmentation` with exact chain and packet context. It delegates structural certification to the existing extension validator before building its ordered tuple of `IPv6FragmentHeader` views. This check is needed because direct chain construction permits unvalidated metadata; it introduces no alternative traversal or payload-boundary logic. Repeated type-44 entries remain separate views in their observed order.
+
+Each view retains the exact extension entry and derives Next Header, the Reserved byte, thirteen-bit Fragment Offset in eight-octet units, the adjacent two reserved bits, the boolean M flag, and the 32-bit Identification from its exact eight bytes, following [RFC 8200, Section 4.5](https://www.rfc-editor.org/rfc/rfc8200.html#section-4.5). Nonzero reserved values are preserved. Local position predicates depend only on offset and M, and make no packet-completeness or security claim. Offset zero with M false preserves the whole-datagram Fragment Header and does not synthesize a reassembled packet.
+
+The appended optional `PacketAnalysis.ipv6_fragmentation` retains this analysis when Fragment Headers are present and requires the exact retained extension-header chain. Existing positional arguments, IPv4 behavior, IPv6 base decoding, extension traversal, and outcome classifications remain unchanged. Insufficient bytes still yield `INCOMPLETE` with no partial analysis; inconsistent manually supplied models and unexpected internal exceptions propagate.
+
+This boundary is stateless and analyzes one observed packet only. Fragment reassembly, buffering, cross-packet fragment correlation, overlap and duplicate detection, fragmentation attack detection, ICMPv6, transport decoding, IPv6 flow integration, and IPv6 detection remain outside it. Detector behavior, findings, alerts, and correlation architecture are unchanged.
 
 ## Deterministic packet-integrity detection
 

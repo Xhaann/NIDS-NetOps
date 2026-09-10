@@ -8,6 +8,7 @@ from analysis.ipv4 import IPv4Packet, decode_ipv4
 from analysis.ipv4_checksum import validate_ipv4_checksum
 from analysis.ipv6 import IPv6Packet, decode_ipv6
 from analysis.ipv6_extension_headers import IPv6ExtensionHeaderChain, validate_ipv6_extension_headers
+from analysis.ipv6_fragmentation import IPv6Fragmentation, analyze_ipv6_fragmentation
 from analysis.tcp import TCPPacket, decode_tcp
 from analysis.tcp_checksum import validate_tcp_checksum
 from analysis.udp import UDPPacket, decode_udp
@@ -33,6 +34,7 @@ class PacketAnalysis:
     icmp_checksum_valid: Optional[bool] = None
     ipv6: Optional[IPv6Packet] = None
     ipv6_extension_headers: Optional[IPv6ExtensionHeaderChain] = None
+    ipv6_fragmentation: Optional[IPv6Fragmentation] = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.observation, PacketObservation):
@@ -42,6 +44,7 @@ class PacketAnalysis:
             ("ipv4", self.ipv4, IPv4Packet),
             ("ipv6", self.ipv6, IPv6Packet),
             ("ipv6_extension_headers", self.ipv6_extension_headers, IPv6ExtensionHeaderChain),
+            ("ipv6_fragmentation", self.ipv6_fragmentation, IPv6Fragmentation),
             ("tcp", self.tcp, TCPPacket),
             ("udp", self.udp, UDPPacket),
             ("icmp", self.icmp, ICMPMessage),
@@ -51,6 +54,9 @@ class PacketAnalysis:
         if self.ipv6_extension_headers is not None:
             if self.ipv6_extension_headers.packet is not self.ipv6:
                 raise PacketAnalysisError("IPv6 extension headers must retain the exact IPv6 packet")
+        if self.ipv6_fragmentation is not None:
+            if self.ipv6_fragmentation.extension_headers is not self.ipv6_extension_headers:
+                raise PacketAnalysisError("IPv6 fragmentation must retain the exact extension-header chain")
         for name, value in (
             ("ipv4_checksum_valid", self.ipv4_checksum_valid),
             ("tcp_checksum_valid", self.tcp_checksum_valid),
@@ -77,9 +83,13 @@ def analyze_packet(observation: PacketObservation) -> PacketAnalysis:
     if ethernet.ether_type == 0x86DD:
         ipv6 = decode_ipv6(ethernet)
         extensions = validate_ipv6_extension_headers(ipv6)
+        fragmentation = analyze_ipv6_fragmentation(extensions) if any(
+            header.header_type == 44 for header in extensions.headers
+        ) else None
         return PacketAnalysis(
             observation=observation, ethernet=ethernet, ipv6=ipv6,
             ipv6_extension_headers=extensions,
+            ipv6_fragmentation=fragmentation,
         )
     if ethernet.ether_type != 0x0800:
         raise PacketAnalysisError("Packet analysis requires IPv4 EtherType 0x0800 or IPv6 EtherType 0x86DD")
