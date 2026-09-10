@@ -85,6 +85,8 @@ _IPV4_UNSUPPORTED_MESSAGES = (
 
 _IPV6_UNSUPPORTED_MESSAGES = (
     "IPv6 decoding requires EtherType 0x86DD",
+    "ICMPv6 decoding requires terminal Next Header 58",
+    "ICMPv6 decoding requires an unfragmented or whole-datagram packet",
 )
 
 _TCP_UNSUPPORTED_MESSAGES = (
@@ -113,6 +115,7 @@ _IPV6_INCOMPLETE_MESSAGES = (
     "IPv6 payload length exceeds available bytes",
     "IPv6 extension header prefix exceeds available IPv6 payload",
     "IPv6 extension header length exceeds available IPv6 payload",
+    "ICMPv6 header is too short: expected at least 4 bytes",
 )
 
 _TCP_INCOMPLETE_MESSAGES = (

@@ -49,6 +49,7 @@ from analysis.flow_tracker import FlowPacket, FlowSnapshot, FlowTracker, FlowTra
 from analysis.flow_volume_features import FlowVolumeFeatures, FlowVolumeFeaturesError, extract_flow_volume_features
 from analysis.icmp import ICMPDecodeError, ICMPMessage, decode_icmp
 from analysis.icmp_checksum import ICMPChecksumValidationError, validate_icmp_checksum
+from analysis.icmpv6 import ICMPv6Packet, decode_icmpv6
 from analysis.inter_arrival_features import (
     InterArrivalFeatures,
     InterArrivalFeaturesError,
@@ -126,6 +127,7 @@ __all__ = [
     "ICMPDecodeError",
     "ICMPChecksumValidationError",
     "ICMPMessage",
+    "ICMPv6Packet",
     "InterArrivalFeatures",
     "InterArrivalFeaturesError",
     "IPv4DecodeError",
@@ -156,6 +158,7 @@ __all__ = [
     "analyze_packet_outcome",
     "decode_ethernet",
     "decode_icmp",
+    "decode_icmpv6",
     "decode_ipv4",
     "decode_ipv6",
     "decode_tcp",

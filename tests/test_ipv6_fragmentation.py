@@ -397,9 +397,9 @@ class IPv6FragmentationPacketAnalysisTests(unittest.TestCase):
                 self.assertTrue(outcome.succeeded)
                 result = outcome.analysis
                 self.assertIsNone(result.ipv6_fragmentation)
-                prior_arguments = tuple(getattr(result, entry.name) for entry in fields(result) if entry.name != "ipv6_fragmentation")
+                prior_arguments = tuple(getattr(result, entry.name) for entry in fields(result) if entry.name not in ("ipv6_fragmentation", "ipv6_icmpv6"))
                 self.assertEqual(PacketAnalysis(*prior_arguments), result)
-        self.assertEqual(fields(PacketAnalysis)[-1].name, "ipv6_fragmentation")
+        self.assertEqual(fields(PacketAnalysis)[12].name, "ipv6_fragmentation")
 
     def test_direct_packet_analysis_requires_exact_retained_chain(self) -> None:
         observation = ipv6_observation(ipv6_header(next_header=44, payload_length=8) + bytes.fromhex("0600000100000001"))

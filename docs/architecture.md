@@ -76,7 +76,7 @@ The [IPv6 decoder](../src/analysis/ipv6.py) follows the existing Ethernet-frame-
 
 `analyze_packet()` dispatches IPv6 from the existing Ethernet EtherType and retains the exact decoder result in the appended optional `PacketAnalysis.ipv6` field. IPv4 positional arguments and processing remain unchanged. IPv6 analysis contains no IPv4 model, transport model, or checksum result. The base Next Header is retained unchanged and starts the supported structural extension traversal; transport is not decoded. `analyze_packet_outcome()` classifies short base or extension headers and insufficient declared payload as `INCOMPLETE`, and wrong versions as `STRUCTURAL_FAILURE`, retaining exact observation provenance and no partial analytical model. Unrecognized exceptions still propagate.
 
-Successful packet analysis includes base-header decoding and structural traversal of the supported extension headers. Upper-layer content remains opaque. Analysis invokes no detector, flow admission, or lifecycle operation. Existing IPv4-only flow and threshold boundaries remain intact. Fragment Header semantics are analyzed in the packet-local boundary below. Reassembly, ICMPv6, Neighbor Discovery, IPv6 transport decoding, and IPv6 detection remain outside this feature.
+Successful packet analysis includes base-header decoding and structural traversal of the supported extension headers. The common ICMPv6 header is decoded at a safe terminal boundary; other upper-layer content remains opaque. Analysis invokes no detector, flow admission, or lifecycle operation. Existing IPv4-only flow and threshold boundaries remain intact. Fragment Header semantics are analyzed in the packet-local boundary below. Reassembly, ICMPv6 subtype decoding, Neighbor Discovery, IPv6 TCP/UDP decoding, and IPv6 detection remain outside this feature.
 
 ## IPv6 extension-header representation
 
@@ -102,6 +102,14 @@ The appended optional `PacketAnalysis.ipv6_fragmentation` retains this analysis 
 
 This boundary is stateless and analyzes one observed packet only. Fragment reassembly, buffering, cross-packet fragment correlation, overlap and duplicate detection, fragmentation attack detection, ICMPv6, transport decoding, IPv6 flow integration, and IPv6 detection remain outside it. Detector behavior, findings, alerts, and correlation architecture are unchanged.
 
+## ICMPv6 foundation
+
+The [ICMPv6 decoder](../src/analysis/icmpv6.py) consumes the validated IPv6 extension-header boundary and retains the exact chain and IPv6 packet in frozen `ICMPv6Packet`. Terminal Next Header 58 selects the common four-byte header defined in [RFC 4443, Section 2.1](https://www.rfc-editor.org/rfc/rfc4443.html#section-2.1). Type, Code, observed Checksum, exact raw bytes, and the opaque remaining body are preserved. The packet-relative offset follows the last validated extension extent, or is 40 without extensions. Existing chain validation remains authoritative; there is no scan-ahead or alternative extension traversal.
+
+The appended `PacketAnalysis.ipv6_icmpv6` field preserves positional compatibility and requires the exact retained chain. Dispatch requires no Fragment Header or only whole-datagram Fragment Headers (offset zero and M false). Other fragments retain existing IPv6 analysis with no ICMPv6 model. This packet-local gate uses Commit #20's semantic boundary without changing fragment or traversal behavior. Safe ICMPv6 boundaries shorter than four bytes yield `INCOMPLETE` with no partial analysis; unexpected internal failures propagate.
+
+Type-based error/informational properties are protocol-local. Checksum validation, message subtype and embedded-packet parsing, Neighbor Discovery, reassembly, cross-packet state, flow integration, and security interpretation are outside this foundation. Detectors and finding contracts are unchanged.
+
 ## Deterministic packet-integrity detection
 
 The [packet-integrity detector](../src/detection/packet_integrity.py) consumes one exact immutable `PacketAnalysisOutcome`. Successful analysis produces `NO_MATCH`; structural and explicit integrity failures produce `MATCH`; and incomplete or unsupported analysis produces `NOT_EVALUABLE`. The fixed predicate is not configurable, and detector configuration contains only exact nonblank identity and version strings.
@@ -116,7 +124,7 @@ The [flow identity](../src/analysis/flow_identity.py) retains the established fr
 
 The exported `flow_identity_from_addresses()` converts validated text using standard-library `ipaddress` and delegates to the same packed identity constructor. Equivalent IPv6 compression and case variants normalize to equal values. IPv4-mapped IPv6 remains a distinct IPv6 identity. Scoped IPv6 text is rejected because the existing identity owns no zone or interface context; it is never silently stripped. No timestamps, metadata, security fields, or redundant family field are added.
 
-The existing immutable analytical value models can hold manually constructed IPv6 identities and numerical statistics without redesigning windows or feature snapshots. Packet-derived identity, direction, and accumulation retain their IPv4 input boundary; the separate IPv6 packet-analysis path stops at the base header. Volume and TCP-control detectors now explicitly check IPv4 family, preserving the applicability previously guaranteed by four-byte-only identities. IPv6 flow admission, extension processing, fragmentation, ICMPv6, and detection remain unimplemented.
+The existing immutable analytical value models can hold manually constructed IPv6 identities and numerical statistics without redesigning windows or feature snapshots. Packet-derived identity, direction, and accumulation retain their IPv4 input boundary; the separate IPv6 packet-analysis path includes extension validation, Fragment Header semantics, and the common ICMPv6 header. Volume and TCP-control detectors now explicitly check IPv4 family, preserving the applicability previously guaranteed by four-byte-only identities. IPv6 flow admission, fragment reassembly, ICMPv6 subtype decoding, and IPv6 detection remain unimplemented.
 
 ## Coordinated flow-state ownership
 

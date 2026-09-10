@@ -73,6 +73,8 @@ class IPv6PacketAnalysisTests(unittest.TestCase):
         for next_header in (0, 6, 17, 43, 44, 50, 51, 58, 59, 60, 135, 253, 254, 255):
             with self.subTest(next_header=next_header):
                 payload = b"\xff\x00" + bytes(6) if next_header in (0, 43, 44, 60) else b"\xff"
+                if next_header == 58:
+                    payload = bytes.fromhex("ff000000")
                 observation = ipv6_observation(ipv6_header(next_header=next_header, payload_length=len(payload)) + payload)
                 with ExitStack() as stack:
                     for name in ("decode_ipv4", "decode_tcp", "decode_udp", "decode_icmp", "validate_ipv4_checksum", "validate_tcp_checksum", "validate_udp_checksum", "validate_icmp_checksum"):
@@ -316,7 +318,8 @@ class IPv6ExtensionHeaderPacketAnalysisTests(unittest.TestCase):
                 continue
             with self.subTest(next_header=next_header):
                 raw_header = bytes((next_header, 0)) + bytes(6)
-                observation = ipv6_observation(ipv6_header(next_header=43, payload_length=10) + raw_header + b"\x00\xff")
+                payload = raw_header + (bytes.fromhex("00ff0000") if next_header == 58 else b"\x00\xff")
+                observation = ipv6_observation(ipv6_header(next_header=43, payload_length=len(payload)) + payload)
                 outcome = analyze_packet_outcome(observation)
                 self.assertTrue(outcome.succeeded)
                 self.assertEqual(outcome.analysis.ipv6_extension_headers.headers, (
