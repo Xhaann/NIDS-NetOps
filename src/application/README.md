@@ -2,6 +2,23 @@
 
 The `application` package composes implemented subsystem contracts without taking ownership of their internal state. It does not define packet acquisition, protocol decoding, flow identity, accumulation, feature extraction, detection, persistence, or user interfaces.
 
+## Detector orchestration
+
+[detector_orchestration.py](detector_orchestration.py) exports two synchronous functions through the `application` package:
+
+- `run_packet_detectors(outcome: PacketAnalysisOutcome, configuration: PacketIntegrityConfiguration) -> tuple[DetectionFinding, ...]`
+- `run_closed_flow_detectors(snapshot: FlowFeatureSnapshot, *, flow_volume_configuration: FlowVolumeThresholdConfiguration, tcp_control_configuration: Optional[TCPControlThresholdConfiguration] = None) -> tuple[DetectionFinding, ...]`
+
+The packet path passes the exact outcome and configuration to the packet-integrity evaluator once, converts its exact evaluation through `detection_finding_from_evaluation()`, and returns a one-finding tuple.
+
+The closed-flow path first evaluates the exact snapshot with the exact volume configuration and converts that evaluation to a finding. For TCP, it then evaluates the snapshot's exact retained observation window with the exact TCP-control configuration and converts that evaluation. The tuple order is always volume first, TCP control second. TCP requires its configuration. UDP invokes only the volume detector and requires no TCP configuration; a supplied TCP configuration must still have the exact supported type.
+
+Existing detector validation rejects active snapshots without closing or modifying their windows. `FlowIdentity` construction accepts only protocols 6 and 17, so unsupported flow protocols cannot reach this path through valid model construction. Packet orchestration preserves the separate packet-analysis outcome contract.
+
+Each applicable detector and finding conversion runs once per invocation. Every `MATCH`, `NO_MATCH`, and `NOT_EVALUABLE` finding is retained. The returned immutable tuple contains the exact converted findings, which retain exact detector evidence, interpretation, and configuration references. A detector or conversion failure propagates unchanged immediately, with no retry, later detector execution, or partial tuple publication.
+
+These functions retain no history or background state and introduce no common detector input, registry, generic framework, filtering, attack inference, severity, confidence, risk, correlation, alerting, persistence, or response behavior. Callers supply already-produced analytical inputs; capture-session wiring, packet analysis, feature extraction, and observation-window lifecycle remain separate operations.
+
 ## Flow observation sessions
 
 [flow_observation_session.py](flow_observation_session.py) exports `run_flow_observation_session(source, *, capture_session_id, inactivity_timeout, closed_window_consumer) -> None`. One invocation constructs one `FlowObservationWindowManager`, runs the source exactly once through `consume()`, analyzes each delivered `PacketObservation` with `analyze_packet()`, and passes the resulting `PacketAnalysis` unchanged to the manager.
