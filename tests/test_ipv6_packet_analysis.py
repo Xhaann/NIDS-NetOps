@@ -27,10 +27,10 @@ from capture import CaptureSource, LinkType, PacketObservation
 from detection import (
     FlowVolumeMetric,
     FlowVolumeThresholdConfiguration,
-    FlowVolumeThresholdError,
+    FlowVolumeThresholdDecision,
     TCPControlMetric,
     TCPControlThresholdConfiguration,
-    TCPControlThresholdError,
+    TCPControlThresholdDecision,
     evaluate_tcp_control_threshold,
 )
 from tests.test_ipv6 import ipv6_header
@@ -247,17 +247,20 @@ class IPv6PacketAnalysisTests(unittest.TestCase):
         self.assertEqual(manager.active_windows(), ())
         self.assertEqual(manager.end_capture_session(), ())
 
-    def test_decoded_ipv6_addresses_do_not_expand_existing_detector_scope(self) -> None:
+    def test_decoded_ipv6_addresses_support_existing_detector_scope(self) -> None:
         result = analyze_packet(ipv6_observation(ipv6_header(next_header=6, payload_length=len(TCP_BYTES)) + TCP_BYTES))
         identity = FlowIdentity(result.ipv6.source_address, result.ipv6.destination_address, 1, 2, 6)
         window = synthetic_window(identity)
         snapshot = extract_flow_feature_snapshot(window)
         volume = FlowVolumeThresholdConfiguration("volume", "1", FlowVolumeMetric.PACKET_COUNT, 0)
         control = TCPControlThresholdConfiguration("control", "1", TCPControlMetric.FORWARD_SYN, 0)
-        with self.assertRaisesRegex(FlowVolumeThresholdError, "IPv4"):
-            run_closed_flow_detectors(snapshot, flow_volume_configuration=volume, tcp_control_configuration=control)
-        with self.assertRaisesRegex(TCPControlThresholdError, "IPv4"):
-            evaluate_tcp_control_threshold(window, control)
+        findings = run_closed_flow_detectors(snapshot, flow_volume_configuration=volume, tcp_control_configuration=control)
+        self.assertEqual(len(findings), 2)
+        self.assertIs(findings[0].decision, FlowVolumeThresholdDecision.MATCH)
+        self.assertEqual(findings[0].raw_evidence.observed_value, 2)
+        self.assertIs(findings[1].decision, TCPControlThresholdDecision.NO_MATCH)
+        self.assertEqual(findings[1].raw_evidence.observed_value, 0)
+        self.assertEqual(evaluate_tcp_control_threshold(window, control).raw_evidence, findings[1].raw_evidence)
         self.assertIs(snapshot.observation_window, window)
         self.assertIs(window.identity, identity)
 

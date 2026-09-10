@@ -142,9 +142,12 @@ class PacketIntegrityEvidence:
 
     @property
     def protocol(self) -> Optional[int]:
-        if self.analysis is None or self.analysis.ipv4 is None:
+        if self.analysis is None:
             return None
-        return self.analysis.ipv4.protocol
+        if self.analysis.ipv4 is not None:
+            return self.analysis.ipv4.protocol
+        chain = self.analysis.ipv6_extension_headers
+        return None if chain is None else chain.terminating_next_header
 
 
 @dataclass(frozen=True)

@@ -18,11 +18,9 @@ from detection import (
     FlowVolumeMetric,
     FlowVolumeThresholdConfiguration,
     FlowVolumeThresholdDecision,
-    FlowVolumeThresholdError,
     TCPControlMetric,
     TCPControlThresholdConfiguration,
     TCPControlThresholdDecision,
-    TCPControlThresholdError,
     evaluate_flow_volume_threshold,
     evaluate_tcp_control_threshold,
 )
@@ -282,31 +280,35 @@ class NetworkIdentityIntegrationTests(unittest.TestCase):
                 self.assertEqual(snapshot.flow_rate_features.packets_per_second, 2.0)
                 self.assertEqual(extract_flow_feature_snapshot(window), snapshot)
 
-    def test_ipv6_identity_does_not_expand_volume_detector_or_orchestration_scope(self) -> None:
+    def test_ipv6_identity_supports_volume_detector_and_orchestration(self) -> None:
         for protocol in (6, 17):
             with self.subTest(protocol=protocol):
                 identity = flow_identity_from_addresses("2001:db8::1", "2001:db8::2", 1, 2, protocol)
                 window = synthetic_window(identity)
                 snapshot = extract_flow_feature_snapshot(window)
-                with self.assertRaisesRegex(FlowVolumeThresholdError, "IPv4"):
-                    evaluate_flow_volume_threshold(snapshot, self.volume)
-                with patch.object(detector_orchestration, "evaluate_tcp_control_threshold") as control:
-                    with patch.object(detector_orchestration, "detection_finding_from_evaluation") as normalize:
-                        with self.assertRaisesRegex(FlowVolumeThresholdError, "IPv4"):
-                            run_closed_flow_detectors(
-                                snapshot, flow_volume_configuration=self.volume,
-                                tcp_control_configuration=self.control,
-                            )
-                control.assert_not_called()
-                normalize.assert_not_called()
+                evaluation = evaluate_flow_volume_threshold(snapshot, self.volume)
+                self.assertIs(evaluation.decision, FlowVolumeThresholdDecision.MATCH)
+                self.assertEqual(evaluation.raw_evidence.observed_value, 2)
+                with patch.object(detector_orchestration, "evaluate_tcp_control_threshold",
+                                  wraps=evaluate_tcp_control_threshold) as control:
+                    findings = run_closed_flow_detectors(
+                        snapshot, flow_volume_configuration=self.volume,
+                        tcp_control_configuration=self.control,
+                    )
+                self.assertEqual(len(findings), 2 if protocol == 6 else 1)
+                self.assertEqual(control.call_count, int(protocol == 6))
+                self.assertIs(findings[0].raw_evidence.snapshot, snapshot)
+                self.assertIs(findings[0].decision, FlowVolumeThresholdDecision.MATCH)
                 self.assertIs(snapshot.observation_window, window)
                 self.assertIs(window.identity, identity)
 
-    def test_ipv6_identity_does_not_expand_tcp_control_detector_scope(self) -> None:
+    def test_ipv6_identity_supports_tcp_control_detector(self) -> None:
         identity = flow_identity_from_addresses("::1", "::2", 1, 2, 6)
         window = synthetic_window(identity)
-        with self.assertRaisesRegex(TCPControlThresholdError, "IPv4"):
-            evaluate_tcp_control_threshold(window, self.control)
+        evaluation = evaluate_tcp_control_threshold(window, self.control)
+        self.assertIs(evaluation.decision, TCPControlThresholdDecision.NO_MATCH)
+        self.assertEqual(evaluation.raw_evidence.observed_value, 0)
+        self.assertIs(evaluation.raw_evidence.observation_window, window)
         self.assertIs(window.identity, identity)
 
 

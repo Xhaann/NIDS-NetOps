@@ -83,8 +83,8 @@ def _tcp_control_statistics(window: FlowObservationWindow) -> TCPControlStatisti
         raise TypeError("window must be exactly a FlowObservationWindow")
     if window.closure_reason is None:
         raise TCPControlThresholdError("observation window must be closed")
-    if window.identity.protocol != 6 or window.identity.ip_version != 4:
-        raise TCPControlThresholdError("observation window must represent IPv4 TCP")
+    if window.identity.protocol != 6 or window.identity.ip_version not in (4, 6):
+        raise TCPControlThresholdError("observation window must represent IPv4 or IPv6 TCP")
     statistics = window.coordinated_state.tcp_control_statistics
     if type(statistics) is not TCPControlStatistics:
         raise TCPControlThresholdError(

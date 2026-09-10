@@ -14,6 +14,18 @@ Detectors consume [analysis](../analysis/README.md) outputs through explicit con
 
 The families use detector-specific input contracts and remain independently testable and configurable. [Event processing](../events/README.md) owns cross-finding correlation, risk scoring, deduplication, and alert lifecycle. External intelligence access belongs to [enrichment](../enrichment/README.md). No signature, statistical, behavioral, training, or model implementation is established here.
 
+## IPv4 and IPv6 applicability
+
+| Existing detector | Input and family applicability |
+| --- | --- |
+| Packet integrity | Packet-local `PacketAnalysisOutcome`; the same structural/integrity predicates already apply to both families. IPv6 protocol evidence uses the retained terminal extension-chain selector. |
+| Flow volume/rate threshold | Closed `FlowFeatureSnapshot` for IPv4 or IPv6 TCP/UDP, using unchanged generic measurements and thresholds. |
+| TCP control threshold | Closed IPv4 or IPv6 TCP window with existing `TCPControlStatistics`. UDP remains rejected by direct evaluation and skipped by orchestration. |
+
+Validated extension-header transport and first/whole fragments with decoded TCP/UDP follow the same flow detector applicability. Non-first fragments without decoded transport, ICMPv6, and unsupported protocols cannot enter TCP/UDP flow detection. Successful packet analysis for these protocols is not itself an integrity violation; incomplete and malformed analysis retain the existing outcome predicates. No ICMPv6-specific detector or IPv6 transport checksum validation is introduced.
+
+Detectors do not inspect raw IPv6 payloads, scan ahead, repeat extension validation, create flow state, or reassemble or correlate fragments. Exact captured and original byte measurements remain unnormalized. No extension-header, Flow Label, or fragmentation metrics are added. Detection remains explicitly invoked through the existing APIs and orchestration, preserving ordering, errors, evidence, interpretations, and finding schemas. Parity does not imply full IPv6 attack coverage, reassembly coverage, correlation, alerting, or incident response.
+
 ## Immutable detector findings
 
 [detection_finding.py](detection_finding.py) exports `DetectionFinding`, `DetectionFindingError`, and `detection_finding_from_evaluation(evaluation) -> DetectionFinding`. The conversion accepts exactly a current packet-integrity, flow-volume threshold, or TCP-control threshold evaluation. It does not define a common detector input or execute a detector.
@@ -32,7 +44,7 @@ The evaluator accepts exactly one immutable `PacketAnalysisOutcome` and one exac
 
 The fixed predicate maps successful analysis to `NO_MATCH`; `STRUCTURAL_FAILURE` and `INTEGRITY_FAILURE` to `MATCH`; and `INCOMPLETE` and `UNSUPPORTED` to `NOT_EVALUABLE`. An unsupported or insufficient observation is not treated as a violation. IPv4 UDP checksum omission remains the existing successful analysis outcome and therefore produces `NO_MATCH`; no checksum is recomputed or reinterpreted by detection.
 
-Raw evidence retains the exact outcome and exact configuration. Read-only properties expose the exact observation and successful analysis when present, capture timestamp, capture source, link type, captured and original lengths, existing failure classification and unchanged description, detector identity and version, derived decision, and the IPv4 protocol number only when available from a successful retained analysis. The detector does not parse raw bytes to recover missing protocol context.
+Raw evidence retains the exact outcome and exact configuration. Read-only properties expose the exact observation and successful analysis when present, capture timestamp, capture source, link type, captured and original lengths, existing failure classification and unchanged description, detector identity and version, derived decision, and the IPv4 protocol number or the retained IPv6 extension chain's terminal Next Header when available from a successful analysis. Missing analysis or terminal context yields `None`; the IPv6 base Next Header is not substituted for a missing chain. The detector does not parse raw bytes to recover missing protocol context.
 
 Security interpretation is a separate closed enum. It states only that no supported violation was observed, that a supported structural or integrity violation was observed, or that analysis was not evaluable. A match describes the current implemented analysis predicate and does not establish maliciousness, an attack, exploit, scan, flood, intent, endpoint role, protocol-stack compromise, or RFC-wide noncompliance.
 
@@ -42,7 +54,7 @@ Evaluation is synchronous, packet-local, deterministic, stateless, immutable, an
 
 [flow_volume_threshold.py](flow_volume_threshold.py) exports `FlowVolumeThresholdConfiguration`, `FlowVolumeMetric`, `FlowVolumeThresholdDecision`, `FlowVolumeThresholdComparison`, `FlowVolumeThresholdEvidence`, `FlowVolumeThresholdInterpretation`, `FlowVolumeThresholdEvaluation`, `FlowVolumeThresholdError`, and `evaluate_flow_volume_threshold(snapshot, configuration) -> FlowVolumeThresholdEvaluation`.
 
-The evaluator requires an exact `FlowFeatureSnapshot` whose retained observation window is closed by `INACTIVITY`, `CAPTURE_SESSION_END`, or `EXPLICIT_SEGMENTATION`. It supports the current IPv4 TCP and IPv4 UDP flow-identity boundary. Active snapshots, subclasses, unrelated inputs, and unsupported protocols are rejected. Feature extraction, lifecycle closure, packet admission, and application orchestration remain separate operations.
+The evaluator requires an exact `FlowFeatureSnapshot` whose retained observation window is closed by `INACTIVITY`, `CAPTURE_SESSION_END`, or `EXPLICIT_SEGMENTATION`. It supports the common IPv4/IPv6 TCP and UDP flow-identity boundary. Active snapshots, subclasses, unrelated inputs, and unsupported protocols are rejected. Feature extraction, lifecycle closure, packet admission, and application orchestration remain separate operations.
 
 The closed metric enumeration contains exactly:
 
@@ -77,7 +89,7 @@ The detector evaluates the finalized analytical state it receives. A difference 
 
 [tcp_control_threshold.py](tcp_control_threshold.py) exports `TCPControlThresholdConfiguration`, `TCPControlMetric`, `TCPControlThresholdDecision`, `TCPControlThresholdComparison`, `TCPControlThresholdEvidence`, `TCPControlThresholdInterpretation`, `TCPControlThresholdEvaluation`, `TCPControlThresholdError`, and `evaluate_tcp_control_threshold(window, configuration) -> TCPControlThresholdEvaluation`.
 
-The evaluator requires one exact closed `FlowObservationWindow` for IPv4 TCP protocol 6. It reads the existing exact `TCPControlStatistics` from the window's coordinated state. Active windows, UDP, unsupported protocols, subclasses, unrelated objects, and malformed configurations are rejected. The detector neither accepts a redundant statistics argument nor performs feature extraction, packet decoding, checksum validation, flag accounting, lifecycle mutation, or application orchestration.
+The evaluator requires one exact closed `FlowObservationWindow` for IPv4 or IPv6 TCP protocol 6. It reads the existing exact `TCPControlStatistics` from the window's coordinated state. Active windows, UDP, unsupported protocols, subclasses, unrelated objects, and malformed configurations are rejected. The detector neither accepts a redundant statistics argument nor performs feature extraction, packet decoding, checksum validation, flag accounting, lifecycle mutation, or application orchestration.
 
 The closed metric enumeration contains exactly the forward and reverse NS, CWR, ECE, URG, ACK, PSH, RST, SYN, FIN, and SYN+ACK counters already accumulated by analysis. SYN+ACK remains an independent joint same-packet observation; it is not reconstructed from SYN and ACK marginals. Packet counts, duration, rates, packet sizes, inter-arrival statistics, ratios, and other flag combinations are not selectable metrics.
 
@@ -91,4 +103,4 @@ Security interpretation is a separate typed field and states only whether the co
 
 Each evaluation covers one finalized observation window closed by inactivity, capture-session end, or explicit segmentation. Counts reset through the existing new-window coordinator boundary and never span windows. TCP flags do not create, close, or segment windows. Because analysis retains aggregate counters rather than packet or flag-transition order, distinct packet orders with the same counters are intentionally indistinguishable to this detector.
 
-Evaluation is synchronous, deterministic, stateless, immutable, and constant-memory. It retains no packet history, window history, cross-flow or host state, cache, queue, timer, thread, filesystem resource, or network resource. It introduces no derived TCP numerical feature family, state machine, normalization, vectorization, persistence, machine learning, severity, confidence, score, finding identifier, correlation, alert state, or response action. Detector integration into application orchestration remains unimplemented.
+Evaluation is synchronous, deterministic, stateless, immutable, and constant-memory. It retains no packet history, window history, cross-flow or host state, cache, queue, timer, thread, filesystem resource, or network resource. It introduces no derived TCP numerical feature family, state machine, normalization, vectorization, persistence, machine learning, severity, confidence, score, finding identifier, correlation, alert state, or response action. Automatic detector execution within capture sessions remains unimplemented.
