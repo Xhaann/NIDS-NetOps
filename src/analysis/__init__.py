@@ -18,7 +18,12 @@ from analysis.flow_direction import FlowDirection, FlowDirectionError, flow_dire
 from analysis.flow_duration_features import FlowDurationFeatures, FlowDurationFeaturesError, extract_flow_duration_features
 from analysis.flow_feature_input import FlowFeatureInput, FlowFeatureInputError, flow_feature_input_from_statistics
 from analysis.flow_feature_snapshot import FlowFeatureSnapshot, FlowFeatureSnapshotError, extract_flow_feature_snapshot
-from analysis.flow_identity import FlowIdentity, FlowIdentityError, flow_identity_from_packet
+from analysis.flow_identity import (
+    FlowIdentity,
+    FlowIdentityError,
+    flow_identity_from_addresses,
+    flow_identity_from_packet,
+)
 from analysis.flow_inter_arrival_statistics import (
     FlowInterArrivalStatistics,
     FlowInterArrivalStatisticsError,
@@ -147,6 +152,7 @@ __all__ = [
     "extract_flow_rate_features",
     "extract_packet_size_features",
     "extract_inter_arrival_features",
+    "flow_identity_from_addresses",
     "flow_identity_from_packet",
     "flow_direction_from_packet",
     "flow_feature_input_from_statistics",

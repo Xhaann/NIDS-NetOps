@@ -78,6 +78,14 @@ Raw evidence retains the exact outcome and configuration and projects packet pro
 
 The detector is packet-local, synchronous, deterministic, stateless, and constant-memory. It performs no packet decoding, checksum validation, flow processing, history retention, network or filesystem access, orchestration, correlation, alerting, or response behavior.
 
+## Canonical IPv4 and IPv6 flow identity
+
+The [flow identity](../src/analysis/flow_identity.py) retains the established frozen five-field value and canonical ordering of complete `(address, port)` endpoints. Packed addresses have matching lengths of four bytes for IPv4 or sixteen bytes for IPv6; mixed families are invalid. The derived `ip_version` property exposes network family independently of transport protocol, which remains restricted to TCP (6) and UDP (17). Existing IPv4 byte references, endpoint ordering, equality, hashing, and direction comparisons are preserved.
+
+The exported `flow_identity_from_addresses()` converts validated text using standard-library `ipaddress` and delegates to the same packed identity constructor. Equivalent IPv6 compression and case variants normalize to equal values. IPv4-mapped IPv6 remains a distinct IPv6 identity. Scoped IPv6 text is rejected because the existing identity owns no zone or interface context; it is never silently stripped. No timestamps, metadata, security fields, or redundant family field are added.
+
+The existing immutable analytical value models can hold manually constructed IPv6 identities and numerical statistics without redesigning windows or feature snapshots. This is a data-model foundation only: packet analysis, packet-derived identity, direction, and accumulation retain their IPv4 input boundary. Volume and TCP-control detectors now explicitly check IPv4 family, preserving the applicability previously guaranteed by four-byte-only identities. No IPv6 parsing, packet admission, extension processing, fragmentation, ICMPv6, or detection is introduced.
+
 ## Coordinated flow-state ownership
 
 The analysis [flow-state coordinator](../src/analysis/flow_state_coordinator.py) owns synchronous admission for a single flow. It constructs candidates through the five immutable protocol-neutral global volume, directional volume, packet-size, global inter-arrival, and directional inter-arrival accumulators and, for TCP, the TCP control accumulator. A packet is admitted only when all applicable candidates succeed; one replacement publishes the complete immutable state. Failures propagate without replacing any published component. Calls must be sequential and non-overlapping; no concurrency or durability guarantee is introduced.

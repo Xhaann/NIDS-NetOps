@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from ipaddress import ip_address
 
 from analysis.packet_analysis import PacketAnalysis
 
@@ -22,8 +23,10 @@ class FlowIdentity:
         ):
             if not isinstance(address, bytes):
                 raise TypeError(f"{name} must be immutable bytes")
-            if len(address) != 4:
-                raise ValueError(f"{name} must contain exactly 4 bytes")
+            if len(address) not in (4, 16):
+                raise ValueError(f"{name} must contain exactly 4 or 16 bytes")
+        if len(self.source_address) != len(self.destination_address):
+            raise ValueError("source and destination addresses must use the same IP version")
         for name, value in (
             ("source_port", self.source_port),
             ("destination_port", self.destination_port),
@@ -44,6 +47,35 @@ class FlowIdentity:
             object.__setattr__(self, "source_port", destination[1])
             object.__setattr__(self, "destination_address", source[0])
             object.__setattr__(self, "destination_port", source[1])
+
+    @property
+    def ip_version(self) -> int:
+        return 4 if len(self.source_address) == 4 else 6
+
+
+def _packed_ip_address(address: str) -> bytes:
+    if type(address) is not str:
+        raise TypeError("address must be exactly a string")
+    parsed = ip_address(address)
+    if parsed.version == 6 and parsed.scope_id is not None:
+        raise ValueError("scoped IPv6 addresses are not supported by flow identity")
+    return parsed.packed
+
+
+def flow_identity_from_addresses(
+    source_address: str,
+    destination_address: str,
+    source_port: int,
+    destination_port: int,
+    protocol: int,
+) -> FlowIdentity:
+    return FlowIdentity(
+        source_address=_packed_ip_address(source_address),
+        destination_address=_packed_ip_address(destination_address),
+        source_port=source_port,
+        destination_port=destination_port,
+        protocol=protocol,
+    )
 
 
 def flow_identity_from_packet(analysis: PacketAnalysis) -> FlowIdentity:

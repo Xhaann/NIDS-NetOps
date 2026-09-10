@@ -219,9 +219,9 @@ class FlowIdentityTests(unittest.TestCase):
                     FlowIdentity(first, first, 0, 65535, protocol),
                 )
 
-    def test_addresses_require_exactly_four_immutable_bytes(self) -> None:
+    def test_invalid_packed_addresses_and_mutable_containers_are_rejected(self) -> None:
         for name in ("source_address", "destination_address"):
-            for value in (b"", bytes(3), bytes(5)):
+            for value in (b"", bytes(3), bytes(5), bytes(15), bytes(17)):
                 with self.subTest(field=name, value=value):
                     with self.assertRaises(ValueError):
                         replace(self.identity, **{name: value})

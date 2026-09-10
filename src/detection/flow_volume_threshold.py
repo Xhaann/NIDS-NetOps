@@ -95,7 +95,7 @@ def _validate_snapshot(snapshot: FlowFeatureSnapshot) -> None:
         raise TypeError("snapshot must be exactly a FlowFeatureSnapshot")
     if snapshot.observation_window.closure_reason is None:
         raise FlowVolumeThresholdError("snapshot observation window must be closed")
-    if snapshot.identity.protocol not in (6, 17):
+    if snapshot.identity.protocol not in (6, 17) or snapshot.identity.ip_version != 4:
         raise FlowVolumeThresholdError("snapshot must represent IPv4 TCP or UDP")
 
 
