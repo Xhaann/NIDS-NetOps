@@ -78,32 +78,56 @@ def flow_identity_from_addresses(
     )
 
 
-def flow_identity_from_packet(analysis: PacketAnalysis) -> FlowIdentity:
+def _flow_packet_endpoints(analysis: PacketAnalysis) -> tuple[bytes, bytes, int, int, int]:
     if not isinstance(analysis, PacketAnalysis):
         raise TypeError("analysis must be a PacketAnalysis")
-    ipv4 = analysis.ipv4
-    if ipv4 is None:
-        raise FlowIdentityError("Flow identity requires a decoded IPv4Packet")
-    if ipv4.protocol == 6:
-        if analysis.tcp is None:
-            raise FlowIdentityError("TCP flow identity requires a decoded TCPPacket")
-        if analysis.udp is not None or analysis.icmp is not None:
-            raise FlowIdentityError("TCP flow identity requires only the TCP transport model")
-        source_port = analysis.tcp.source_port
-        destination_port = analysis.tcp.destination_port
-    elif ipv4.protocol == 17:
-        if analysis.udp is None:
-            raise FlowIdentityError("UDP flow identity requires a decoded UDPPacket")
-        if analysis.tcp is not None or analysis.icmp is not None:
-            raise FlowIdentityError("UDP flow identity requires only the UDP transport model")
-        source_port = analysis.udp.source_port
-        destination_port = analysis.udp.destination_port
+    network = analysis.ipv4
+    tcp = analysis.tcp
+    udp = analysis.udp
+    icmp = analysis.icmp
+    if analysis.ipv6 is not None:
+        if any(value is not None for value in (
+            network, tcp, udp, icmp, analysis.ipv4_checksum_valid,
+            analysis.tcp_checksum_valid, analysis.udp_checksum_valid, analysis.icmp_checksum_valid,
+        )):
+            raise FlowIdentityError("IPv6 flow identity cannot include IPv4 results")
+        network = analysis.ipv6
+        chain = analysis.ipv6_extension_headers
+        if chain is None or chain.packet is not network:
+            raise FlowIdentityError("IPv6 flow identity requires the exact IPv6 extension-header context")
+        fragmentation = analysis.ipv6_fragmentation
+        if fragmentation is not None:
+            if fragmentation.extension_headers is not chain:
+                raise FlowIdentityError("IPv6 flow identity requires the exact fragmentation context")
+            if any(header.is_non_first_fragment for header in fragmentation.headers):
+                raise FlowIdentityError("IPv6 flow identity requires an initial fragment")
+        protocol = chain.terminating_next_header
+        tcp = analysis.ipv6_tcp
+        udp = analysis.ipv6_udp
+        icmp = analysis.ipv6_icmpv6
     else:
-        raise FlowIdentityError("Flow identity supports only IPv4 TCP (6) and UDP (17)")
-    return FlowIdentity(
-        source_address=ipv4.source_address,
-        destination_address=ipv4.destination_address,
-        source_port=source_port,
-        destination_port=destination_port,
-        protocol=ipv4.protocol,
+        if network is None:
+            raise FlowIdentityError("Flow identity requires a decoded IPv4Packet")
+        protocol = network.protocol
+    if protocol == 6:
+        if tcp is None:
+            raise FlowIdentityError("TCP flow identity requires a decoded TCPPacket")
+        if udp is not None or icmp is not None:
+            raise FlowIdentityError("TCP flow identity requires only the TCP transport model")
+        transport = tcp
+    elif protocol == 17:
+        if udp is None:
+            raise FlowIdentityError("UDP flow identity requires a decoded UDPPacket")
+        if tcp is not None or icmp is not None:
+            raise FlowIdentityError("UDP flow identity requires only the UDP transport model")
+        transport = udp
+    else:
+        raise FlowIdentityError(f"Flow identity supports only IPv{network.version} TCP (6) and UDP (17)")
+    return (
+        network.source_address, network.destination_address,
+        transport.source_port, transport.destination_port, protocol,
     )
+
+
+def flow_identity_from_packet(analysis: PacketAnalysis) -> FlowIdentity:
+    return FlowIdentity(*_flow_packet_endpoints(analysis))

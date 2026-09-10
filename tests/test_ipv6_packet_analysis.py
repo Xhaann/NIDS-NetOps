@@ -236,8 +236,9 @@ class IPv6PacketAnalysisTests(unittest.TestCase):
                 with self.assertRaises(FrozenInstanceError):
                     delattr(model, field.name)
 
-    def test_ipv6_packet_does_not_enter_existing_ipv4_flow_lifecycle(self) -> None:
+    def test_ipv6_packet_without_transport_does_not_enter_flow_lifecycle(self) -> None:
         result = analyze_packet(ipv6_observation(ipv6_header(next_header=6, payload_length=len(TCP_BYTES)) + TCP_BYTES))
+        result = replace(result, ipv6_tcp=None)
         manager = FlowObservationWindowManager("ipv6-base", timedelta(seconds=5))
         with self.assertRaises(FlowIdentityError):
             flow_identity_from_packet(result)

@@ -475,9 +475,10 @@ class IPv6TransportContractTests(unittest.TestCase):
             if not more:
                 self.assertEqual(result.ipv6_icmpv6.offset, 48)
 
-    def test_flow_admission_remains_unsupported(self):
+    def test_flow_admission_without_transport_remains_unsupported(self):
         for protocol, _, raw, _, _ in PROTOCOLS:
             result = analyze_packet(observation_for(protocol, raw))
+            result = replace(result, ipv6_tcp=None, ipv6_udp=None)
             tracker = FlowTracker()
             manager = FlowObservationWindowManager("ipv6-transport", timedelta(seconds=5))
             for action in (flow_identity_from_packet, tracker.record, manager.record):

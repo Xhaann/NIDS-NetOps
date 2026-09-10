@@ -94,9 +94,10 @@ def update_tcp_control_statistics(
     if derived_identity != identity:
         raise TCPControlStatisticsError("identity must match the analysis")
     direction = flow_direction_from_packet(analysis, identity)
-    tcp = analysis.tcp
+    tcp_field = "tcp" if identity.ip_version == 4 else "ipv6_tcp"
+    tcp = getattr(analysis, tcp_field)
     if type(tcp) is not TCPPacket:
-        raise TypeError("analysis.tcp must be exactly a TCPPacket")
+        raise TypeError(f"analysis.{tcp_field} must be exactly a TCPPacket")
     if current is not None and current.identity != identity:
         raise TCPControlStatisticsError("current identity must match the supplied identity")
     forward = direction is FlowDirection.FORWARD
