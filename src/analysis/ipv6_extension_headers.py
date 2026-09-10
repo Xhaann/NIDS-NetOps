@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Optional
 
-from analysis.ipv6 import IPv6Packet
+from analysis.ipv6 import IPv6DecodeError, IPv6Packet
 
 
 @dataclass(frozen=True)
@@ -48,3 +48,39 @@ class IPv6ExtensionHeaderChain:
         for header in self.headers:
             if type(header) is not IPv6ExtensionHeader:
                 raise TypeError("headers members must be exactly IPv6ExtensionHeader values")
+
+    @property
+    def terminating_next_header(self) -> Optional[int]:
+        if self.headers:
+            return self.headers[-1].next_header
+        return self.packet.next_header
+
+
+def validate_ipv6_extension_headers(packet: IPv6Packet) -> IPv6ExtensionHeaderChain:
+    if type(packet) is not IPv6Packet:
+        raise TypeError("packet must be exactly an IPv6Packet")
+    headers = []
+    payload_offset = 0
+    header_type = packet.next_header
+    while header_type in (0, 43, 44, 60):
+        prefix_length = 1 if header_type == 44 else 2
+        if packet.payload_length - payload_offset < prefix_length:
+            raise IPv6DecodeError("IPv6 extension header prefix exceeds available IPv6 payload")
+        if header_type == 44:
+            length = 8
+        else:
+            length = (packet.payload[payload_offset + 1] + 1) * 8
+        end = payload_offset + length
+        if end > packet.payload_length:
+            raise IPv6DecodeError("IPv6 extension header length exceeds available IPv6 payload")
+        next_header = packet.payload[payload_offset]
+        headers.append(IPv6ExtensionHeader(
+            header_type=header_type,
+            offset=packet.header_length + payload_offset,
+            declared_length=length,
+            raw_bytes=packet.payload[payload_offset:end],
+            next_header=next_header,
+        ))
+        payload_offset = end
+        header_type = next_header
+    return IPv6ExtensionHeaderChain(packet, tuple(headers))

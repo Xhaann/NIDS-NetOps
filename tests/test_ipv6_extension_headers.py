@@ -4,15 +4,15 @@ from unittest.mock import patch
 
 import analysis
 from analysis import (
+    IPv6DecodeError,
     IPv6ExtensionHeader,
     IPv6ExtensionHeaderChain,
     IPv6Packet,
-    analyze_packet,
     decode_ipv6,
+    validate_ipv6_extension_headers,
 )
 from analysis import ipv6_extension_headers
 from tests.test_ipv6 import ipv6_frame, ipv6_header
-from tests.test_ipv6_packet_analysis import ipv6_observation
 
 
 def represented_packet():
@@ -229,13 +229,11 @@ class IPv6ExtensionHeaderChainTests(unittest.TestCase):
         self.assertNotEqual(first, reversed_chain)
         self.assertNotEqual(first, IPv6ExtensionHeaderChain(replace(self.packet, next_header=60), self.headers))
 
-    def test_decoder_and_packet_analysis_do_not_construct_representation(self) -> None:
+    def test_base_header_decoder_does_not_construct_representation(self) -> None:
         raw_bytes = ipv6_header(next_header=0, payload_length=1) + b"\xff"
         with patch.object(ipv6_extension_headers, "IPv6ExtensionHeader", side_effect=AssertionError("entry constructed")):
             with patch.object(ipv6_extension_headers, "IPv6ExtensionHeaderChain", side_effect=AssertionError("chain constructed")):
                 packet = decode_ipv6(ipv6_frame(raw_bytes))
-                result = analyze_packet(ipv6_observation(raw_bytes))
-        self.assertEqual(result.ipv6, packet)
         self.assertEqual(packet.next_header, 0)
         self.assertEqual(packet.payload, b"\xff")
         self.assertEqual(tuple(field.name for field in fields(packet)), (
@@ -244,9 +242,223 @@ class IPv6ExtensionHeaderChainTests(unittest.TestCase):
         ))
 
     def test_public_exports_resolve(self) -> None:
-        for name in ("IPv6ExtensionHeader", "IPv6ExtensionHeaderChain"):
+        for name in ("IPv6ExtensionHeader", "IPv6ExtensionHeaderChain", "validate_ipv6_extension_headers"):
             self.assertIn(name, analysis.__all__)
             self.assertIs(getattr(analysis, name), getattr(ipv6_extension_headers, name))
+
+
+class IPv6ExtensionHeaderValidationTests(unittest.TestCase):
+    def test_all_unsupported_base_next_headers_terminate_without_reading_payload(self) -> None:
+        for next_header in range(256):
+            if next_header in (0, 43, 44, 60):
+                continue
+            for payload in (b"", b"\x00\xff", bytes.fromhex("3b00010203040506")):
+                with self.subTest(next_header=next_header, payload=payload):
+                    packet = decode_ipv6(ipv6_frame(ipv6_header(
+                        next_header=next_header, payload_length=len(payload),
+                    ) + payload))
+                    chain = validate_ipv6_extension_headers(packet)
+                    self.assertIs(chain.packet, packet)
+                    self.assertEqual(chain.headers, ())
+                    self.assertEqual(chain.terminating_next_header, next_header)
+
+    def test_variable_headers_preserve_independently_declared_lengths_and_bytes(self) -> None:
+        for header_type in (0, 43, 60):
+            for encoded_length, expected_length in ((0, 8), (1, 16), (2, 24), (127, 1024), (255, 2048)):
+                with self.subTest(header_type=header_type, encoded_length=encoded_length):
+                    raw_header = bytes((6, encoded_length)) + b"\xa5" * (expected_length - 2)
+                    packet = decode_ipv6(ipv6_frame(ipv6_header(
+                        next_header=header_type, payload_length=expected_length,
+                    ) + raw_header))
+                    chain = validate_ipv6_extension_headers(packet)
+                    self.assertIs(chain.packet, packet)
+                    self.assertEqual(chain.headers, (
+                        IPv6ExtensionHeader(header_type, 40, expected_length, raw_header, 6),
+                    ))
+                    self.assertEqual(chain.terminating_next_header, 6)
+                    self.assertEqual(chain.headers[0].offset + chain.headers[0].declared_length, 40 + expected_length)
+
+    def test_fragment_preserves_exactly_eight_bytes_with_opaque_remainder(self) -> None:
+        for opaque_bytes in (bytes(7), b"\xff" * 7, bytes.fromhex("80010203040506")):
+            with self.subTest(opaque_bytes=opaque_bytes):
+                raw_header = b"\x06" + opaque_bytes
+                payload = raw_header + b"\x00\xff"
+                packet = decode_ipv6(ipv6_frame(ipv6_header(
+                    next_header=44, payload_length=10,
+                ) + payload))
+                chain = validate_ipv6_extension_headers(packet)
+                self.assertEqual(chain.headers, (IPv6ExtensionHeader(44, 40, 8, raw_header, 6),))
+                self.assertEqual(chain.terminating_next_header, 6)
+                self.assertEqual(packet.payload, payload)
+
+    def test_mixed_lengths_and_next_header_links_define_exact_packet_offsets(self) -> None:
+        hop_by_hop = bytes.fromhex("2b01000102030405060708090a0b0c0d")
+        routing = bytes.fromhex("2c02000102030405060708090a0b0c0d0e0f101112131415")
+        fragment = bytes.fromhex("3cffeeddccbbaa99")
+        destination = bytes.fromhex("0600010203040506")
+        payload = hop_by_hop + routing + fragment + destination + b"\x00\xff"
+        packet = decode_ipv6(ipv6_frame(ipv6_header(next_header=0, payload_length=58) + payload))
+        chain = validate_ipv6_extension_headers(packet)
+        self.assertEqual(chain.headers, (
+            IPv6ExtensionHeader(0, 40, 16, hop_by_hop, 43),
+            IPv6ExtensionHeader(43, 56, 24, routing, 44),
+            IPv6ExtensionHeader(44, 80, 8, fragment, 60),
+            IPv6ExtensionHeader(60, 88, 8, destination, 6),
+        ))
+        self.assertIs(chain.packet, packet)
+        self.assertEqual(chain.terminating_next_header, 6)
+        self.assertEqual(packet.next_header, 0)
+
+    def test_every_short_prefix_and_fragment_is_rejected(self) -> None:
+        for header_type in (0, 43, 44, 60):
+            for available in range(8):
+                with self.subTest(header_type=header_type, available=available):
+                    payload = bytes.fromhex("3b00010203040506")[:available]
+                    packet = decode_ipv6(ipv6_frame(ipv6_header(
+                        next_header=header_type, payload_length=available,
+                    ) + payload))
+                    with self.assertRaises(IPv6DecodeError):
+                        validate_ipv6_extension_headers(packet)
+
+    def test_variable_declared_extent_must_be_available_in_full(self) -> None:
+        for header_type in (0, 43, 60):
+            for encoded_length, expected_length in ((1, 16), (2, 24), (255, 2048)):
+                for available in (2, 8, expected_length - 1):
+                    with self.subTest(header_type=header_type, encoded_length=encoded_length, available=available):
+                        payload = bytes((59, encoded_length)) + bytes(available - 2)
+                        packet = decode_ipv6(ipv6_frame(ipv6_header(
+                            next_header=header_type, payload_length=available,
+                        ) + payload))
+                        with self.assertRaisesRegex(IPv6DecodeError, "length exceeds available IPv6 payload"):
+                            validate_ipv6_extension_headers(packet)
+
+    def test_ethernet_trailing_bytes_cannot_supply_prefix_or_declared_extent(self) -> None:
+        for header_type in (0, 43, 44, 60):
+            raw_header = bytes.fromhex("3b00010203040506") if header_type == 44 else b"\x3b\x01" + bytes(14)
+            for declared_payload_length in (0, 1, 7, len(raw_header) - 1):
+                with self.subTest(header_type=header_type, declared_payload_length=declared_payload_length):
+                    frame = ipv6_frame(ipv6_header(
+                        next_header=header_type, payload_length=declared_payload_length,
+                    ) + raw_header)
+                    packet = decode_ipv6(frame)
+                    self.assertEqual(len(packet.payload), declared_payload_length)
+                    self.assertEqual(packet.payload, raw_header[:declared_payload_length])
+                    with self.assertRaises(IPv6DecodeError):
+                        validate_ipv6_extension_headers(packet)
+                    self.assertEqual(frame.payload[40:], raw_header)
+
+    def test_each_header_can_end_exactly_at_payload_boundary(self) -> None:
+        raw_header = bytes.fromhex("3b00010203040506")
+        for header_type in (0, 43, 44, 60):
+            with self.subTest(header_type=header_type):
+                packet = decode_ipv6(ipv6_frame(ipv6_header(
+                    next_header=header_type, payload_length=8,
+                ) + raw_header + b"\x00\xff"))
+                chain = validate_ipv6_extension_headers(packet)
+                self.assertEqual(chain.headers, (IPv6ExtensionHeader(header_type, 40, 8, raw_header, 59),))
+                self.assertEqual(chain.terminating_next_header, 59)
+
+    def test_every_unsupported_extension_next_header_terminates_before_trailing_bytes(self) -> None:
+        for next_header in range(256):
+            if next_header in (0, 43, 44, 60):
+                continue
+            with self.subTest(next_header=next_header):
+                raw_header = bytes((next_header, 0)) + bytes(6)
+                payload = raw_header + bytes.fromhex("0000010203040506") + b"\x00\xff"
+                packet = decode_ipv6(ipv6_frame(ipv6_header(next_header=60, payload_length=18) + payload))
+                chain = validate_ipv6_extension_headers(packet)
+                self.assertEqual(chain.headers, (IPv6ExtensionHeader(60, 40, 8, raw_header, next_header),))
+                self.assertEqual(chain.terminating_next_header, next_header)
+                self.assertEqual(packet.payload, payload)
+
+    def test_header_contents_are_not_scanned_for_embedded_headers(self) -> None:
+        payload = bytes.fromhex("3c0100000000000000ff0000000000003b00010203040506")
+        packet = decode_ipv6(ipv6_frame(ipv6_header(next_header=0, payload_length=24) + payload))
+        chain = validate_ipv6_extension_headers(packet)
+        self.assertEqual(chain.headers, (
+            IPv6ExtensionHeader(0, 40, 16, payload[:16], 60),
+            IPv6ExtensionHeader(60, 56, 8, payload[16:], 59),
+        ))
+
+    def test_truncated_first_header_is_not_skipped_for_later_header_bytes(self) -> None:
+        payload = bytes.fromhex("3cff0000000000003b00010203040506")
+        packet = decode_ipv6(ipv6_frame(ipv6_header(next_header=0, payload_length=16) + payload))
+        with self.assertRaises(IPv6DecodeError):
+            validate_ipv6_extension_headers(packet)
+
+    def test_repeated_headers_keep_observed_order_without_restriction_or_deduplication(self) -> None:
+        header_types = (60, 0, 43, 43, 44, 44, 60, 0)
+        next_headers = (0, 43, 43, 44, 44, 60, 0, 59)
+        raw_headers = tuple(bytes((next_header, 0)) + bytes((index,)) * 6 for index, next_header in enumerate(next_headers))
+        packet = decode_ipv6(ipv6_frame(ipv6_header(next_header=60, payload_length=64) + b"".join(raw_headers)))
+        chain = validate_ipv6_extension_headers(packet)
+        self.assertEqual(tuple(header.header_type for header in chain.headers), header_types)
+        self.assertEqual(tuple(header.next_header for header in chain.headers), next_headers)
+        self.assertEqual(tuple(header.offset for header in chain.headers), (40, 48, 56, 64, 72, 80, 88, 96))
+        self.assertEqual(tuple(header.raw_bytes for header in chain.headers), raw_headers)
+        self.assertEqual(chain.terminating_next_header, 59)
+
+    def test_maximum_payload_bounds_traversal_even_when_header_type_repeats(self) -> None:
+        repeated = bytes.fromhex("0000010203040506")
+        last = bytes.fromhex("3b00010203040506")
+        payload = repeated * 8190 + last + bytes(7)
+        packet = decode_ipv6(ipv6_frame(ipv6_header(next_header=0, payload_length=65535) + payload))
+        chain = validate_ipv6_extension_headers(packet)
+        self.assertEqual(len(chain.headers), 8191)
+        self.assertEqual(tuple(header.offset for header in chain.headers), tuple(range(40, 65568, 8)))
+        self.assertEqual(chain.headers[-1], IPv6ExtensionHeader(0, 65560, 8, last, 59))
+        self.assertEqual(chain.terminating_next_header, 59)
+        unterminated = replace(packet, payload=repeated * 8191 + bytes(7))
+        with self.assertRaises(IPv6DecodeError):
+            validate_ipv6_extension_headers(unterminated)
+
+    def test_failed_later_header_never_constructs_or_returns_a_partial_chain(self) -> None:
+        for header_type in (0, 43, 44, 60):
+            for suffix in (b"", b"\x3b", b"\x3b\x00" + bytes(5)):
+                with self.subTest(header_type=header_type, suffix=suffix):
+                    payload = bytes((header_type, 0)) + bytes(6) + suffix
+                    packet = decode_ipv6(ipv6_frame(ipv6_header(next_header=0, payload_length=len(payload)) + payload))
+                    before = replace(packet)
+                    with patch.object(ipv6_extension_headers, "IPv6ExtensionHeaderChain") as constructor:
+                        with self.assertRaises(IPv6DecodeError):
+                            validate_ipv6_extension_headers(packet)
+                    constructor.assert_not_called()
+                    self.assertEqual(packet, before)
+                    self.assertIs(packet.payload, before.payload)
+
+    def test_validation_is_deterministic_and_preserves_exact_packet_context(self) -> None:
+        payload = bytes.fromhex("2b000102030405063b000708090a0b0c")
+        packet = decode_ipv6(ipv6_frame(ipv6_header(
+            next_header=0, payload_length=16, traffic_class=171, flow_label=74565, hop_limit=0,
+        ) + payload))
+        before = replace(packet)
+        first = validate_ipv6_extension_headers(packet)
+        validate_ipv6_extension_headers(decode_ipv6(ipv6_frame(ipv6_header())))
+        second = validate_ipv6_extension_headers(packet)
+        self.assertEqual(first, second)
+        self.assertEqual(hash(first), hash(second))
+        self.assertIs(first.packet, packet)
+        self.assertIs(second.packet, packet)
+        self.assertEqual(packet, before)
+        self.assertIs(packet.payload, before.payload)
+        self.assertIs(first.packet.source_address, before.source_address)
+        self.assertIs(first.packet.destination_address, before.destination_address)
+
+    def test_validator_requires_exact_ipv6_packet(self) -> None:
+        class PacketSubclass(IPv6Packet):
+            pass
+
+        packet = represented_packet()
+        for value in (None, b"", object(), ipv6_frame(ipv6_header()), PacketSubclass(**vars(packet))):
+            with self.subTest(value=type(value)):
+                with self.assertRaises(TypeError):
+                    validate_ipv6_extension_headers(value)
+
+    def test_derived_termination_does_not_certify_manually_supplied_metadata(self) -> None:
+        packet = represented_packet()
+        self.assertEqual(IPv6ExtensionHeaderChain(packet, ()).terminating_next_header, 0)
+        header = IPv6ExtensionHeader(50, 40, None, b"\xff", None)
+        self.assertIsNone(IPv6ExtensionHeaderChain(packet, (header,)).terminating_next_header)
 
 
 if __name__ == "__main__":

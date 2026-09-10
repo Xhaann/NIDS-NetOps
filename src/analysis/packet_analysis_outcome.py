@@ -111,6 +111,8 @@ _IPV4_INCOMPLETE_MESSAGES = (
 _IPV6_INCOMPLETE_MESSAGES = (
     "IPv6 header is too short: expected at least 40 bytes",
     "IPv6 payload length exceeds available bytes",
+    "IPv6 extension header prefix exceeds available IPv6 payload",
+    "IPv6 extension header length exceeds available IPv6 payload",
 )
 
 _TCP_INCOMPLETE_MESSAGES = (

@@ -9,6 +9,7 @@ from analysis import (
     FlowIdentityError,
     FlowObservationWindowManager,
     IPv6DecodeError,
+    IPv6ExtensionHeader,
     IPv6Packet,
     PacketAnalysis,
     PacketAnalysisError,
@@ -62,20 +63,27 @@ class IPv6PacketAnalysisTests(unittest.TestCase):
         self.assertIs(result.observation, observation)
         self.assertIs(result.ethernet, ethernet)
         self.assertIs(result.ipv6, ipv6)
+        self.assertIs(result.ipv6_extension_headers.packet, ipv6)
+        self.assertEqual(result.ipv6_extension_headers.headers, ())
+        self.assertEqual(result.ipv6_extension_headers.terminating_next_header, 6)
         for name in ("ipv4", "tcp", "udp", "icmp", "ipv4_checksum_valid", "tcp_checksum_valid", "udp_checksum_valid", "icmp_checksum_valid"):
             self.assertIsNone(getattr(result, name))
 
     def test_raw_next_header_never_dispatches_transport_or_ipv4_decoding(self) -> None:
         for next_header in (0, 6, 17, 43, 44, 50, 51, 58, 59, 60, 135, 253, 254, 255):
             with self.subTest(next_header=next_header):
-                observation = ipv6_observation(ipv6_header(next_header=next_header, payload_length=1) + b"\xff")
+                payload = b"\xff\x00" + bytes(6) if next_header in (0, 43, 44, 60) else b"\xff"
+                observation = ipv6_observation(ipv6_header(next_header=next_header, payload_length=len(payload)) + payload)
                 with ExitStack() as stack:
                     for name in ("decode_ipv4", "decode_tcp", "decode_udp", "decode_icmp", "validate_ipv4_checksum", "validate_tcp_checksum", "validate_udp_checksum", "validate_icmp_checksum"):
                         stack.enter_context(patch.object(packet_analysis, name, side_effect=AssertionError(name)))
                     result = analyze_packet(observation)
                     outcome = analyze_packet_outcome(observation)
                 self.assertEqual(result.ipv6.next_header, next_header)
-                self.assertEqual(result.ipv6.payload, b"\xff")
+                self.assertEqual(result.ipv6.payload, payload)
+                expected_types = (next_header,) if next_header in (0, 43, 44, 60) else ()
+                self.assertEqual(tuple(header.header_type for header in result.ipv6_extension_headers.headers), expected_types)
+                self.assertEqual(result.ipv6_extension_headers.terminating_next_header, 255 if expected_types else next_header)
                 self.assertTrue(outcome.succeeded)
                 self.assertEqual(outcome.analysis, result)
 
@@ -182,6 +190,7 @@ class IPv6PacketAnalysisTests(unittest.TestCase):
     def test_ipv6_model_is_optional_and_preserves_existing_positional_arguments(self) -> None:
         original = analyze_packet(make_observation(6, TCP_BYTES))
         self.assertIsNone(original.ipv6)
+        self.assertIsNone(original.ipv6_extension_headers)
         positional = PacketAnalysis(
             original.observation, original.ethernet, original.ipv4, original.tcp,
             original.udp, original.icmp, original.ipv4_checksum_valid,
@@ -246,6 +255,147 @@ class IPv6PacketAnalysisTests(unittest.TestCase):
             evaluate_tcp_control_threshold(window, control)
         self.assertIs(snapshot.observation_window, window)
         self.assertIs(window.identity, identity)
+
+
+class IPv6ExtensionHeaderPacketAnalysisTests(unittest.TestCase):
+    def test_packet_analysis_and_outcome_retain_complete_chain_and_exact_context(self) -> None:
+        hop_by_hop = bytes.fromhex("2b01000102030405060708090a0b0c0d")
+        routing = bytes.fromhex("2c000708090a0b0c")
+        fragment = bytes.fromhex("3cffeeddccbbaa99")
+        destination = bytes.fromhex("0600010203040506")
+        payload = hop_by_hop + routing + fragment + destination + b"\x00\xff"
+        observation = ipv6_observation(ipv6_header(
+            next_header=0, payload_length=42, traffic_class=171, flow_label=74565, hop_limit=0,
+        ) + payload + b"excess Ethernet bytes")
+        before = replace(observation)
+        result = analyze_packet(observation)
+        outcome = analyze_packet_outcome(observation)
+        self.assertTrue(outcome.succeeded)
+        self.assertIsNone(outcome.failure_classification)
+        self.assertEqual(outcome.analysis, result)
+        self.assertEqual(analyze_packet(observation), result)
+        self.assertEqual(analyze_packet_outcome(observation), outcome)
+        self.assertEqual(observation, before)
+        self.assertIs(observation.raw_bytes, before.raw_bytes)
+        for value in (result, outcome.analysis):
+            chain = value.ipv6_extension_headers
+            self.assertIs(value.observation, observation)
+            self.assertIs(chain.packet, value.ipv6)
+            self.assertEqual(value.ipv6, decode_ipv6(decode_ethernet(observation)))
+            self.assertEqual(value.ipv6.payload, payload)
+            self.assertEqual(value.ethernet.payload[82:], b"excess Ethernet bytes")
+            self.assertEqual(chain.headers, (
+                IPv6ExtensionHeader(0, 40, 16, hop_by_hop, 43),
+                IPv6ExtensionHeader(43, 56, 8, routing, 44),
+                IPv6ExtensionHeader(44, 64, 8, fragment, 60),
+                IPv6ExtensionHeader(60, 72, 8, destination, 6),
+            ))
+            self.assertEqual(chain.terminating_next_header, 6)
+            for name in ("ipv4", "tcp", "udp", "icmp", "ipv4_checksum_valid", "tcp_checksum_valid", "udp_checksum_valid", "icmp_checksum_valid"):
+                self.assertIsNone(getattr(value, name))
+
+    def test_no_next_header_preserves_trailing_payload_without_reparsing(self) -> None:
+        for base_next_header, prefix in ((59, b""), (0, bytes.fromhex("3b00010203040506"))):
+            for trailing in (b"", b"\x00\xff", bytes.fromhex("0000010203040506")):
+                with self.subTest(base_next_header=base_next_header, trailing=trailing):
+                    payload = prefix + trailing
+                    observation = ipv6_observation(ipv6_header(
+                        next_header=base_next_header, payload_length=len(payload),
+                    ) + payload)
+                    outcome = analyze_packet_outcome(observation)
+                    self.assertTrue(outcome.succeeded)
+                    self.assertEqual(outcome.analysis.ipv6.payload, payload)
+                    chain = outcome.analysis.ipv6_extension_headers
+                    self.assertEqual(chain.terminating_next_header, 59)
+                    expected = (IPv6ExtensionHeader(0, 40, 8, prefix, 59),) if prefix else ()
+                    self.assertEqual(chain.headers, expected)
+
+    def test_all_unsupported_extension_next_headers_are_successful_termination(self) -> None:
+        for next_header in range(256):
+            if next_header in (0, 43, 44, 60):
+                continue
+            with self.subTest(next_header=next_header):
+                raw_header = bytes((next_header, 0)) + bytes(6)
+                observation = ipv6_observation(ipv6_header(next_header=43, payload_length=10) + raw_header + b"\x00\xff")
+                outcome = analyze_packet_outcome(observation)
+                self.assertTrue(outcome.succeeded)
+                self.assertEqual(outcome.analysis.ipv6_extension_headers.headers, (
+                    IPv6ExtensionHeader(43, 40, 8, raw_header, next_header),
+                ))
+                self.assertEqual(outcome.analysis.ipv6_extension_headers.terminating_next_header, next_header)
+
+    def test_chain_requires_the_exact_analysis_packet(self) -> None:
+        result = analyze_packet(ipv6_observation(ipv6_header()))
+        self.assertEqual(replace(result, ipv6_extension_headers=None).ipv6, result.ipv6)
+        for packet in (None, replace(result.ipv6), replace(result.ipv6, next_header=6)):
+            with self.subTest(packet=packet):
+                with self.assertRaisesRegex(PacketAnalysisError, "exact IPv6 packet"):
+                    replace(result, ipv6=packet)
+        for chain in ((), object(), result.ipv6):
+            with self.subTest(chain=type(chain)):
+                with self.assertRaises(TypeError):
+                    replace(result, ipv6_extension_headers=chain)
+
+
+class IPv6ExtensionHeaderOutcomeTests(unittest.TestCase):
+    def test_truncated_headers_are_incomplete_without_partial_analysis(self) -> None:
+        for header_type in (0, 43, 44, 60):
+            for available in range(8):
+                for prefix in (b"", bytes((header_type, 0)) + bytes(6)):
+                    with self.subTest(header_type=header_type, available=available, prefix=prefix):
+                        payload = prefix + bytes.fromhex("3b00010203040506")[:available]
+                        base_next_header = 0 if prefix else header_type
+                        observation = ipv6_observation(ipv6_header(
+                            next_header=base_next_header, payload_length=len(payload),
+                        ) + payload)
+                        with self.assertRaises(IPv6DecodeError) as raised:
+                            analyze_packet(observation)
+                        outcome = analyze_packet_outcome(observation)
+                        self.assertFalse(outcome.succeeded)
+                        self.assertIsNone(outcome.analysis)
+                        self.assertIs(outcome.observation, observation)
+                        self.assertIs(outcome.failure_classification, PacketAnalysisFailureClassification.INCOMPLETE)
+                        self.assertEqual(outcome.failure_description, str(raised.exception))
+                        self.assertEqual(analyze_packet_outcome(observation), outcome)
+
+    def test_declared_extension_length_cannot_use_excess_ethernet_or_original_length(self) -> None:
+        for header_type in (0, 43, 44, 60):
+            raw_header = bytes.fromhex("3b00010203040506") if header_type == 44 else b"\x3b\xff" + bytes(2046)
+            for declared in (0, 1, len(raw_header) - 1):
+                with self.subTest(header_type=header_type, declared=declared):
+                    observation = ipv6_observation(ipv6_header(
+                        next_header=header_type, payload_length=8 + declared,
+                    ) + bytes((header_type, 0)) + bytes(6) + raw_header)
+                    observation = replace(observation, original_length=10000)
+                    outcome = analyze_packet_outcome(observation)
+                    self.assertFalse(outcome.succeeded)
+                    self.assertIsNone(outcome.analysis)
+                    self.assertIs(outcome.observation, observation)
+                    self.assertIs(outcome.failure_classification, PacketAnalysisFailureClassification.INCOMPLETE)
+
+    def test_invalid_base_structure_remains_structural_before_extension_validation(self) -> None:
+        raw_bytes = ipv6_header(version=4, next_header=0, payload_length=8) + bytes.fromhex("3b00010203040506")
+        observation = ipv6_observation(raw_bytes)
+        with patch.object(packet_analysis, "validate_ipv6_extension_headers") as validate:
+            outcome = analyze_packet_outcome(observation)
+        validate.assert_not_called()
+        self.assertIsNone(outcome.analysis)
+        self.assertIs(outcome.failure_classification, PacketAnalysisFailureClassification.STRUCTURAL_FAILURE)
+        self.assertEqual(outcome.failure_description, "IPv6 version must be 6")
+
+    def test_unrecognized_validator_errors_propagate_without_conversion(self) -> None:
+        observation = ipv6_observation(ipv6_header())
+        for error in (
+            IPv6DecodeError("unrecognized extension failure"),
+            ValueError("invalid internal value"), TypeError("invalid internal type"),
+            IndexError("invalid internal offset"), RuntimeError("programming failure"),
+        ):
+            with self.subTest(error=type(error)):
+                with patch.object(packet_analysis, "validate_ipv6_extension_headers", side_effect=error) as validate:
+                    with self.assertRaises(type(error)) as raised:
+                        analyze_packet_outcome(observation)
+                validate.assert_called_once()
+                self.assertIs(raised.exception, error)
 
 
 if __name__ == "__main__":

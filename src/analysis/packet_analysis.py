@@ -7,6 +7,7 @@ from analysis.icmp_checksum import validate_icmp_checksum
 from analysis.ipv4 import IPv4Packet, decode_ipv4
 from analysis.ipv4_checksum import validate_ipv4_checksum
 from analysis.ipv6 import IPv6Packet, decode_ipv6
+from analysis.ipv6_extension_headers import IPv6ExtensionHeaderChain, validate_ipv6_extension_headers
 from analysis.tcp import TCPPacket, decode_tcp
 from analysis.tcp_checksum import validate_tcp_checksum
 from analysis.udp import UDPPacket, decode_udp
@@ -31,6 +32,7 @@ class PacketAnalysis:
     udp_checksum_valid: Optional[bool] = None
     icmp_checksum_valid: Optional[bool] = None
     ipv6: Optional[IPv6Packet] = None
+    ipv6_extension_headers: Optional[IPv6ExtensionHeaderChain] = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.observation, PacketObservation):
@@ -39,12 +41,16 @@ class PacketAnalysis:
             ("ethernet", self.ethernet, EthernetFrame),
             ("ipv4", self.ipv4, IPv4Packet),
             ("ipv6", self.ipv6, IPv6Packet),
+            ("ipv6_extension_headers", self.ipv6_extension_headers, IPv6ExtensionHeaderChain),
             ("tcp", self.tcp, TCPPacket),
             ("udp", self.udp, UDPPacket),
             ("icmp", self.icmp, ICMPMessage),
         ):
             if value is not None and not isinstance(value, model):
                 raise TypeError(f"{name} must be a {model.__name__} or None")
+        if self.ipv6_extension_headers is not None:
+            if self.ipv6_extension_headers.packet is not self.ipv6:
+                raise PacketAnalysisError("IPv6 extension headers must retain the exact IPv6 packet")
         for name, value in (
             ("ipv4_checksum_valid", self.ipv4_checksum_valid),
             ("tcp_checksum_valid", self.tcp_checksum_valid),
@@ -70,7 +76,11 @@ def analyze_packet(observation: PacketObservation) -> PacketAnalysis:
     ethernet = decode_ethernet(observation)
     if ethernet.ether_type == 0x86DD:
         ipv6 = decode_ipv6(ethernet)
-        return PacketAnalysis(observation=observation, ethernet=ethernet, ipv6=ipv6)
+        extensions = validate_ipv6_extension_headers(ipv6)
+        return PacketAnalysis(
+            observation=observation, ethernet=ethernet, ipv6=ipv6,
+            ipv6_extension_headers=extensions,
+        )
     if ethernet.ether_type != 0x0800:
         raise PacketAnalysisError("Packet analysis requires IPv4 EtherType 0x0800 or IPv6 EtherType 0x86DD")
     ipv4 = decode_ipv4(ethernet)

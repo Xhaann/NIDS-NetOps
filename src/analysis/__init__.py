@@ -57,7 +57,11 @@ from analysis.inter_arrival_features import (
 from analysis.ipv4 import IPv4DecodeError, IPv4Packet, decode_ipv4
 from analysis.ipv4_checksum import validate_ipv4_checksum
 from analysis.ipv6 import IPv6DecodeError, IPv6Packet, decode_ipv6
-from analysis.ipv6_extension_headers import IPv6ExtensionHeader, IPv6ExtensionHeaderChain
+from analysis.ipv6_extension_headers import (
+    IPv6ExtensionHeader,
+    IPv6ExtensionHeaderChain,
+    validate_ipv6_extension_headers,
+)
 from analysis.packet_analysis import PacketAnalysis, PacketAnalysisError, analyze_packet
 from analysis.packet_analysis_outcome import (
     PacketAnalysisFailureClassification,
@@ -171,6 +175,7 @@ __all__ = [
     "update_tcp_control_statistics",
     "validate_icmp_checksum",
     "validate_ipv4_checksum",
+    "validate_ipv6_extension_headers",
     "validate_tcp_checksum",
     "validate_udp_checksum",
 ]
