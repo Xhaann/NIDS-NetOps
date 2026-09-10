@@ -206,6 +206,14 @@ Each invocation returns a complete immutable `tuple[DetectionFinding, ...]` in t
 
 This boundary composes the existing three detector contracts without a shared input model, registry, generic framework, history, background state, cross-flow correlation, or security conclusion. It performs no analysis, feature extraction, window closure, filtering, scoring, alerting, persistence, or response. Capture-session composition continues to emit closed windows independently.
 
+## Explicit application detection session
+
+The [detection session](../src/application/detection_session.py) is a frozen application configuration bundle with explicit ordered execution methods. `DetectionSession.run_packets()` consumes `PacketAnalysisOutcome` values and delegates to the existing packet orchestration. `run_closed_flows()` consumes `FlowFeatureSnapshot` values and delegates to the existing closed-flow orchestration. The session retains the exact existing detector configurations; orchestration continues to own detector ordering, applicability, evaluation, and finding normalization for both IPv4 and IPv6.
+
+Each call returns a flat tuple of the exact findings in input order and per-input detector order, including duplicates and `NOT_EVALUABLE` decisions. Empty input returns an empty tuple. Evaluation is synchronous and eager over finite caller-owned iterables. An iteration or detector failure propagates unchanged, stops further consumption, and returns no partial tuple; earlier evaluations are not rolled back or retried. Results are accumulated only in a local call buffer, and repeated calls or separate sessions share no execution state.
+
+The session does not accept raw packets or bare flow windows, perform packet analysis or feature extraction, own a flow/window lifecycle, or alter detector and finding schemas. Active snapshots remain rejected by existing detector validation. Capture/observation sessions still emit closed windows without automatic detection; callers explicitly produce semantic inputs and invoke detection. No new detector, protocol-specific execution path, reassembly, correlation, alerting, or response boundary is introduced.
+
 ## Cross-cutting requirements for later tasks
 
 - Preserve sensor/source identity, capture time, processing time where needed, and provenance across transformations. Specify identifier and schema evolution rules before persisting records.

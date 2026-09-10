@@ -19,6 +19,21 @@ Each applicable detector and finding conversion runs once per invocation. Every 
 
 These functions retain no history or background state and introduce no common detector input, registry, generic framework, filtering, attack inference, severity, confidence, risk, correlation, alerting, persistence, or response behavior. Callers supply already-produced analytical inputs; capture-session wiring, packet analysis, feature extraction, and observation-window lifecycle remain separate operations.
 
+## Explicit detection sessions
+
+[detection_session.py](detection_session.py) exports the frozen `DetectionSession(packet_configuration, flow_volume_configuration, tcp_control_configuration=None)` through `application`. It retains the exact existing `PacketIntegrityConfiguration`, `FlowVolumeThresholdConfiguration`, and optional `TCPControlThresholdConfiguration` objects. Construction validates their exact types and runs no detectors. No session identifier, timestamp, execution history, or lifecycle state is created.
+
+- `run_packets(outcomes: Iterable[PacketAnalysisOutcome]) -> tuple[DetectionFinding, ...]` delegates once per outcome to `run_packet_detectors()` with the retained packet configuration.
+- `run_closed_flows(snapshots: Iterable[FlowFeatureSnapshot]) -> tuple[DetectionFinding, ...]` delegates once per snapshot to `run_closed_flow_detectors()` with the retained flow configurations.
+
+Each call consumes a finite iterable synchronously in caller-supplied order and returns one flat immutable tuple containing the exact findings produced by orchestration. Empty input returns `()`. Per-input detector ordering, all three decision meanings, configuration identity, and evidence references are preserved. Inputs and findings are neither sorted nor deduplicated. Repeated calls execute again; sessions retain no results or shared mutable state. The only execution buffer is local to each call and grows with its returned findings.
+
+Detector orchestration remains authoritative for validation, applicability, ordering, and normalization. Flow calls require snapshots whose retained windows are closed; bare windows are not converted into snapshots. Active windows, missing TCP configuration/state, and malformed inputs retain existing errors. IPv4 and IPv6 follow the same path: closed TCP flows invoke volume then TCP control, and UDP invokes only volume. Non-first fragments without transport cannot become flow inputs, while their packet outcomes retain existing packet-integrity semantics. No new detector family or ICMPv6 detector is introduced.
+
+An input-iteration or orchestration exception propagates unchanged and stops the call before the next input. No retry or partial tuple is returned. Earlier completed evaluations are not rolled back; their locally accumulated findings are not published by the failed call. A later explicit call remains independent. Iterables and their resource cleanup remain caller-owned.
+
+The session accepts established semantic inputs only. It does not capture packets, parse bytes, re-run packet analysis or extension validation, build flow state, close windows, extract features, or reconstruct findings. `run_flow_observation_session()` remains unchanged and emits closed windows without detector execution. Callers explicitly extract snapshots and invoke the detection session when desired. No reassembly, correlation, alerting, persistence, or background execution is added.
+
 ## Flow observation sessions
 
 [flow_observation_session.py](flow_observation_session.py) exports `run_flow_observation_session(source, *, capture_session_id, inactivity_timeout, closed_window_consumer) -> None`. One invocation constructs one `FlowObservationWindowManager`, runs the source exactly once through `consume()`, analyzes each delivered `PacketObservation` with `analyze_packet()`, and passes the resulting `PacketAnalysis` unchanged to the manager.
