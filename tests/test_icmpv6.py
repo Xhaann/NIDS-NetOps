@@ -311,7 +311,8 @@ class ICMPv6PacketAnalysisTests(unittest.TestCase):
         for next_header in (6, 17, 50, 51, 59, 253, 255):
             for prefix, base in ((b"", next_header), (bytes((next_header, 0)) + bytes(6), 0)):
                 with self.subTest(next_header=next_header, base=base):
-                    payload = prefix + bytes.fromhex("3a0080001234")
+                    body = {6: TCP_BYTES, 17: UDP_BYTES}.get(next_header, b"") + bytes.fromhex("3a0080001234")
+                    payload = prefix + body
                     observation = ipv6_observation(ipv6_header(next_header=base, payload_length=len(payload)) + payload)
                     with patch.object(packet_analysis, "decode_icmpv6", side_effect=AssertionError("incorrect dispatch")):
                         outcome = analyze_packet_outcome(observation)
@@ -376,7 +377,7 @@ class ICMPv6PacketAnalysisTests(unittest.TestCase):
             "tcp_checksum_valid", "udp_checksum_valid", "icmp_checksum_valid", "ipv6",
             "ipv6_extension_headers", "ipv6_fragmentation", "ipv6_icmpv6",
         )
-        self.assertEqual(tuple(entry.name for entry in fields(PacketAnalysis)), expected)
+        self.assertEqual(tuple(entry.name for entry in fields(PacketAnalysis)), expected + ("ipv6_tcp", "ipv6_udp"))
         for protocol, payload in ((6, TCP_BYTES), (17, UDP_BYTES), (1, ICMP_BYTES), (253, b"")):
             with self.subTest(protocol=protocol):
                 with patch.object(packet_analysis, "decode_icmpv6", side_effect=AssertionError("IPv4 dispatch")):

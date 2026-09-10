@@ -333,7 +333,7 @@ class IPv6FragmentationPacketAnalysisTests(unittest.TestCase):
                     self.assertIsNone(getattr(result, name))
 
     def test_whole_datagram_header_is_preserved_without_synthesizing_packet(self) -> None:
-        raw_bytes = ipv6_header(next_header=44, payload_length=8) + bytes.fromhex("0600000000000001")
+        raw_bytes = ipv6_header(next_header=44, payload_length=8 + len(TCP_BYTES)) + bytes.fromhex("0600000000000001") + TCP_BYTES
         observation = ipv6_observation(raw_bytes)
         result = analyze_packet(observation)
         self.assertTrue(result.ipv6_fragmentation.headers[0].is_whole_datagram)
@@ -379,11 +379,10 @@ class IPv6FragmentationPacketAnalysisTests(unittest.TestCase):
                     self.assertEqual(outcome.analysis.ipv6.payload, fragment)
 
     def test_non_fragmented_ipv6_keeps_fragmentation_absent_and_payload_unchanged(self) -> None:
-        for next_header, payload in ((6, b""), (59, bytes.fromhex("2c00000000000000")), (253, b"\x2c\xff"), (0, bytes.fromhex("3b00000000000000"))):
+        for next_header, payload in ((6, TCP_BYTES), (59, bytes.fromhex("2c00000000000000")), (253, b"\x2c\xff"), (0, bytes.fromhex("3b00000000000000"))):
             with self.subTest(next_header=next_header):
                 observation = ipv6_observation(ipv6_header(next_header=next_header, payload_length=len(payload)) + payload)
-                with patch.object(packet_analysis, "analyze_ipv6_fragmentation", side_effect=AssertionError("unexpected fragmentation analysis")):
-                    outcome = analyze_packet_outcome(observation)
+                outcome = analyze_packet_outcome(observation)
                 self.assertTrue(outcome.succeeded)
                 self.assertIsNone(outcome.analysis.ipv6_fragmentation)
                 self.assertEqual(outcome.analysis.ipv6.payload, payload)
@@ -397,12 +396,12 @@ class IPv6FragmentationPacketAnalysisTests(unittest.TestCase):
                 self.assertTrue(outcome.succeeded)
                 result = outcome.analysis
                 self.assertIsNone(result.ipv6_fragmentation)
-                prior_arguments = tuple(getattr(result, entry.name) for entry in fields(result) if entry.name not in ("ipv6_fragmentation", "ipv6_icmpv6"))
+                prior_arguments = tuple(getattr(result, entry.name) for entry in fields(result) if entry.name not in ("ipv6_fragmentation", "ipv6_icmpv6", "ipv6_tcp", "ipv6_udp"))
                 self.assertEqual(PacketAnalysis(*prior_arguments), result)
         self.assertEqual(fields(PacketAnalysis)[12].name, "ipv6_fragmentation")
 
     def test_direct_packet_analysis_requires_exact_retained_chain(self) -> None:
-        observation = ipv6_observation(ipv6_header(next_header=44, payload_length=8) + bytes.fromhex("0600000100000001"))
+        observation = ipv6_observation(ipv6_header(next_header=44, payload_length=8) + bytes.fromhex("3b00000100000001"))
         result = analyze_packet(observation)
         for chain in (None, replace(result.ipv6_extension_headers)):
             with self.subTest(chain=chain):

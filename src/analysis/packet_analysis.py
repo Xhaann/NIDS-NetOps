@@ -37,6 +37,8 @@ class PacketAnalysis:
     ipv6_extension_headers: Optional[IPv6ExtensionHeaderChain] = None
     ipv6_fragmentation: Optional[IPv6Fragmentation] = None
     ipv6_icmpv6: Optional[ICMPv6Packet] = None
+    ipv6_tcp: Optional[TCPPacket] = None
+    ipv6_udp: Optional[UDPPacket] = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.observation, PacketObservation):
@@ -48,6 +50,8 @@ class PacketAnalysis:
             ("ipv6_extension_headers", self.ipv6_extension_headers, IPv6ExtensionHeaderChain),
             ("ipv6_fragmentation", self.ipv6_fragmentation, IPv6Fragmentation),
             ("ipv6_icmpv6", self.ipv6_icmpv6, ICMPv6Packet),
+            ("ipv6_tcp", self.ipv6_tcp, TCPPacket),
+            ("ipv6_udp", self.ipv6_udp, UDPPacket),
             ("tcp", self.tcp, TCPPacket),
             ("udp", self.udp, UDPPacket),
             ("icmp", self.icmp, ICMPMessage),
@@ -63,6 +67,24 @@ class PacketAnalysis:
         if self.ipv6_icmpv6 is not None:
             if self.ipv6_icmpv6.extension_headers is not self.ipv6_extension_headers:
                 raise PacketAnalysisError("ICMPv6 must retain the exact extension-header chain")
+        if self.ipv6_tcp is not None or self.ipv6_udp is not None:
+            chain = self.ipv6_extension_headers
+            if self.ipv6 is None or chain is None:
+                raise PacketAnalysisError("IPv6 transport requires an IPv6 packet and extension-header chain")
+            protocol = 6 if self.ipv6_tcp is not None else 17
+            if chain.terminating_next_header != protocol:
+                raise PacketAnalysisError("IPv6 transport must match terminal Next Header")
+            if self.ipv6_icmpv6 is not None or (
+                self.ipv6_tcp is not None and self.ipv6_udp is not None
+            ):
+                raise PacketAnalysisError("IPv6 transport requires exactly one upper-layer model")
+            if any(header.header_type == 44 for header in chain.headers):
+                if self.ipv6_fragmentation is None:
+                    raise PacketAnalysisError("IPv6 transport requires fragmentation analysis for Fragment Headers")
+            if self.ipv6_fragmentation is not None and any(
+                header.is_non_first_fragment for header in self.ipv6_fragmentation.headers
+            ):
+                raise PacketAnalysisError("IPv6 transport requires an initial fragment")
         for name, value in (
             ("ipv4_checksum_valid", self.ipv4_checksum_valid),
             ("tcp_checksum_valid", self.tcp_checksum_valid),
@@ -93,6 +115,17 @@ def analyze_packet(observation: PacketObservation) -> PacketAnalysis:
             header.header_type == 44 for header in extensions.headers
         ) else None
         icmpv6 = None
+        tcp = None
+        udp = None
+        if extensions.terminating_next_header in (6, 17):
+            transport_context = fragmentation
+            if transport_context is None:
+                transport_context = analyze_ipv6_fragmentation(extensions)
+            if not any(header.is_non_first_fragment for header in transport_context.headers):
+                if extensions.terminating_next_header == 6:
+                    tcp = decode_tcp(transport_context)
+                else:
+                    udp = decode_udp(transport_context)
         if extensions.terminating_next_header == 58 and (
             fragmentation is None or all(header.is_whole_datagram for header in fragmentation.headers)
         ):
@@ -102,6 +135,8 @@ def analyze_packet(observation: PacketObservation) -> PacketAnalysis:
             ipv6_extension_headers=extensions,
             ipv6_fragmentation=fragmentation,
             ipv6_icmpv6=icmpv6,
+            ipv6_tcp=tcp,
+            ipv6_udp=udp,
         )
     if ethernet.ether_type != 0x0800:
         raise PacketAnalysisError("Packet analysis requires IPv4 EtherType 0x0800 or IPv6 EtherType 0x86DD")

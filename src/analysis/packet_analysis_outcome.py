@@ -92,11 +92,15 @@ _IPV6_UNSUPPORTED_MESSAGES = (
 _TCP_UNSUPPORTED_MESSAGES = (
     "TCP decoding requires IPv4 protocol 6",
     "TCP decoding requires an initial IPv4 fragment",
+    "TCP decoding requires terminal IPv6 Next Header 6",
+    "TCP decoding requires an initial IPv6 fragment",
 )
 
 _UDP_UNSUPPORTED_MESSAGES = (
     "UDP decoding requires IPv4 protocol 17",
     "UDP decoding requires an initial IPv4 fragment",
+    "UDP decoding requires terminal IPv6 Next Header 17",
+    "UDP decoding requires an initial IPv6 fragment",
 )
 
 _ICMP_UNSUPPORTED_MESSAGES = (
@@ -121,11 +125,13 @@ _IPV6_INCOMPLETE_MESSAGES = (
 _TCP_INCOMPLETE_MESSAGES = (
     "TCP header is too short: expected at least 20 bytes",
     "TCP header length exceeds available IPv4 payload",
+    "TCP header length exceeds available IPv6 payload",
 )
 
 _UDP_INCOMPLETE_MESSAGES = (
     "UDP header is too short: expected at least 8 bytes",
     "UDP length exceeds available IPv4 payload",
+    "UDP length exceeds available IPv6 payload",
 )
 
 _ICMP_INCOMPLETE_MESSAGES = (

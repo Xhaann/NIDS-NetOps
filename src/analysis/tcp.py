@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
+from typing import Union
 
 from analysis.ipv4 import IPv4Packet
+from analysis.ipv6_fragmentation import IPv6Fragmentation
 
 
 class TCPDecodeError(ValueError):
@@ -71,14 +73,28 @@ class TCPPacket:
         return self.data_offset * 4
 
 
-def decode_tcp(packet: IPv4Packet) -> TCPPacket:
-    if not isinstance(packet, IPv4Packet):
-        raise TypeError("packet must be an IPv4Packet")
-    if packet.protocol != 6:
-        raise TCPDecodeError("TCP decoding requires IPv4 protocol 6")
-    if packet.fragment_offset != 0:
-        raise TCPDecodeError("TCP decoding requires an initial IPv4 fragment")
-    raw_bytes = packet.payload
+def decode_tcp(packet: Union[IPv4Packet, IPv6Fragmentation]) -> TCPPacket:
+    if isinstance(packet, IPv4Packet):
+        if packet.protocol != 6:
+            raise TCPDecodeError("TCP decoding requires IPv4 protocol 6")
+        if packet.fragment_offset != 0:
+            raise TCPDecodeError("TCP decoding requires an initial IPv4 fragment")
+        raw_bytes = packet.payload
+        ip_version = 4
+    elif type(packet) is IPv6Fragmentation:
+        chain = packet.extension_headers
+        if chain.terminating_next_header != 6:
+            raise TCPDecodeError("TCP decoding requires terminal IPv6 Next Header 6")
+        if any(header.is_non_first_fragment for header in packet.headers):
+            raise TCPDecodeError("TCP decoding requires an initial IPv6 fragment")
+        offset = packet.packet.header_length
+        if chain.headers:
+            last_header = chain.headers[-1]
+            offset = last_header.offset + last_header.declared_length
+        raw_bytes = packet.packet.payload[offset - packet.packet.header_length:]
+        ip_version = 6
+    else:
+        raise TypeError("packet must be an IPv4Packet or exactly an IPv6Fragmentation")
     if len(raw_bytes) < 20:
         raise TCPDecodeError("TCP header is too short: expected at least 20 bytes")
     control_field = int.from_bytes(raw_bytes[12:14], byteorder="big")
@@ -87,7 +103,7 @@ def decode_tcp(packet: IPv4Packet) -> TCPPacket:
         raise TCPDecodeError("TCP data offset must be at least 5")
     header_length = data_offset * 4
     if header_length > len(raw_bytes):
-        raise TCPDecodeError("TCP header length exceeds available IPv4 payload")
+        raise TCPDecodeError(f"TCP header length exceeds available IPv{ip_version} payload")
     return TCPPacket(
         source_port=int.from_bytes(raw_bytes[:2], byteorder="big"),
         destination_port=int.from_bytes(raw_bytes[2:4], byteorder="big"),

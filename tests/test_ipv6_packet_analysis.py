@@ -33,9 +33,9 @@ from detection import (
     TCPControlThresholdError,
     evaluate_tcp_control_threshold,
 )
-from tests.test_ipv6 import IPV6_HEADER, ipv6_header
+from tests.test_ipv6 import ipv6_header
 from tests.test_network_identity import synthetic_window
-from tests.test_packet_analysis import TCP_BYTES, make_observation
+from tests.test_packet_analysis import TCP_BYTES, UDP_BYTES, make_observation
 
 
 def ipv6_observation(raw_bytes):
@@ -50,7 +50,7 @@ def ipv6_observation(raw_bytes):
 
 class IPv6PacketAnalysisTests(unittest.TestCase):
     def test_ethernet_dispatch_retains_exact_decoder_outputs_and_observation(self) -> None:
-        observation = ipv6_observation(IPV6_HEADER + b"abcd")
+        observation = ipv6_observation(ipv6_header(next_header=6, payload_length=len(TCP_BYTES)) + TCP_BYTES)
         ethernet = decode_ethernet(observation)
         ipv6 = decode_ipv6(ethernet)
         with patch.object(packet_analysis, "decode_ethernet", return_value=ethernet) as ethernet_decoder:
@@ -69,15 +69,17 @@ class IPv6PacketAnalysisTests(unittest.TestCase):
         for name in ("ipv4", "tcp", "udp", "icmp", "ipv4_checksum_valid", "tcp_checksum_valid", "udp_checksum_valid", "icmp_checksum_valid"):
             self.assertIsNone(getattr(result, name))
 
-    def test_raw_next_header_never_dispatches_transport_or_ipv4_decoding(self) -> None:
+    def test_terminal_next_header_selects_transport_without_ipv4_decoding(self) -> None:
         for next_header in (0, 6, 17, 43, 44, 50, 51, 58, 59, 60, 135, 253, 254, 255):
             with self.subTest(next_header=next_header):
                 payload = b"\xff\x00" + bytes(6) if next_header in (0, 43, 44, 60) else b"\xff"
+                if next_header in (6, 17):
+                    payload = TCP_BYTES if next_header == 6 else UDP_BYTES
                 if next_header == 58:
                     payload = bytes.fromhex("ff000000")
                 observation = ipv6_observation(ipv6_header(next_header=next_header, payload_length=len(payload)) + payload)
                 with ExitStack() as stack:
-                    for name in ("decode_ipv4", "decode_tcp", "decode_udp", "decode_icmp", "validate_ipv4_checksum", "validate_tcp_checksum", "validate_udp_checksum", "validate_icmp_checksum"):
+                    for name in ("decode_ipv4", "decode_icmp", "validate_ipv4_checksum", "validate_tcp_checksum", "validate_udp_checksum", "validate_icmp_checksum"):
                         stack.enter_context(patch.object(packet_analysis, name, side_effect=AssertionError(name)))
                     result = analyze_packet(observation)
                     outcome = analyze_packet_outcome(observation)
@@ -219,7 +221,7 @@ class IPv6PacketAnalysisTests(unittest.TestCase):
                     replace(result, ipv6=invalid)
 
     def test_ipv6_packet_analysis_and_outcome_are_frozen_and_deterministic(self) -> None:
-        observation = ipv6_observation(IPV6_HEADER + b"abcd")
+        observation = ipv6_observation(ipv6_header(next_header=6, payload_length=len(TCP_BYTES)) + TCP_BYTES)
         before = replace(observation)
         result = analyze_packet(observation)
         outcome = analyze_packet_outcome(observation)
@@ -235,7 +237,7 @@ class IPv6PacketAnalysisTests(unittest.TestCase):
                     delattr(model, field.name)
 
     def test_ipv6_packet_does_not_enter_existing_ipv4_flow_lifecycle(self) -> None:
-        result = analyze_packet(ipv6_observation(ipv6_header(next_header=6)))
+        result = analyze_packet(ipv6_observation(ipv6_header(next_header=6, payload_length=len(TCP_BYTES)) + TCP_BYTES))
         manager = FlowObservationWindowManager("ipv6-base", timedelta(seconds=5))
         with self.assertRaises(FlowIdentityError):
             flow_identity_from_packet(result)
@@ -245,7 +247,7 @@ class IPv6PacketAnalysisTests(unittest.TestCase):
         self.assertEqual(manager.end_capture_session(), ())
 
     def test_decoded_ipv6_addresses_do_not_expand_existing_detector_scope(self) -> None:
-        result = analyze_packet(ipv6_observation(ipv6_header(next_header=6)))
+        result = analyze_packet(ipv6_observation(ipv6_header(next_header=6, payload_length=len(TCP_BYTES)) + TCP_BYTES))
         identity = FlowIdentity(result.ipv6.source_address, result.ipv6.destination_address, 1, 2, 6)
         window = synthetic_window(identity)
         snapshot = extract_flow_feature_snapshot(window)
@@ -318,7 +320,8 @@ class IPv6ExtensionHeaderPacketAnalysisTests(unittest.TestCase):
                 continue
             with self.subTest(next_header=next_header):
                 raw_header = bytes((next_header, 0)) + bytes(6)
-                payload = raw_header + (bytes.fromhex("00ff0000") if next_header == 58 else b"\x00\xff")
+                transport = {6: TCP_BYTES, 17: UDP_BYTES, 58: bytes.fromhex("00ff0000")}
+                payload = raw_header + transport.get(next_header, b"\x00\xff")
                 observation = ipv6_observation(ipv6_header(next_header=43, payload_length=len(payload)) + payload)
                 outcome = analyze_packet_outcome(observation)
                 self.assertTrue(outcome.succeeded)
