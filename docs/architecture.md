@@ -76,7 +76,15 @@ The [IPv6 decoder](../src/analysis/ipv6.py) follows the existing Ethernet-frame-
 
 `analyze_packet()` dispatches IPv6 from the existing Ethernet EtherType and retains the exact decoder result in the appended optional `PacketAnalysis.ipv6` field. IPv4 positional arguments and processing remain unchanged. IPv6 analysis contains no IPv4 model, transport model, or checksum result. Next Header is observed without extension or transport dispatch. `analyze_packet_outcome()` classifies short headers and insufficient declared payload as `INCOMPLETE`, and wrong versions as `STRUCTURAL_FAILURE`, retaining exact observation provenance and no partial analytical model. Unrecognized exceptions still propagate.
 
-Success means the base header and its declared byte extent were decoded, not that opaque extensions or upper-layer content were validated. Analysis invokes no detector, flow admission, or lifecycle operation. Existing IPv4-only flow and threshold boundaries remain intact. No IPv6 extension, fragmentation, ICMPv6, Neighbor Discovery, transport, or detector implementation is included.
+Success means the base header and its declared byte extent were decoded, not that opaque extensions or upper-layer content were validated. Analysis invokes no detector, flow admission, or lifecycle operation. Existing IPv4-only flow and threshold boundaries remain intact. No IPv6 extension parsing or validation, fragmentation, ICMPv6, Neighbor Discovery, transport, or detector implementation is included.
+
+## IPv6 extension-header representation
+
+The [extension-header value models](../src/analysis/ipv6_extension_headers.py) hold supplied observations without parsing or certifying protocol structure. `IPv6ExtensionHeader` retains a raw header-type identifier, a packet-relative byte offset, an optional declared byte length, exact raw bytes, and an optional Next Header value. Optional metadata uses `None` when unavailable. Identifiers are exact eight-bit integers, offsets and supplied lengths are exact nonnegative integers, and raw data is exact immutable bytes. No header contents, encoded length fields, or type-specific rules are interpreted.
+
+`IPv6ExtensionHeaderChain` retains the exact `IPv6Packet` as context and an exact immutable tuple of entries in caller-supplied order. This separate object preserves the distinction between base-header Next Header and entry identifiers without adding fields to the packet model or creating an empty chain during decoding. An empty tuple records no represented entries and makes no assertion about extension absence or chain completeness. Lists and invalid element types are rejected; entries and bytes are never reconstructed, reordered, or deduplicated.
+
+Construction checks value types and scalar domains only. It does not verify packet bounds, ordering, Next Header agreement, lengths against bytes, or raw data against packet payload. Metadata inconsistencies remain representable for later validation. Extension parsing, traversal, validation, fragmentation, and content interpretation remain future work; existing packet decoding, outcomes, transport, flow, and detection paths are unchanged.
 
 ## Deterministic packet-integrity detection
 

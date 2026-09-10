@@ -38,6 +38,24 @@ The decoder requires EtherType `0x86DD`, at least forty IPv6 bytes, version 6, a
 
 Success establishes only the decoded base-header fields and availability of the bytes declared by that header. All Next Header values remain raw integers, including TCP, UDP, ICMPv6, and extension-header values. Payload is never recursively decoded or validated. Zero Hop Limit and zero Flow Label remain observed values without security interpretation. Extension processing, fragmentation, ICMPv6, Neighbor Discovery, IPv6 transport checksums, IPv6 flow admission, and IPv6 detection remain unimplemented. The existing flow-volume and TCP-control detectors retain their explicit IPv4 restriction.
 
+## IPv6 extension-header representation
+
+`analysis` exports the frozen `IPv6ExtensionHeader` and `IPv6ExtensionHeaderChain` value objects from [ipv6_extension_headers.py](ipv6_extension_headers.py). They represent caller-supplied observed metadata only. Construction does not parse, traverse, or validate an IPv6 extension-header chain, and accepted metadata does not establish protocol validity.
+
+| Entry field | Representation |
+| --- | --- |
+| `header_type` | Exact integer from 0 through 255 identifying this represented header, separately from the base packet's `next_header`. No known-type whitelist or extension-type inference is applied. |
+| `offset` | Exact nonnegative byte offset relative to the beginning of the IPv6 packet, not the Ethernet frame or IPv6 payload. Placement within the packet is not checked. |
+| `declared_length` | Exact nonnegative declared length in bytes, or `None` when unavailable. This is supplied metadata, not an encoded length field read or converted by this model. |
+| `raw_bytes` | Exact immutable `bytes` object retained unchanged. Empty or partial observations can be represented independently of declared length. |
+| `next_header` | Exact integer from 0 through 255, or `None` when unavailable. It records the supplied link value without reading header contents or verifying the next entry. |
+
+The chain retains one exact `IPv6Packet` in `packet` and one exact `tuple[IPv6ExtensionHeader, ...]` in `headers`. Packet retention anchors the offset origin and preserves base-header context without modifying `IPv6Packet` or duplicating its Next Header field. Entries remain in exactly the supplied order, including repeated entries, and retain object identity. Empty tuples are valid and mean only that no entries are represented; they do not certify that the packet contains no extensions.
+
+Wrong scalar, byte, packet, collection, or entry types raise `TypeError`; negative offsets/lengths and out-of-range protocol identifiers raise `ValueError`. Lists and tuple subclasses are rejected rather than copied. No relationship among offsets, declared lengths, raw bytes, packet payload, or Next Header values is checked or repaired. Equality and hashing use ordinary frozen-dataclass value semantics, including ordered tuple equality.
+
+The IPv6 decoder and packet-analysis paths still leave payload opaque and never create these representations automatically. Extension-header parsing, chain validation, contents interpretation, fragmentation handling, and reassembly remain future boundaries. No transport, flow, detector, or security behavior is introduced.
+
 ## Bidirectional flow identity
 
 `analysis` exports `flow_identity_from_packet(analysis: PacketAnalysis) -> FlowIdentity`, `FlowIdentity`, and `FlowIdentityError` from [flow_identity.py](flow_identity.py). The operation uses only decoded IPv4 addresses, transport ports, and the IPv4 protocol number. It supports TCP (6) and UDP (17); ICMP and other protocols are intentionally outside this boundary. Checksum results do not affect identity creation, and no checksum validation or raw-byte inspection is performed.
