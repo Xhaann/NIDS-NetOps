@@ -5,7 +5,7 @@ from datetime import timedelta, timezone
 from unittest.mock import PropertyMock, patch
 
 import application
-from analysis import PacketAnalysisOutcome, PacketAnalysisFailureClassification, analyze_packet_outcome
+from analysis import PacketAnalysisOutcome, PacketAnalysisFailureClassification, analyze_packet_outcome, extract_flow_feature_snapshot
 from application import (
     DetectionClassification as C,
     DetectionEvaluationEntry,
@@ -24,6 +24,7 @@ from detection import (
     FlowVolumeMetric,
     FlowVolumeThresholdConfiguration,
     FlowVolumeThresholdDecision,
+    FlowVolumeThresholdInterpretation,
     PacketIntegrityConfiguration,
     PacketIntegrityDecision,
     TCPControlMetric,
@@ -67,7 +68,170 @@ def evaluate(packets=(), flows=(), packet_expectations=(), flow_expectations=())
                                      ExpectedDetectionResult(packet_expectations, flow_expectations))
 
 
+class UnhashableAddress(bytes):
+    __hash__ = None
+
+
+class UnindexableAddress(bytes):
+    def __hash__(self):
+        raise AssertionError("address must not be hashed by evaluation")
+
+
+class AlternateHashAddress(bytes):
+    def __hash__(self):
+        return bytes.__hash__(self) ^ 65535
+
+
+def flow_finding_with_address_type(finding, address_type, name="source_address"):
+    window = finding.raw_evidence.observation_window
+    identity = replace(window.identity, **{name: address_type(getattr(window.identity, name))})
+    state = window.coordinated_state
+    changes = {field.name: replace(getattr(state, field.name), identity=identity)
+               for field in fields(state) if getattr(state, field.name) is not None}
+    window = replace(window, coordinated_state=replace(state, **changes))
+    evidence = replace(finding.raw_evidence, snapshot=extract_flow_feature_snapshot(window))
+    return replace(finding, raw_evidence=evidence)
+
+
 class DetectionEvaluationTests(unittest.TestCase):
+    def test_matching_phases_multiplicity_and_references_on_index_and_fallback(self):
+        yes, no = flow_finding(), flow_finding(positive=False)
+        unavailable = replace(yes, decision=FlowVolumeThresholdDecision.NOT_EVALUABLE,
+                              security_interpretation=FlowVolumeThresholdInterpretation.METRIC_NOT_EVALUABLE)
+        original = (unavailable, no, yes, yes, no, unavailable)
+        packet_result = packet_finding()
+        packet_expectation = expected(packet_result, index=0)
+        identity = detection_identity(yes)
+        missing_identity = replace(identity, window_key=replace(identity.window_key, sequence_number=10))
+        missing_positive = ExpectedDetection(missing_identity, True)
+        missing_negative = ExpectedDetection(replace(missing_identity, window_key=replace(identity.window_key, sequence_number=11)), False)
+        for address_type in (bytes, UnhashableAddress, UnindexableAddress, AlternateHashAddress):
+            for name in ("source_address", "destination_address"):
+                findings = tuple(flow_finding_with_address_type(finding, address_type, name) if i % 2 == 0 else finding
+                                 for i, finding in enumerate(original))
+                for positive, priority, classifications in (
+                    (True, (2, 3, 1, 4, 0, 5), (C.FALSE_NEGATIVE, C.FALSE_NEGATIVE, C.TRUE_POSITIVE)),
+                    (False, (1, 4, 2, 3, 0, 5), (None, C.TRUE_NEGATIVE, C.FALSE_POSITIVE)),
+                ):
+                    for count in (0, 1, 2, 3, 5, 6, 7):
+                        with self.subTest(address_type=address_type, name=name, positive=positive, count=count):
+                            expectations = (missing_positive,) + tuple(ExpectedDetection(identity, positive) for _ in range(count)) + (missing_negative,)
+                            result = evaluate(packets=(packet_result,), flows=findings,
+                                              packet_expectations=(packet_expectation,), flow_expectations=expectations)
+                            assignments = {actual_index: i + 1 for i, actual_index in enumerate(priority[:count])}
+                            entries = result.flow_evaluations
+                            self.assertEqual([e.actual_index for e in entries[:6]], list(range(6)))
+                            for actual_index, entry in enumerate(entries[:6]):
+                                expected_index = assignments.get(actual_index)
+                                self.assertEqual(entry.expectation_index, expected_index)
+                                self.assertIs(entry.finding, findings[actual_index])
+                                self.assertIs(entry.expectation, None if expected_index is None else expectations[expected_index])
+                                decision_index = ("not_evaluable", "no_match", "match").index(entry.finding.decision.value)
+                                classification = classifications[decision_index] if expected_index is not None else (C.FALSE_POSITIVE if decision_index == 2 else None)
+                                self.assertIs(entry.classification, classification)
+                            missing_indices = [i for i in range(len(expectations)) if i not in assignments.values()]
+                            self.assertEqual([e.expectation_index for e in entries[6:]], missing_indices)
+                            for entry, i in zip(entries[6:], missing_indices):
+                                self.assertIs(entry.expectation, expectations[i])
+                                self.assertIsNone(entry.finding)
+                                self.assertIsNone(entry.actual_index)
+                                self.assertIs(entry.classification, C.FALSE_NEGATIVE if expectations[i].positive else None)
+                            self.assertIs(result.packet_evaluations[0].finding, packet_result)
+                            self.assertIs(result.packet_evaluations[0].expectation, packet_expectation)
+                            self.assertIs(result.packet_evaluations[0].classification, C.TRUE_POSITIVE)
+                            self.assertEqual(result, evaluate(packets=(packet_result,), flows=findings,
+                                                             packet_expectations=(packet_expectation,), flow_expectations=expectations))
+
+    def test_unhashable_and_unindexable_actual_identities_remain_accepted(self):
+        normal = flow_finding()
+        for address_type, error in ((UnhashableAddress, TypeError), (UnindexableAddress, AssertionError)):
+            with self.subTest(address_type=address_type):
+                finding = flow_finding_with_address_type(normal, address_type)
+                with self.assertRaises(error):
+                    hash(detection_identity(finding))
+                entry = evaluate(flows=(finding,)).flow_evaluations[0]
+                self.assertIs(entry.classification, C.FALSE_POSITIVE)
+                self.assertIs(entry.finding, finding)
+                entry = evaluate(flows=(finding,), flow_expectations=(expected(normal),)).flow_evaluations[0]
+                self.assertIs(entry.classification, C.TRUE_POSITIVE)
+                self.assertIs(entry.finding, finding)
+                with self.assertRaises(error):
+                    ExpectedDetectionResult((), (expected(finding),))
+
+    def test_hashable_subclass_expectations_use_existing_equality_with_plain_findings(self):
+        finding = flow_finding()
+        custom = flow_finding_with_address_type(finding, AlternateHashAddress)
+        expectation = expected(custom)
+        self.assertEqual(expectation.identity, detection_identity(finding))
+        self.assertNotEqual(hash(expectation.identity), hash(detection_identity(finding)))
+        entries = evaluate(flows=(finding, finding), flow_expectations=(expectation, expected(finding), expectation)).flow_evaluations
+        self.assertEqual([e.expectation_index for e in entries], [0, 1, 2])
+        self.assertEqual([e.classification for e in entries], [C.TRUE_POSITIVE, C.TRUE_POSITIVE, C.FALSE_NEGATIVE])
+        self.assertIs(entries[0].expectation, expectation)
+        self.assertIs(entries[2].expectation, expectation)
+
+    def test_identity_validation_precedes_indexing_in_finding_and_channel_order(self):
+        class SourceText(str):
+            pass
+
+        malformed_packet = packet_finding(source=CaptureSource(SourceText("audit-source")))
+        valid_packet, valid_flow = packet_finding(), flow_finding()
+        window = valid_flow.raw_evidence.observation_window
+        statistics = window.coordinated_state.flow_statistics
+        statistics = replace(statistics, first_captured_at=statistics.first_captured_at.astimezone(timezone(timedelta(hours=1))),
+                             last_captured_at=statistics.last_captured_at.astimezone(timezone(timedelta(hours=1))))
+        window = replace(window, coordinated_state=replace(window.coordinated_state, flow_statistics=statistics))
+        malformed_flow = replace(valid_flow, raw_evidence=replace(valid_flow.raw_evidence, snapshot=extract_flow_feature_snapshot(window)))
+        for packets, flows, error, message in (
+            ((malformed_packet, valid_flow), (), TypeError, "capture_source must be exactly a string"),
+            ((valid_flow, malformed_packet), (), ValueError, "pipeline finding belongs to the other finding channel"),
+            ((malformed_packet,), (malformed_flow,), TypeError, "capture_source must be exactly a string"),
+            ((), (malformed_flow, valid_packet), ValueError, "timestamp must have zero UTC offset"),
+            ((), (valid_packet, malformed_flow), ValueError, "pipeline finding belongs to the other finding channel"),
+        ):
+            with self.subTest(message=message, packets=len(packets), flows=len(flows)):
+                with self.assertRaises(error) as raised:
+                    evaluate(packets=packets, flows=flows)
+                self.assertEqual(str(raised.exception), message)
+
+    def test_ordinary_identity_search_work_is_linear_for_reversed_and_disjoint_inputs(self):
+        for packet_channel, identity_type in ((True, PacketDetectionIdentity), (False, FlowDetectionIdentity)):
+            finding = packet_finding() if packet_channel else flow_finding()
+            for size in (64, 128):
+                findings = (finding,) * size
+                if not packet_channel:
+                    window = finding.raw_evidence.observation_window
+                    findings = tuple(replace(finding, raw_evidence=replace(finding.raw_evidence,
+                                     snapshot=extract_flow_feature_snapshot(replace(window, key=replace(window.key, sequence_number=i)))))
+                                     for i in range(size))
+                identities = tuple(detection_identity(value, packet_index=i if packet_channel else None)
+                                   for i, value in enumerate(findings))
+                for disjoint in (False, True):
+                    with self.subTest(packet=packet_channel, size=size, disjoint=disjoint):
+                        targets = tuple(replace(identity, configuration=replace(identity.configuration, detector_version="other"))
+                                        if disjoint else identity for identity in reversed(identities))
+                        expectations = tuple(ExpectedDetection(identity, True) for identity in targets)
+                        actual = DetectionPipelineResult(findings if packet_channel else (), () if packet_channel else findings)
+                        expected_result = ExpectedDetectionResult(expectations if packet_channel else (), () if packet_channel else expectations)
+                        calls = {"equality": 0, "hash": 0}
+                        original_equality, original_hash = identity_type.__eq__, identity_type.__hash__
+
+                        def counted_equality(left, right):
+                            calls["equality"] += 1
+                            return original_equality(left, right)
+
+                        def counted_hash(value):
+                            calls["hash"] += 1
+                            return original_hash(value)
+
+                        with patch.object(identity_type, "__eq__", counted_equality), patch.object(identity_type, "__hash__", counted_hash):
+                            result = evaluate_detection_result(actual, expected_result)
+                        entries = result.packet_evaluations if packet_channel else result.flow_evaluations
+                        self.assertLessEqual(sum(calls.values()), 12 * size)
+                        self.assertEqual(len(entries), size * (2 if disjoint else 1))
+                        self.assertEqual([e.expectation_index for e in entries[:size]], [None] * size if disjoint else list(reversed(range(size))))
+                        self.assertEqual([e.classification for e in entries[:size]], [C.FALSE_POSITIVE if disjoint else C.TRUE_POSITIVE] * size)
+
     def test_empty_result_has_no_inferred_negatives(self):
         self.assertEqual(evaluate(), DetectionEvaluationResult((), ()))
 

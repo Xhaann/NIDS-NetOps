@@ -1,3 +1,4 @@
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -203,12 +204,27 @@ class DetectionEvaluationResult:
                         raise ValueError("entry finding belongs to the other finding channel")
 
 
+def _indexable_identity(identity: _Identity) -> bool:
+    return type(identity) is PacketDetectionIdentity or (
+        type(identity.flow_identity.source_address) is bytes
+        and type(identity.flow_identity.destination_address) is bytes
+    )
+
+
 def _evaluate_channel(findings: tuple, expectations: tuple, packet: bool) -> tuple[DetectionEvaluationEntry, ...]:
     identities = []
     for index, finding in enumerate(findings):
         if (type(finding.raw_evidence) is PacketIntegrityEvidence) != packet:
             raise ValueError("pipeline finding belongs to the other finding channel")
         identities.append(detection_identity(finding, packet_index=index if packet else None))
+    finding_indices = None
+    if all(_indexable_identity(identity) for identity in identities) and all(
+        _indexable_identity(expectation.identity) for expectation in expectations
+    ):
+        finding_indices = {}
+        for actual_index, identity in enumerate(identities):
+            key = (identity, findings[actual_index].decision.value)
+            finding_indices.setdefault(key, deque()).append(actual_index)
     assignments = {}
     used = set()
     for phase in ("required", "opposite", "not_evaluable"):
@@ -219,11 +235,18 @@ def _evaluate_channel(findings: tuple, expectations: tuple, packet: bool) -> tup
             decision = required if phase == "required" else ("no_match" if expectation.positive else "match")
             if phase == "not_evaluable":
                 decision = phase
-            for actual_index, finding in enumerate(findings):
-                if actual_index not in assignments and finding.decision.value == decision and expectation.identity == identities[actual_index]:
+            if finding_indices is None:
+                for actual_index, finding in enumerate(findings):
+                    if actual_index not in assignments and finding.decision.value == decision and expectation.identity == identities[actual_index]:
+                        assignments[actual_index] = expected_index
+                        used.add(expected_index)
+                        break
+            else:
+                candidates = finding_indices.get((expectation.identity, decision))
+                if candidates:
+                    actual_index = candidates.popleft()
                     assignments[actual_index] = expected_index
                     used.add(expected_index)
-                    break
     entries = []
     for actual_index, finding in enumerate(findings):
         expected_index = assignments.get(actual_index)

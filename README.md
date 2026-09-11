@@ -35,7 +35,7 @@ PYTHONPATH=src python3 -B -m unittest discover -s tests
 PYTHONPATH=src python3 -B -m application --help
 ```
 
-The current suite contains 1626 tests. Fixtures are synthetic; PCAP tests create local temporary files. Tests use controlled clocks for timing semantics rather than machine-speed thresholds.
+The current suite contains 1631 tests. Fixtures are synthetic; PCAP tests create local temporary files. Tests use controlled clocks for timing semantics rather than machine-speed thresholds.
 
 To run detection, supply your own local classic PCAP file in place of `input.pcap`:
 
