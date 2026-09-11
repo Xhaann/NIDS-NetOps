@@ -4,6 +4,8 @@ from enum import Enum
 from math import isfinite
 from typing import Optional, Union
 
+from detection.detector_version import DetectorVersion
+
 from analysis.flow_feature_snapshot import FlowFeatureSnapshot
 from analysis.flow_identity import FlowIdentity
 from analysis.flow_observation_window import (
@@ -88,6 +90,10 @@ class FlowVolumeThresholdConfiguration:
                 raise FlowVolumeThresholdError(
                     "count and byte threshold must be nonnegative"
                 )
+
+    @property
+    def version_reference(self) -> DetectorVersion:
+        return DetectorVersion(self.detector_id, self.detector_version)
 
 
 def _validate_snapshot(snapshot: FlowFeatureSnapshot) -> None:

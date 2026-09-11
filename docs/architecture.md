@@ -296,7 +296,7 @@ The application [configuration value](../src/application/detection_configuration
 
 Existing detector values own identity/version, metric selection, threshold validation, and semantics; window lifecycle still owns how the timeout is applied. The configuration validates only composition types and the established positive-duration constraint. Equality uses all supplied immutable settings, with no generated configuration identity, copying, normalization, sorting, or hidden state. [The configuration contract](../src/application/README.md#deterministic-configuration-representation) documents optional TCP configuration and exact reference preservation.
 
-Construction and inspection execute no NIDS or evaluation behavior. Existing experiment, dataset, benchmark, session, pipeline, CLI, evaluation, and metrics contracts remain unchanged. This boundary provides representation and validation only, with no loading, persistence, registries, reporting, or execution. Detector Versioning (Commit #38) and Feature Contract Versioning (Commit #39) remain separate future work.
+Construction and inspection execute no NIDS or evaluation behavior. Existing experiment, dataset, benchmark, session, pipeline, CLI, evaluation, and metrics contracts remain unchanged. This boundary provides representation and validation only, with no loading, persistence, registries, reporting, or execution. Detector version references are a separate detection value contract; Feature Contract Versioning (Commit #39) remains future work.
 
 ## Reproducible experiment definitions
 
@@ -305,6 +305,14 @@ The application [experiment definition](../src/application/detection_experiment.
 The operation reference describes caller-defined benchmark/evaluation work and is not resolved or executed. Callers own the correspondence between that reference and the external procedure and its inputs. Existing detector configuration and version values remain on dataset targets; evaluation and metrics are not redefined. [The experiment contract](../src/application/README.md#reproducible-experiment-definition) adds no configuration-management, detector-versioning, or feature-versioning subsystem.
 
 Datasets define cases, benchmarks execute explicit operations, and experiments describe intended work. Definitions contain no callable, execution result, finding, metric output, or runtime metadata. Construction and inspection perform no loading, system execution, external access, timing, randomness, or persistence. Experiment executors, tracking, result storage, performance benchmarking, configuration loading, version management, and reporting remain future work.
+
+## Explicit detector version references
+
+The detection layer exports the frozen [DetectorVersion](../src/detection/detector_version.py) pair of exact nonblank `detector_id` and `detector_version` strings. Identity specifies which detector; version specifies its caller-declared revision. Equality compares both strings with no normalization, semantic-version interpretation, automatic discovery, or generated identity.
+
+The three detector configurations and `DetectionFinding` provide a read-only `version_reference` projection from their existing fields, adding no stored state. Operational metrics/thresholds remain in configurations. Evidence, configuration constructors, finding schema, CLI output, and evaluation matching remain unchanged. Evaluation, truth, dataset, benchmark, and experiment identities retain full configuration and packet/flow provenance; a version reference is not a replacement matching key.
+
+[The version-reference contract](../src/detection/README.md#explicit-detector-version-references) performs no execution or external access and introduces no registry, loading, Git/package discovery, persistence, or deployment. Configuration management continues to compose settings; Feature Contract Versioning is separate future work in Commit #39.
 
 ## Cross-cutting requirements for later tasks
 

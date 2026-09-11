@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
+from detection.detector_version import DetectorVersion
+
 from analysis.flow_identity import FlowIdentity
 from analysis.flow_observation_window import (
     FlowObservationWindow,
@@ -76,6 +78,10 @@ class TCPControlThresholdConfiguration:
             raise TypeError("threshold must be exactly an integer")
         if self.threshold < 0:
             raise TCPControlThresholdError("threshold must be nonnegative")
+
+    @property
+    def version_reference(self) -> DetectorVersion:
+        return DetectorVersion(self.detector_id, self.detector_version)
 
 
 def _tcp_control_statistics(window: FlowObservationWindow) -> TCPControlStatistics:

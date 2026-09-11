@@ -1,3 +1,4 @@
+from detection.detector_version import DetectorVersion
 from detection.detection_finding import (
     DetectionFinding,
     DetectionFindingError,
@@ -38,6 +39,7 @@ from detection.tcp_control_threshold import (
 __all__ = [
     "DetectionFinding",
     "DetectionFindingError",
+    "DetectorVersion",
     "FlowVolumeMetric",
     "FlowVolumeThresholdComparison",
     "FlowVolumeThresholdConfiguration",

@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Union
 
+from detection.detector_version import DetectorVersion
+
 from detection.flow_volume_threshold import (
     FlowVolumeThresholdDecision,
     FlowVolumeThresholdEvaluation,
@@ -191,6 +193,10 @@ class DetectionFinding:
             self.raw_evidence,
             self.security_interpretation,
         )
+
+    @property
+    def version_reference(self) -> DetectorVersion:
+        return DetectorVersion(self.detector_id, self.detector_version)
 
 
 def detection_finding_from_evaluation(

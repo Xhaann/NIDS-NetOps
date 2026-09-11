@@ -3,6 +3,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
+from detection.detector_version import DetectorVersion
+
 from analysis.packet_analysis import PacketAnalysis
 from analysis.packet_analysis_outcome import (
     PacketAnalysisFailureClassification,
@@ -47,6 +49,10 @@ class PacketIntegrityConfiguration:
                 raise TypeError(f"{name} must be exactly a string")
             if not value.strip():
                 raise PacketIntegrityError(f"{name} must not be blank")
+
+    @property
+    def version_reference(self) -> DetectorVersion:
+        return DetectorVersion(self.detector_id, self.detector_version)
 
 
 def _decision_for(outcome: PacketAnalysisOutcome) -> PacketIntegrityDecision:
