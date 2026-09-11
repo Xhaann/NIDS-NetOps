@@ -4,7 +4,7 @@ The `application` package composes implemented subsystem contracts without takin
 
 ## Command-line adapter
 
-[cli.py](cli.py) provides `main(argv=None) -> int`; [__main__.py](__main__.py) exposes it through `PYTHONPATH=src python3 -B -m application`. Importing either module performs no execution. The package export list is unchanged; serialization helpers stay private. The adapter accepts one authoritative local classic PCAP path, constructs `PcapPacketSource`, and invokes `run_detection_pipeline()` exactly once. Capture acquisition, execution, analysis, flow lifecycle, feature derivation, and detector orchestration remain delegated to their existing owners.
+[cli.py](cli.py) provides `main(argv=None) -> int`; [__main__.py](__main__.py) exposes it through `PYTHONPATH=src python3 -B -m application`. Importing either module performs no execution. The CLI adds no package-level exports; serialization helpers stay private. The adapter accepts one authoritative local classic PCAP path, constructs `PcapPacketSource`, and invokes `run_detection_pipeline()` exactly once. Capture acquisition, execution, analysis, flow lifecycle, feature derivation, and detector orchestration remain delegated to their existing owners.
 
 All detector configuration is explicit because the domain models define no canonical defaults. Required options are `--capture-session-id`, `--inactivity-timeout-microseconds`, `--packet-detector-id`, `--packet-detector-version`, `--volume-detector-id`, `--volume-detector-version`, `--volume-metric`, `--volume-threshold`, `--tcp-detector-id`, `--tcp-detector-version`, `--tcp-metric`, and `--tcp-threshold`. Metric choices are the existing enum values shown by `--help`. Count/byte and TCP thresholds become integers; rate thresholds become floats. The existing configuration models validate their values. Timeout is a positive integer microsecond duration representable by `timedelta`. Detector metadata and session identity must be nonblank. TCP settings are always explicit, even for a UDP-only input; applicability remains owned by the pipeline. PCAP provenance retains its existing `local-pcap` default, and no path-derived identity is introduced.
 
@@ -108,3 +108,41 @@ Existing source, decoding, analysis, identity, coordination, lifecycle, and down
 TCP and UDP use the same path. TCP flags do not control lifecycle, UDP has no transaction inference, and TCP control state remains absent for UDP. ICMP packet analysis exists, but the current flow identity contract rejects ICMP and that error propagates. Skipping invalid or unsupported packets is **UNDEFINED POLICY**.
 
 The application boundary continues to emit exact `FlowObservationWindow` objects and does not perform feature extraction. Downstream consumers may independently pass an emitted closed window to `extract_flow_feature_snapshot()`, which retains that exact window as provenance. Active windows are also valid provisional extraction inputs through the analysis API. Explicit segmentation during a running source, durable delivery, retries, rejected-packet routing, live capture, packet-loss accounting, ML vectorization, and serialization are not part of this layer.
+
+
+## Detection result evaluation
+
+[detection_evaluation.py](detection_evaluation.py) exposes `evaluate_detection_result(actual, expected)`. It consumes an already-produced `DetectionPipelineResult` and an immutable `ExpectedDetectionResult`, returning a frozen `DetectionEvaluationResult`. This is an explicit in-memory comparison API. It executes no acquisition, analysis, flow observation, feature extraction, detector, session, pipeline, or CLI. The existing CLI JSON and pipeline contracts are unchanged.
+
+`ExpectedDetectionResult(packet_expectations, flow_expectations)` requires two tuples of `ExpectedDetection(identity, positive)` values. The boolean is mandatory: `True` requires an actual `MATCH`; `False` requires an actual `NO_MATCH`. Expectations must be independently supplied, never inferred from missing results. No attack labels or dataset format are defined.
+
+### Stable matching identity
+
+The two frozen identity types preserve packet/flow separation:
+
+- `PacketDetectionIdentity(configuration, packet_index, captured_at, capture_source, link_type, captured_length, original_length)` uses the existing packet-integrity configuration, the zero-based position in `DetectionPipelineResult.packet_findings`, and capture metadata. Its index is a position in the supplied result sequence, not a generated finding identifier. Duplicate observations at different positions remain distinct. Missing link type and original length remain `None`; UTC timestamps remain unchanged.
+- `FlowDetectionIdentity(configuration, window_key, flow_identity, first_captured_at, last_captured_at)` reuses the existing typed detector configuration, `FlowObservationWindowKey`, canonical packed `FlowIdentity`, and window timestamps. Detector family, ID, version, selected metric, and threshold all participate through configuration equality. IPv4/IPv6 and TCP/UDP remain distinct through the existing flow identity. Counters, feature graphs, and raw packet bytes are not copied into identity.
+
+`detection_identity(finding, packet_index=...)` projects the packet identity from established evidence. Omit `packet_index` for flow findings. Callers can also construct identities directly from independently known metadata and configuration. The helper derives no expectation label and runs no detector. Decision, interpretation, failure description, and measured counters are deliberately excluded from identity so differing decisions about the same subject can be compared.
+
+Packet evidence has no independent packet identifier or capture-session key. Consequently packet expectations are scoped to a caller-aligned result sequence and capture provenance. Reordering/removing earlier packet results changes later positions. Matching is not content authentication: it cannot distinguish substitutions with identical metadata at the same position without packet bytes, which this layer never reads. Callers must supply expectations for the corresponding input sequence. Flow session IDs and window keys likewise remain caller-established provenance, not globally unique identifiers. No cross-dataset matching or raw-byte fingerprint is claimed.
+
+### Classification and audit records
+
+`DetectionClassification` contains only `TRUE_POSITIVE`, `FALSE_POSITIVE`, `FALSE_NEGATIVE`, and `TRUE_NEGATIVE`. The exact existing detector decision remains available on each retained finding. `NOT_EVALUABLE` is neither positive nor negative and never satisfies an expectation.
+
+| Explicit expectation | Actual MATCH | Actual NO_MATCH | Actual NOT_EVALUABLE | No corresponding result |
+| --- | --- | --- | --- | --- |
+| Positive | TP | FN | FN, retaining NOT_EVALUABLE | FN |
+| Negative | FP | TN | Unclassified, retaining NOT_EVALUABLE | Unclassified, missing result |
+| None | FP | Unclassified | Unclassified, retaining NOT_EVALUABLE | No entry |
+
+An FN records failure to obtain the required MATCH, not a claim that the detector evaluated a negative. Later reporting can distinguish an unevaluable FN from an evaluated NO_MATCH or missing result using the retained finding and decision. `classification=None` means no binary classification is justified; it is not a TN. In particular a missing negative never earns credit.
+
+Each `DetectionEvaluationEntry` contains `classification`, `expectation_index`, the exact `expectation`, `actual_index`, and the exact `finding`. An absent side and its index are both `None`. Indices refer to the corresponding packet or flow input tuple. `DetectionEvaluationResult.packet_evaluations` and `.flow_evaluations` are immutable tuples: one entry for every actual finding in original order, followed by entries for unmatched expectations in expectation order. No sorting, deduplication, or input mutation occurs. Findings and their original evidence remain attached for auditing, without reconstruction.
+
+Matching is one-to-one and multiplicity-sensitive. For each channel, expectations in input order first consume the earliest unassigned same-identity finding with the required decision. A second pass associates remaining expectations with opposite binary decisions; a final pass associates remaining NOT_EVALUABLE findings. Extra MATCH findings are FP; extra NO_MATCH/NOT_EVALUABLE findings remain unclassified. Duplicate positive expectations require separate MATCH results; duplicate negatives require separate NO_MATCH results. Contradictory positive and negative labels for the same identity are rejected with `ValueError`, rather than interpreted as implicit occurrence labels. Packet-position identities disambiguate packet occurrences explicitly; repeated flow identities use the documented multiplicity rule.
+
+Public constructors reject wrong types, mutable collections, invalid identity metadata, inconsistent audit entries, and mixed channels using `TypeError` or `ValueError`. Evaluation is synchronous and deterministic; exceptions propagate without retries or partial returned results. All working assignments are local to one call. The evaluator retains references to supplied immutable evidence but never reads raw packet bytes or creates execution state.
+
+No precision, recall, F1, accuracy, benchmarking, dataset ingestion, experiment tracking, ML, persistence, correlation, alerting, or CLI evaluation mode is introduced. Those remain separate future work.

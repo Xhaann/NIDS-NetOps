@@ -250,6 +250,14 @@ Successful execution emits ordered packet and flow finding arrays as JSON. A pri
 
 Success exits 0 independently of detector decisions; invalid arguments use argparse's exit 2; capture errors exit 1 with a fixed JSON error on stderr and no result. Other exceptions propagate normally without retries or fake findings. Analytical failure outcomes retain their existing meanings. The CLI preserves source/pipeline ordering and existing flow-admission errors, including decreasing admitted-flow timestamps. Capture and detection remain opt-in, and no live capture, PCAPNG, reassembly, persistence, alerting, or new detection semantics are added.
 
+## Deterministic detection result evaluation
+
+The application [evaluation boundary](../src/application/detection_evaluation.py) consumes `DetectionPipelineResult` and explicit immutable `ExpectedDetectionResult` values. It returns separate ordered packet/flow evaluation entries with original finding references, expectation references, input indices, and justified binary classifications. No capture, parsing, flow lifecycle, feature derivation, detection execution, or CLI invocation takes place. Existing detector and pipeline contracts remain authoritative.
+
+Positive expectations require MATCH; negative expectations require NO_MATCH. NOT_EVALUABLE remains attached as its existing typed decision and never earns TP or TN. An unsatisfied positive is FN, including when its retained decision is NOT_EVALUABLE. A negative without NO_MATCH remains unresolved unless contradicted by MATCH (FP). Unlabeled MATCH is FP; unlabeled NO_MATCH/NOT_EVALUABLE is unclassified. Absence never creates TN. The [evaluation contract](../src/application/README.md#detection-result-evaluation) specifies the full table, identity fields, multiplicity, validation, and audit ordering.
+
+Packet identities combine detector configuration, position in the supplied result sequence, and capture metadata. Their scope requires caller-aligned input provenance; they are not content fingerprints or cross-dataset IDs. Flow identities reuse configuration, existing window keys, canonical packed endpoints, and timestamps. No raw bytes, object identity, repr, wall clock, or persistent matching state participate. All matching is local, one-to-one, and deterministic. No metrics, ground-truth files, datasets, benchmarking, ML, correlation, persistence, or additional CLI behavior is introduced.
+
 ## Cross-cutting requirements for later tasks
 
 - Preserve sensor/source identity, capture time, processing time where needed, and provenance across transformations. Specify identifier and schema evolution rules before persisting records.
