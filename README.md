@@ -35,7 +35,7 @@ PYTHONPATH=src python3 -B -m unittest discover -s tests
 PYTHONPATH=src python3 -B -m application --help
 ```
 
-The current suite contains 1616 tests. Fixtures are synthetic; PCAP tests create local temporary files. Tests use controlled clocks for timing semantics rather than machine-speed thresholds.
+The current suite contains 1626 tests. Fixtures are synthetic; PCAP tests create local temporary files. Tests use controlled clocks for timing semantics rather than machine-speed thresholds.
 
 To run detection, supply your own local classic PCAP file in place of `input.pcap`:
 
@@ -65,7 +65,7 @@ Equivalent explicit observations, configuration, ground truth, and caller operat
 
 The current implementation has no live network capture, PCAPNG, fragment/stream reassembly, application-protocol parsing, TCP connection state machine, autonomous response, blocking, firewall/SIEM integration, threat intelligence, correlation, alert management, or persistence. In-memory results can grow with input size; operational resource hardening and deployment are not established. Benchmarking measures elapsed execution, not CPU/memory use or function-level profiling, and does not optimize algorithms or store results.
 
-ML/MLOps is not implemented: there are no models, training, inference, feature stores, model registries, drift detection, serving, or experiment tracking infrastructure. Any future work must build on the explicit feature and evaluation contracts; it is not part of the current detection path.
+The [ML feature projection](src/ml/README.md) provides 49 ordered canonical numerical inputs with explicit version and availability semantics, keeping labels and detector outcomes outside the representation. Models, preprocessing, ML datasets, training, inference, feature stores, model registries, drift detection, serving, and experiment tracking infrastructure remain unimplemented. Projection is separate from the deterministic detection path.
 
 ## Repository guide
 
@@ -76,6 +76,7 @@ ML/MLOps is not implemented: there are no models, training, inference, feature s
 | [Capture](src/capture/README.md) | Sources, observations, ingestion, and classic PCAP lifecycle. |
 | [Analysis](src/analysis/README.md) | Protocol models, flow lifecycle, raw statistics, and feature contracts. |
 | [Detection](src/detection/README.md) | Detector predicates, configurations, evidence, and findings. |
+| [ML inputs](src/ml/README.md) | Canonical feature projection, ordering, availability, and leakage boundaries. |
 | [Tests](tests/README.md) | Verification scope and commands. |
 | [Development](docs/development.md) | Scope, source policy, and evidence discipline. |
 | [Labs](labs/README.md) | Planned authorized lab methodology, not an implemented runtime. |

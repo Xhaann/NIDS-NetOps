@@ -14,6 +14,7 @@ The implementation is a synchronous Python application using standard-library co
 | [analysis](../src/analysis/README.md) | Protocol decoding/validation, flow identity and observation windows, raw statistics, typed feature extraction and feature-contract provenance. |
 | [detection](../src/detection/README.md) | Packet-integrity and flow threshold predicates, detector configuration/version references, evidence, and the common finding. |
 | [application](../src/application/README.md) | Composition, evaluation, truth/dataset/experiment contracts, metrics, reporting representation, benchmarks, diagnostics, and CLI adaptation. |
+| [ml](../src/ml/README.md) | Explicit immutable numerical projection of existing feature snapshots for future model inputs. |
 
 The principal path is:
 
@@ -95,6 +96,12 @@ Protocol analysis and flow admission have different domains. A failed analysis o
 The snapshot retains its exact window and exposes coordinated state through it. Volume, packet-size, duration, rate, global inter-arrival, and directional inter-arrival formulas retain their own types and units. Zero duration makes `flow_rate_features` absent (`None`); insufficient directional intervals remain unavailable under the existing feature contracts. TCP-control statistics remain raw window state rather than an additional numerical feature family. IPv4 and IPv6 share the same extraction and optionality rules. Analysis permits provisional snapshots of active windows; detectors require closed windows.
 
 `FlowFeatureSnapshot.feature_contract` projects the statically defined `FeatureContractVersion("flow-feature-snapshot", "1")`. It adds no stored feature field, ordering change, or alternate extractor. Snapshot equality remains based on the existing fields; callers cannot select a different contract for the current extractor. This is provenance, not a flattened ML vector, schema registry, or migration mechanism.
+
+## ML feature projection
+
+The separate path is `FlowFeatureSnapshot -> project_flow_features(snapshot) -> MLFeatureProjection`. It reads the six existing numerical families into 49 fixed, qualified columns, preserving exact integers, floats and unavailable `None` values without recomputation or preprocessing. It retains the canonical `FeatureContractVersion("flow-feature-snapshot", "1")` and rejects other versions. The [ML input contract](../src/ml/README.md) specifies every column and its canonical source. No second versioning scheme is introduced.
+
+The projection retains no snapshot/window graph, raw TCP-control state, identity, timestamp, label, finding, decision or evaluation result. Active and closed snapshots are supported; callers must select the appropriate observation horizon for their research target. Later state cannot alter an earlier projection. Existing detection datasets and experiments describe labeled evaluation subjects and procedures rather than numerical inputs, so they are neither consumed nor modified. The deterministic pipeline does not invoke this boundary. ML dataset construction, preprocessing, training, inference and MLOps remain deferred.
 
 ## Detection and findings
 
@@ -221,6 +228,6 @@ Reproducibility requires equivalent explicit observations, configuration, extern
 
 There is no live interface capture, PCAPNG, reassembly, complete protocol stack, application parsing, TCP connection state, signature catalog, behavioral baseline, autonomous response, blocking, firewall integration, SIEM integration, threat intelligence, credential protection, endpoint response, or remediation. Findings do not implement severity, confidence, risk, correlation, alerting, or production SOC functionality.
 
-There is no ML/MLOps: no training, inference, model registry, feature store, drift detection, model serving, or experiment tracking infrastructure. Future research must use stable feature/evaluation contracts and separate empirical claims from deterministic predicate behavior. No future capability is implied by the current version objects.
+ML support is limited to the explicit feature projection above: no ML dataset construction, preprocessing, training, inference, model registry, feature store, drift detection, model serving, or experiment tracking infrastructure is implemented. Future research must use stable feature/evaluation contracts and separate empirical claims from deterministic predicate behavior. No future capability is implied by the current version objects.
 
 The `enrichment`, `events`, `storage`, and `integrations` responsibility notes describe possible future ownership, not runtime implementations. Further operational resource limits, deployment, and any future subsystem require separate scoped work. This baseline finalizes documentation without adding functionality.
