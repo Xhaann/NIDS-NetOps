@@ -15,6 +15,7 @@ The implementation is a synchronous Python application using standard-library co
 | [detection](../src/detection/README.md) | Packet-integrity and flow threshold predicates, detector configuration/version references, evidence, and the common finding. |
 | [application](../src/application/README.md) | Composition, evaluation, truth/dataset/experiment contracts, metrics, reporting representation, benchmarks, diagnostics, and CLI adaptation. |
 | [ml](../src/ml/README.md) | Explicit immutable numerical projection of existing feature snapshots for future model inputs. |
+| [research](../src/research/README.md) | Immutable examples associating existing projections with explicitly supplied research truth, independently of detector/evaluation targets. |
 
 The principal path is:
 
@@ -102,6 +103,8 @@ The snapshot retains its exact window and exposes coordinated state through it. 
 The separate path is `FlowFeatureSnapshot -> project_flow_features(snapshot) -> MLFeatureProjection`. It reads the six existing numerical families into 49 fixed, qualified columns, preserving exact integers, floats and unavailable `None` values without recomputation or preprocessing. It retains the canonical `FeatureContractVersion("flow-feature-snapshot", "1")` and rejects other versions. The [ML input contract](../src/ml/README.md) specifies every column and its canonical source. No second versioning scheme is introduced.
 
 The projection retains no snapshot/window graph, raw TCP-control state, identity, timestamp, label, finding, decision or evaluation result. Active and closed snapshots are supported; callers must select the appropriate observation horizon for their research target. Later state cannot alter an earlier projection. Existing detection datasets and experiments describe labeled evaluation subjects and procedures rather than numerical inputs, so they are neither consumed nor modified. The deterministic pipeline does not invoke this boundary. ML dataset construction, preprocessing, training, inference and MLOps remain deferred.
+
+`ResearchExample(projection, ground_truth=None)` separately retains an exact `MLFeatureProjection` and optional caller-supplied nonblank truth text. The [research contract](../src/research/README.md) defines no binary/attack vocabulary, detector identity, or conversion from evaluation truth. It preserves the projection's authoritative contract, names, values, and unavailable slots by reference. Frozen examples have no generated identity or row position; callers own observation/truth association, and future dataset ordering remains separate. This package belongs to experimental data representation rather than application evaluation or model implementation. It does not construct a dataset or invoke the deterministic detection branch.
 
 ## Detection and findings
 

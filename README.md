@@ -14,6 +14,7 @@ Supporting boundaries remain distinct:
 
 - `DetectionDataset` defines ordered evaluation cases; `run_detection_benchmark()` invokes a supplied operation once per case.
 - `DetectionExperiment` describes a dataset and an explicit operation ID/version without executing it.
+- [ResearchExample](src/research/README.md) associates an existing feature projection with optional caller-supplied research truth, independently of detector/evaluation targets.
 - `DetectionConfiguration`, `DetectorVersion`, and `FeatureContractVersion` preserve explicit settings and provenance.
 - `run_performance_benchmark()` measures a supplied operation with explicit repetitions and warmups, preserving ordered elapsed observations and summary statistics.
 - `OperationalDiagnostic` describes a failure; `diagnose_error()` conservatively classifies a supplied exception without catching, retrying, or logging an operation.
@@ -35,7 +36,7 @@ PYTHONPATH=src python3 -B -m unittest discover -s tests
 PYTHONPATH=src python3 -B -m application --help
 ```
 
-The current suite contains 1636 tests. Fixtures are synthetic; PCAP tests create local temporary files. Tests use controlled clocks for timing semantics rather than machine-speed thresholds.
+The current suite contains 1643 tests. Fixtures are synthetic; PCAP tests create local temporary files. Tests use controlled clocks for timing semantics rather than machine-speed thresholds.
 
 To run detection, supply your own local classic PCAP file in place of `input.pcap`:
 
