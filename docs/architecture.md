@@ -290,6 +290,14 @@ A frozen `DetectionBenchmarkResult` retains the source dataset and exact ordered
 
 [The benchmark contract](../src/application/README.md#deterministic-benchmark-execution) owns orchestration only. Explicit operations may use existing evaluation and metrics APIs; the framework does not invoke them or the NIDS pipeline itself. It adds no parsing, capture, detection, feature logic, truth inference, timing, performance measurement, loading, concurrency, reporting, or experiment tracking. Framework state is local to each invocation, and deterministic operation outputs produce deterministic ordered results. Performance benchmarking remains future work.
 
+## Reproducible experiment definitions
+
+The application [experiment definition](../src/application/detection_experiment.py) is the frozen `DetectionExperiment(experiment_id, dataset, benchmark_operation_id, benchmark_operation_version)`. It retains the existing dataset and explicit nonblank identity strings. Full value equality includes dataset cases, ordering, truth, target configurations, and the declared operation ID/version; it does not use object identity or generated fingerprints.
+
+The operation reference describes caller-defined benchmark/evaluation work and is not resolved or executed. Callers own the correspondence between that reference and the external procedure and its inputs. Existing detector configuration and version values remain on dataset targets; evaluation and metrics are not redefined. [The experiment contract](../src/application/README.md#reproducible-experiment-definition) adds no configuration-management, detector-versioning, or feature-versioning subsystem.
+
+Datasets define cases, benchmarks execute explicit operations, and experiments describe intended work. Definitions contain no callable, execution result, finding, metric output, or runtime metadata. Construction and inspection perform no loading, system execution, external access, timing, randomness, or persistence. Experiment executors, tracking, result storage, performance benchmarking, configuration management, version management, and reporting remain future work.
+
 ## Cross-cutting requirements for later tasks
 
 - Preserve sensor/source identity, capture time, processing time where needed, and provenance across transformations. Specify identifier and schema evolution rules before persisting records.

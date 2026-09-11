@@ -12,6 +12,7 @@ from application.detection_evaluation import (
     detection_identity,
     evaluate_detection_result,
 )
+from application.detection_experiment import DetectionExperiment
 from application.detection_metrics import DetectionEvaluationMetrics, DetectionMetrics, calculate_detection_metrics
 from application.detection_pipeline import DetectionPipelineResult, run_detection_pipeline
 from application.detection_session import DetectionSession
@@ -31,6 +32,7 @@ __all__ = [
     "DetectionEvaluationEntry",
     "DetectionEvaluationMetrics",
     "DetectionEvaluationResult",
+    "DetectionExperiment",
     "DetectionMetrics",
     "DetectionPipelineResult",
     "DetectionSession",
