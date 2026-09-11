@@ -195,7 +195,7 @@ A `PacketAnalysisOutcome` non-success is already an analytical result, not an ex
 
 ## CLI and public API
 
-The CLI is `PYTHONPATH=src python3 -B -m application`, with a local PCAP path and explicit required detector/session options. See the [tested command](../README.md#run-and-verify) and [CLI contract](../src/application/README.md#command-line-adapter). It executes detection once, emits ordered packet/flow finding JSON, exits 0 on successful output, exits 2 for argument/configuration errors, and returns 1 for handled `CaptureError`. Other execution/output exceptions propagate. It provides no evaluation, report, benchmark, experiment, or diagnostic subcommand.
+The CLI is `PYTHONPATH=src python3 -B -m application`, with a local PCAP path and explicit required detector/session options. See the [tested command](../README.md#run-and-verify) and [CLI contract](../src/application/README.md#command-line-adapter). It executes detection once, emits ordered packet/flow finding JSON, exits 0 on successful output, exits 2 for argument/configuration errors, and returns 1 for handled `CaptureError`. Repeated settings, blank/NUL paths, and invalid arguments fail before acquisition. Help/usage formatting has a fixed width. The handled capture failure passes through `diagnose_error()` with a fixed message and retains its existing JSON error; no new exception family is caught. Other execution/output exceptions propagate. It provides no evaluation, report, benchmark, experiment, or diagnostic subcommand.
 
 Stable application concepts are exported by [application/__init__.py](../src/application/__init__.py). Detector/version contracts belong to `detection`; feature/version contracts belong to `analysis`; source contracts belong to `capture`. CLI formatting and lifecycle helpers remain private. Module import does not start execution.
 
@@ -223,4 +223,4 @@ There is no live interface capture, PCAPNG, reassembly, complete protocol stack,
 
 There is no ML/MLOps: no training, inference, model registry, feature store, drift detection, model serving, or experiment tracking infrastructure. Future research must use stable feature/evaluation contracts and separate empirical claims from deterministic predicate behavior. No future capability is implied by the current version objects.
 
-The `enrichment`, `events`, `storage`, and `integrations` responsibility notes describe possible future ownership, not runtime implementations. CLI operational hardening, resource limits, deployment, and any future subsystem require separate scoped work. This baseline finalizes documentation without adding functionality.
+The `enrichment`, `events`, `storage`, and `integrations` responsibility notes describe possible future ownership, not runtime implementations. Further operational resource limits, deployment, and any future subsystem require separate scoped work. This baseline finalizes documentation without adding functionality.

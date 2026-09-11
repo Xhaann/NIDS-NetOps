@@ -1,6 +1,6 @@
 # Automated testing strategy
 
-The current suite contains 1542 standard-library `unittest` tests. It covers capture/source contracts and classic PCAP input; Ethernet, IPv4/IPv6 and transport analysis; flow identity, lifecycle, statistics and features; detector configurations, predicates and findings; evaluation, truth, metrics and reporting; datasets, experiments, version references, end-to-end composition, performance methodology, diagnostics, and the CLI.
+The current suite contains 1582 standard-library `unittest` tests. It covers capture/source contracts and classic PCAP input; Ethernet, IPv4/IPv6 and transport analysis; flow identity, lifecycle, statistics and features; detector configurations, predicates and findings; evaluation, truth, metrics and reporting; datasets, experiments, version references, end-to-end composition, performance methodology, diagnostics, and the CLI.
 
 The verified interpreter is Python 3.9.6. Run from the repository root:
 

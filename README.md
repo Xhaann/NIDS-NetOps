@@ -35,7 +35,7 @@ PYTHONPATH=src python3 -B -m unittest discover -s tests
 PYTHONPATH=src python3 -B -m application --help
 ```
 
-The current suite contains 1542 tests. Fixtures are synthetic; PCAP tests create local temporary files. Tests use controlled clocks for timing semantics rather than machine-speed thresholds.
+The current suite contains 1582 tests. Fixtures are synthetic; PCAP tests create local temporary files. Tests use controlled clocks for timing semantics rather than machine-speed thresholds.
 
 To run detection, supply your own local classic PCAP file in place of `input.pcap`:
 
@@ -55,7 +55,7 @@ PYTHONPATH=src python3 -B -m application input.pcap \
   --tcp-threshold 20
 ```
 
-These are explicit example settings, not recommended operational thresholds. All shown options are required, including TCP settings for UDP-only input. `--help` lists supported metrics. The CLI runs the detection pipeline once and writes one JSON object with `packet_findings` and `flow_findings`; it does not run evaluation or render `EvaluationReport`.
+These are explicit example settings, not recommended operational thresholds. All shown options are required exactly once, including TCP settings for UDP-only input. Repeated settings are rejected rather than overriding earlier values. Blank/NUL paths and malformed numeric arguments fail before acquisition; path existence, readability, and PCAP validation remain owned by the capture reader. `--help` lists supported metrics, units, and exit behavior using fixed-width formatting independent of terminal width. The CLI runs the detection pipeline once and writes one JSON object with `packet_findings` and `flow_findings`; it does not run evaluation or render `EvaluationReport`.
 
 Successful execution exits 0 regardless of detector decisions. Invalid arguments/configuration exit 2. A `CaptureError` exits 1 with `{"error":"capture_error"}` on stderr. Other execution/output exceptions propagate from `main()` without a synthetic result or retry. The [CLI contract](src/application/README.md#command-line-adapter) describes the evidence projection and error boundaries.
 

@@ -1,10 +1,11 @@
 import argparse
 from datetime import timedelta
+from functools import partial
 import json
 import sys
 from typing import Optional, Sequence
 
-from application import DetectionPipelineResult, DetectionSession, run_detection_pipeline
+from application import DetectionPipelineResult, DetectionSession, diagnose_error, run_detection_pipeline
 from capture import CaptureError, PcapPacketSource
 from detection import (
     DetectionFinding,
@@ -19,19 +20,51 @@ from detection import (
 )
 
 
+class _StoreOnce(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        if getattr(namespace, self.dest, None) is not None:
+            raise argparse.ArgumentError(self, "must be supplied exactly once")
+        setattr(namespace, self.dest, values)
+
+
+def _integer(value: str) -> int:
+    try:
+        return int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be an integer") from None
+
+
+def _pcap_path(value: str) -> str:
+    if not value.strip() or "\x00" in value:
+        raise argparse.ArgumentTypeError("must be a nonblank path without NUL characters")
+    return value
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="nids-netops", allow_abbrev=False,
-                                     description="Execute the NIDS detection pipeline on a local classic PCAP file.")
-    parser.add_argument("pcap", help="local classic PCAP input path")
-    parser.add_argument("--capture-session-id", required=True)
-    parser.add_argument("--inactivity-timeout-microseconds", required=True, type=int)
+                                     formatter_class=partial(argparse.HelpFormatter, width=100),
+                                     description="Execute the NIDS detection pipeline on a local classic PCAP file.",
+                                     epilog="Each setting must occur once. Output: finding JSON on stdout. "
+                                            "Exit 0: completed; 1: capture failure; 2: argument/configuration error. "
+                                            "Other execution errors propagate. No live capture or evaluation mode.")
+    parser.add_argument("pcap", type=_pcap_path, help="local regular classic PCAP 2.4 input file")
+    parser.add_argument("--capture-session-id", required=True, action=_StoreOnce,
+                        help="explicit nonblank observation-window session identity")
+    parser.add_argument("--inactivity-timeout-microseconds", required=True, type=_integer, action=_StoreOnce,
+                        help="positive inactivity interval in integer microseconds")
     for prefix in ("packet", "volume", "tcp"):
-        parser.add_argument(f"--{prefix}-detector-id", required=True)
-        parser.add_argument(f"--{prefix}-detector-version", required=True)
-    parser.add_argument("--volume-metric", required=True, choices=[metric.value for metric in FlowVolumeMetric])
-    parser.add_argument("--volume-threshold", required=True)
-    parser.add_argument("--tcp-metric", required=True, choices=[metric.value for metric in TCPControlMetric])
-    parser.add_argument("--tcp-threshold", required=True, type=int)
+        parser.add_argument(f"--{prefix}-detector-id", required=True, action=_StoreOnce,
+                            help="explicit nonblank detector identity")
+        parser.add_argument(f"--{prefix}-detector-version", required=True, action=_StoreOnce,
+                            help="explicit nonblank detector version; preserved without discovery")
+    parser.add_argument("--volume-metric", required=True, action=_StoreOnce,
+                        choices=[metric.value for metric in FlowVolumeMetric])
+    parser.add_argument("--volume-threshold", required=True, action=_StoreOnce,
+                        help="nonnegative integer for counts/bytes; finite nonnegative number for rates")
+    parser.add_argument("--tcp-metric", required=True, action=_StoreOnce,
+                        choices=[metric.value for metric in TCPControlMetric])
+    parser.add_argument("--tcp-threshold", required=True, type=_integer, action=_StoreOnce,
+                        help="nonnegative integer; TCP settings are required even for UDP-only input")
     return parser
 
 
@@ -105,7 +138,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         metric = FlowVolumeMetric(args.volume_metric)
         rate_metrics = (FlowVolumeMetric.PACKETS_PER_SECOND, FlowVolumeMetric.CAPTURED_BYTES_PER_SECOND,
                         FlowVolumeMetric.ORIGINAL_BYTES_PER_SECOND)
-        threshold = float(args.volume_threshold) if metric in rate_metrics else int(args.volume_threshold)
+        try:
+            threshold = float(args.volume_threshold) if metric in rate_metrics else int(args.volume_threshold)
+        except ValueError:
+            parser.error("--volume-threshold must be a number for rates or an integer for counts/bytes")
         session = DetectionSession(
             PacketIntegrityConfiguration(args.packet_detector_id, args.packet_detector_version),
             FlowVolumeThresholdConfiguration(args.volume_detector_id, args.volume_detector_version, metric, threshold),
@@ -118,8 +154,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         result = run_detection_pipeline(source, detection_session=session,
                                         capture_session_id=args.capture_session_id, inactivity_timeout=timeout)
-    except CaptureError:
-        sys.stderr.write('{"error":"capture_error"}\n')
+    except CaptureError as error:
+        diagnostic = diagnose_error(error, operation_id="detection-pipeline", message="capture_error")
+        sys.stderr.write(json.dumps({"error": diagnostic.message}, separators=(",", ":")) + "\n")
         return 1
     sys.stdout.write(_result_json(result))
     return 0

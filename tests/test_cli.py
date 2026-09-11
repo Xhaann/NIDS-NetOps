@@ -11,8 +11,9 @@ from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from datetime import timedelta
 from unittest.mock import Mock, PropertyMock, patch
 
-from analysis import FlowObservationWindowError, analyze_packet
-from application import DetectionPipelineResult, DetectionSession, run_detection_pipeline
+from analysis import FlowIdentityError, FlowObservationWindowError, analyze_packet
+from application import (DetectionPipelineResult, DetectionSession, OperationalErrorCategory,
+                         PerformanceBenchmarkConfiguration, diagnose_error, run_detection_pipeline, run_performance_benchmark)
 from application import capture_execution, cli, detection_pipeline, flow_observation_session
 from capture import CaptureError, PcapPacketSource
 from detection import FlowVolumeMetric, PacketIntegrityConfiguration, TCPControlMetric
@@ -398,6 +399,327 @@ class CLITests(unittest.TestCase):
             self.assertEqual(self.invoke(), (0, expected, ""))
         pipeline.assert_called_once()
         self.assertEqual(repr(result), before)
+
+
+    def argument_failure(self, args):
+        with patch.object(cli, "PcapPacketSource") as source, patch.object(cli, "run_detection_pipeline") as pipeline:
+            with redirect_stdout(io.StringIO()) as stdout, redirect_stderr(io.StringIO()) as stderr:
+                with self.assertRaises(SystemExit) as raised:
+                    cli.main(args)
+        self.assertEqual(raised.exception.code, 2)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertNotIn("Traceback", stderr.getvalue())
+        source.assert_not_called()
+        pipeline.assert_not_called()
+        return stderr.getvalue()
+
+    def process(self, args=None, **environment):
+        env = dict(os.environ, PYTHONPATH="src", **environment)
+        result = subprocess.run([sys.executable, "-B", "-m", "application"] +
+                                (self.arguments() if args is None else args),
+                                capture_output=True, text=True, env=env, check=False)
+        return result.returncode, result.stdout, result.stderr
+
+    def test_help_is_identical_across_terminal_widths(self):
+        outputs = []
+        for width in ("20", "80", "200"):
+            with patch.dict(os.environ, COLUMNS=width), redirect_stdout(io.StringIO()) as stdout:
+                with self.assertRaises(SystemExit) as raised:
+                    cli.main(["--help"])
+            self.assertEqual(raised.exception.code, 0)
+            outputs.append(stdout.getvalue())
+        self.assertEqual(outputs, [outputs[0]] * 3)
+
+    def test_help_explains_units_domains_and_exit_contract(self):
+        status, stdout, stderr = self.process(["--help"])
+        self.assertEqual((status, stderr), (0, ""))
+        for phrase in ("integer microseconds", "nonnegative integer", "UDP-only input", "Each setting must occur once",
+                       "Exit 0:", "capture failure", "argument/configuration error", "No live capture"):
+            self.assertIn(phrase, stdout)
+        for option in self.arguments()[1::2]:
+            self.assertIn(option, stdout)
+
+    def test_argument_usage_is_identical_across_terminal_widths(self):
+        outputs = []
+        for width in ("24", "160"):
+            with patch.dict(os.environ, COLUMNS=width):
+                outputs.append(self.argument_failure([]))
+        self.assertEqual(outputs[0], outputs[1])
+
+    def test_duplicate_detector_identities_are_rejected_before_acquisition(self):
+        for option in ("packet-detector-id", "volume-detector-version", "tcp-detector-id", "capture-session-id"):
+            with self.subTest(option=option):
+                error = self.argument_failure(self.arguments() + ["--" + option, "replacement"])
+                self.assertIn("--" + option + ": must be supplied exactly once", error)
+                self.assertNotIn("replacement", error)
+
+    def test_duplicate_metric_selections_are_rejected(self):
+        for option, value in (("volume-metric", "captured_bytes"), ("tcp-metric", "reverse_ack_count")):
+            with self.subTest(option=option):
+                self.assertIn("must be supplied exactly once", self.argument_failure(self.arguments() + ["--" + option, value]))
+
+    def test_duplicate_numeric_settings_are_rejected_including_zero(self):
+        for option in ("volume-threshold", "tcp-threshold", "inactivity-timeout-microseconds"):
+            with self.subTest(option=option):
+                self.assertIn("must be supplied exactly once", self.argument_failure(self.arguments() + ["--" + option, "10"]))
+
+    def test_identical_duplicate_values_are_not_silently_accepted(self):
+        args = self.arguments()
+        for index in range(1, len(args), 2):
+            with self.subTest(option=args[index]):
+                self.assertIn("must be supplied exactly once", self.argument_failure(args + args[index:index + 2]))
+
+    def test_duplicate_equals_form_cannot_override_separate_form(self):
+        self.assertIn("must be supplied exactly once", self.argument_failure(self.arguments() + ["--volume-threshold=3"]))
+
+    def test_equals_form_preserves_valid_settings(self):
+        args = self.arguments()
+        equals = [args[0]] + [args[i] + "=" + args[i + 1] for i in range(1, len(args), 2)]
+        self.assertEqual(self.invoke(equals), self.invoke(args))
+
+    def test_option_order_does_not_change_result(self):
+        self.packets((observation_at(), observation_at(17)))
+        args = self.arguments()
+        reordered = [v for i in reversed(range(1, len(args), 2)) for v in args[i:i + 2]] + args[:1]
+        self.assertEqual(self.invoke(reordered), self.invoke(args))
+
+    def test_argument_list_is_preserved_on_success_and_duplicate_failure(self):
+        for args in (self.arguments(), self.arguments() + ["--tcp-threshold", "2"]):
+            before = list(args)
+            if len(args) == len(self.arguments()):
+                self.invoke(args)
+            else:
+                self.argument_failure(args)
+            self.assertEqual(args, before)
+
+    def test_blank_path_is_argument_error_without_acquisition(self):
+        for value in ("", " ", "\t\n"):
+            args = self.arguments()
+            args[0] = value
+            self.assertIn("nonblank path", self.argument_failure(args))
+
+    def test_nul_path_is_argument_error_without_value_leakage(self):
+        args = self.arguments()
+        args[0] = "private-input\x00payload"
+        error = self.argument_failure(args)
+        self.assertIn("without NUL", error)
+        self.assertNotIn("private-input", error)
+        self.assertNotIn("payload", error)
+
+    def test_nonblank_path_is_not_trimmed_or_rewritten(self):
+        path = self.path.parent / " capture file .pcap "
+        path.write_bytes(global_header())
+        args = self.arguments()
+        args[0] = str(path)
+        before = path.read_bytes()
+        self.assertEqual(self.invoke(args), (0, '{"packet_findings":[],"flow_findings":[]}\n', ""))
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_integer_conversion_errors_do_not_echo_arbitrary_values(self):
+        for option in ("tcp-threshold", "inactivity-timeout-microseconds"):
+            error = self.argument_failure(self.arguments(**{option: "private-value\x1b[31m"}))
+            self.assertIn("must be an integer", error)
+            self.assertNotIn("private-value", error)
+            self.assertNotIn("\x1b", error)
+
+    def test_volume_conversion_errors_are_safe_for_count_and_rate_modes(self):
+        for metric in ("packet_count", "packets_per_second"):
+            error = self.argument_failure(self.arguments(**{"volume-metric": metric, "volume-threshold": "private-value\n"}))
+            self.assertIn("--volume-threshold must be a number", error)
+            self.assertNotIn("private-value", error)
+
+    def test_directory_input_uses_existing_capture_failure(self):
+        args = self.arguments()
+        args[0] = str(self.path.parent)
+        self.assertEqual(self.invoke(args), (1, "", '{"error":"capture_error"}\n'))
+
+    def test_unreadable_input_is_diagnosed_after_existing_cleanup(self):
+        error = PermissionError("private-file-location")
+        with patch.object(Path, "open", side_effect=error), \
+             patch.object(PcapPacketSource, "stop", autospec=True, wraps=None) as stop, \
+             patch.object(cli, "diagnose_error", wraps=diagnose_error) as diagnose:
+            self.assertEqual(self.invoke(), (1, "", '{"error":"capture_error"}\n'))
+        stop.assert_called_once()
+        diagnosed = diagnose.call_args.args[0]
+        self.assertIs(type(diagnosed), CaptureError)
+        self.assertIs(diagnosed.__cause__, error)
+
+    def test_zero_byte_file_is_distinct_from_empty_pcap(self):
+        self.path.write_bytes(b"")
+        self.assertEqual(self.invoke(), (1, "", '{"error":"capture_error"}\n'))
+        self.path.write_bytes(global_header())
+        self.assertEqual(self.invoke(), (0, '{"packet_findings":[],"flow_findings":[]}\n', ""))
+
+    def test_pcapng_is_rejected_by_existing_capture_reader(self):
+        self.path.write_bytes(bytes.fromhex("0a0d0d0a") + bytes(24))
+        self.assertEqual(self.invoke(), (1, "", '{"error":"capture_error"}\n'))
+
+    def test_capture_diagnostic_retains_original_exception_without_inspection(self):
+        class UnprintableCaptureError(CaptureError):
+            def __str__(self):
+                raise AssertionError("exception text read")
+        error = UnprintableCaptureError("private-content")
+        diagnostics = []
+        def diagnose(caught, **metadata):
+            value = diagnose_error(caught, **metadata)
+            diagnostics.append(value)
+            return value
+        with patch.object(cli, "run_detection_pipeline", side_effect=error) as pipeline, \
+             patch.object(cli, "diagnose_error", side_effect=diagnose) as adapter:
+            self.assertEqual(self.invoke(), (1, "", '{"error":"capture_error"}\n'))
+        pipeline.assert_called_once()
+        adapter.assert_called_once_with(error, operation_id="detection-pipeline", message="capture_error")
+        self.assertEqual(diagnostics[0].category, OperationalErrorCategory.UNCLASSIFIED_FAILURE)
+        self.assertEqual(diagnostics[0].context, ())
+
+    def test_exact_capture_error_uses_existing_diagnostic_category(self):
+        error = CaptureError("private-content")
+        with patch.object(cli, "run_detection_pipeline", side_effect=error), \
+             patch.object(cli, "diagnose_error", wraps=diagnose_error) as diagnose:
+            self.invoke()
+        value = diagnose_error(*diagnose.call_args.args, **diagnose.call_args.kwargs)
+        self.assertEqual(value.category, OperationalErrorCategory.CAPTURE_FAILURE)
+        self.assertEqual((value.operation_id, value.message), ("detection-pipeline", "capture_error"))
+
+    def test_unexpected_errors_do_not_invoke_diagnostics(self):
+        error = RuntimeError("internal")
+        with patch.object(cli, "run_detection_pipeline", side_effect=error) as pipeline, \
+             patch.object(cli, "diagnose_error") as diagnose:
+            with self.assertRaises(RuntimeError) as raised:
+                self.invoke()
+        self.assertIs(raised.exception, error)
+        pipeline.assert_called_once()
+        diagnose.assert_not_called()
+
+    def test_stdout_failure_propagates_once_without_diagnostic_or_retry(self):
+        error = BrokenPipeError("closed output")
+        output = Mock()
+        output.write.side_effect = error
+        with patch.object(sys, "stdout", output), patch.object(cli, "diagnose_error") as diagnose, \
+             patch.object(cli, "run_detection_pipeline", return_value=DetectionPipelineResult((), ())) as pipeline:
+            with self.assertRaises(BrokenPipeError) as raised:
+                cli.main(self.arguments())
+        self.assertIs(raised.exception, error)
+        output.write.assert_called_once()
+        pipeline.assert_called_once()
+        diagnose.assert_not_called()
+
+    def test_stderr_failure_propagates_without_reexecuting_capture(self):
+        error = OSError("closed error stream")
+        output = Mock()
+        output.write.side_effect = error
+        with patch.object(sys, "stderr", output), patch.object(cli, "run_detection_pipeline", side_effect=CaptureError("capture")) as pipeline:
+            with self.assertRaises(OSError) as raised:
+                cli.main(self.arguments())
+        self.assertIs(raised.exception, error)
+        pipeline.assert_called_once()
+        output.write.assert_called_once()
+
+    def test_pipeline_success_closes_source_before_presentation(self):
+        sources = []
+        def create(path):
+            source = PcapPacketSource(path)
+            sources.append(source)
+            return source
+        with patch.object(cli, "PcapPacketSource", side_effect=create):
+            self.invoke()
+        self.assertEqual(len(sources), 1)
+        with self.assertRaises(RuntimeError):
+            sources[0].start()
+        self.assertEqual(list(sources[0]), [])
+
+    def test_cli_does_not_execute_evaluation_reporting_or_benchmarks(self):
+        self.packets((observation_at(17),))
+        with ExitStack() as stack:
+            for target in ("application.detection_evaluation.evaluate_detection_result", "application.detection_metrics.calculate_detection_metrics",
+                           "application.evaluation_report.EvaluationReport.__post_init__", "application.end_to_end_validation.run_end_to_end_validation",
+                           "application.detection_benchmark.run_detection_benchmark", "application.performance_benchmark.run_performance_benchmark"):
+                stack.enter_context(patch(target, side_effect=AssertionError(target)))
+            self.assertEqual(self.invoke()[0], 0)
+
+    def test_performance_wrapper_executes_cli_only_configured_number_of_times(self):
+        config = PerformanceBenchmarkConfiguration("cli", "1", 2, 1)
+        clock = Mock(side_effect=(0.0, 1.0, 2.0, 4.0))
+        operation = Mock(side_effect=self.invoke)
+        result = run_performance_benchmark(operation, configuration=config, clock=clock)
+        self.assertEqual(operation.call_count, 3)
+        self.assertEqual(clock.call_count, 4)
+        self.assertEqual(result.elapsed_seconds, (1.0, 2.0))
+        self.assertIs(result.configuration, config)
+
+    def test_subprocess_ipv4_tcp_preserves_packet_and_control_outputs(self):
+        self.packets((make_observation(6, TCP_BYTES),))
+        self.assertEqual(self.process(), self.invoke())
+        self.assertEqual(len(json.loads(self.process()[1])["flow_findings"]), 2)
+
+    def test_subprocess_ipv4_udp_preserves_volume_only_output(self):
+        self.packets((make_observation(17, UDP_BYTES),))
+        result = self.process()
+        self.assertEqual(result, self.invoke())
+        self.assertEqual(len(json.loads(result[1])["flow_findings"]), 1)
+
+    def test_subprocess_ipv6_tcp_extensions_preserve_ordered_findings(self):
+        self.packets((observation_at(6, extensions=(0, 43, 60)),))
+        result = self.process()
+        self.assertEqual(result, self.invoke())
+        self.assertEqual([f["detector_id"] for f in json.loads(result[1])["flow_findings"]],
+                         ["flow-volume-threshold", "tcp-control-threshold"])
+
+    def test_subprocess_ipv6_udp_whole_fragment_preserves_existing_admission(self):
+        self.packets((observation_at(17, fragment=(0, False)),))
+        result = self.process()
+        self.assertEqual(result, self.invoke())
+        self.assertEqual(len(json.loads(result[1])["flow_findings"]), 1)
+
+    def test_first_fragment_uses_existing_tcp_pipeline(self):
+        self.packets((observation_at(6, fragment=(0, True)),))
+        data = self.output()
+        self.assertEqual(len(data["flow_findings"]), 2)
+        self.assertEqual(self.process(), self.invoke())
+
+    def test_nonfirst_ipv6_fragment_preserves_admission_exception(self):
+        self.packets((observation_at(6, fragment=(1, False)),))
+        with patch.object(cli, "diagnose_error") as diagnose:
+            with self.assertRaises(FlowIdentityError):
+                self.invoke()
+        diagnose.assert_not_called()
+
+    def test_subprocess_missing_input_has_usage_without_traceback(self):
+        status, stdout, stderr = self.process([])
+        self.assertEqual((status, stdout), (2, ""))
+        self.assertIn("nids-netops: error:", stderr)
+        self.assertNotIn("Traceback", stderr)
+
+    def test_subprocess_missing_file_preserves_capture_error_contract(self):
+        args = self.arguments()
+        args[0] = str(self.path.parent / "missing.pcap")
+        self.assertEqual(self.process(args), (1, "", '{"error":"capture_error"}\n'))
+
+    def test_subprocess_malformed_pcap_has_no_partial_output(self):
+        self.path.write_bytes(b"malformed")
+        self.assertEqual(self.process(), (1, "", '{"error":"capture_error"}\n'))
+
+    def test_subprocess_duplicate_option_has_no_capture_or_result(self):
+        args = self.arguments()
+        args[0] = str(self.path.parent / "missing.pcap")
+        status, stdout, stderr = self.process(args + ["--volume-threshold", "4"])
+        self.assertEqual((status, stdout), (2, ""))
+        self.assertIn("must be supplied exactly once", stderr)
+        self.assertNotIn("capture_error", stderr)
+
+    def test_subprocess_results_ignore_hash_seed_and_terminal_environment(self):
+        self.packets((observation_at(17, source_port=20000), observation_at(6, source_port=10000)))
+        before = self.path.read_bytes()
+        first = self.process(PYTHONHASHSEED="1", COLUMNS="20", NIDS_PRIVATE_TEST="private-content")
+        second = self.process(PYTHONHASHSEED="2", COLUMNS="200", NIDS_PRIVATE_TEST="different-content")
+        self.assertEqual(first, second)
+        self.assertEqual(first[0], 0)
+        self.assertNotIn("private-content", first[1])
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_failed_argument_parse_does_not_contaminate_next_invocation(self):
+        self.argument_failure(self.arguments() + ["--tcp-threshold", "2"])
+        self.assertEqual(self.invoke(), (0, '{"packet_findings":[],"flow_findings":[]}\n', ""))
 
 
 if __name__ == "__main__":
