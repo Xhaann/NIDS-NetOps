@@ -1,5 +1,6 @@
 from application.capture_execution import run_capture_execution
 from application.detection_benchmark import DetectionBenchmarkCaseResult, DetectionBenchmarkResult, run_detection_benchmark
+from application.detection_configuration import DetectionConfiguration
 from application.detection_dataset import DetectionDataset, DetectionDatasetCase
 from application.detection_evaluation import (
     DetectionClassification,
@@ -27,6 +28,7 @@ __all__ = [
     "DetectionBenchmarkCaseResult",
     "DetectionBenchmarkResult",
     "DetectionClassification",
+    "DetectionConfiguration",
     "DetectionDataset",
     "DetectionDatasetCase",
     "DetectionEvaluationEntry",
