@@ -17,10 +17,11 @@ def checksum(data):
     return 65535 - sum(int.from_bytes(padded[i:i + 2], 'big') for i in range(0, len(padded), 2)) % 65535
 
 
-def transport(protocol, payload=b'', ipv6=False, reverse=False, sequence=100, acknowledgment=0, flags=2):
+def transport(protocol, payload=b'', ipv6=False, reverse=False, sequence=100, acknowledgment=0, flags=2, options=b''):
     ports = (443, 12345) if reverse else (12345, 443)
     if protocol == 6:
-        segment = pack('!HHIIHHHH', *ports, sequence, acknowledgment, 0x5000 | flags, 4096, 0, 0) + payload
+        segment = pack('!HHIIHHHH', *ports, sequence, acknowledgment,
+                       ((5 + len(options) // 4) << 12) | flags, 4096, 0, 0) + options + payload
         offset = 16
     else:
         segment = pack('!HHHH', *ports, 8 + len(payload), 0) + payload

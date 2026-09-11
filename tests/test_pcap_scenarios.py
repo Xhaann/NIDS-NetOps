@@ -16,9 +16,10 @@ from application import (
 from application import capture_execution, detection_pipeline, detector_orchestration, end_to_end_validation
 from capture import CaptureSource, PcapPacketSource
 from detection import TCPControlMetric
-from tests.pcap_scenarios import addresses, frame, pcap_bytes, tcp_exchange, transport, udp_exchange
+from tests.pcap_scenarios import addresses, checksum, frame, pcap_bytes, tcp_exchange, transport, udp_exchange
 from tests.test_end_to_end_validation import settings
 from tests.test_ipv6_transport import observation_for
+from tests.test_packet_analysis import make_observation
 
 
 EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
@@ -227,6 +228,265 @@ class PcapScenarioTests(unittest.TestCase):
                 self.execute(PcapPacketSource(path, source=SOURCE))
             self.assertEqual(analyze.call_count, 2)
             evaluate.assert_not_called()
+
+    def test_transport_checksum_failures_and_omission_follow_family_admission_rules(self):
+        for ipv6 in (False, True):
+            for protocol, offset in ((6, 16), (17, 6)):
+                with self.subTest(ipv6=ipv6, protocol=protocol):
+                    segment = transport(protocol, b'odd', ipv6)
+                    corrupt = segment[:offset] + bytes((segment[offset] ^ 1,)) + segment[offset + 1:]
+                    segments = (segment, corrupt)
+                    if protocol == 17:
+                        segments += (segment[:6] + b'\x00\x00' + segment[8:],)
+                    segments += (segment,)
+                    packets = tuple((1000000 + index * 100000, frame(protocol, value, ipv6))
+                                    for index, value in enumerate(segments))
+                    _, source = self.source('transport_checksum_admission', packets)
+                    result = self.execute(source, GroundTruth(self.packet_truth(packets, () if ipv6 else (1,)), ()))
+                    findings = result.pipeline_result.packet_findings
+                    self.assertEqual([f.decision.value for f in findings],
+                                     ['no_match'] * len(packets) if ipv6 else
+                                     ['no_match', 'match'] + ['no_match'] * (len(packets) - 2))
+                    self.assertEqual(result.report.metrics.packet_metrics,
+                                     DetectionMetrics(0, 0, 0, len(packets)) if ipv6 else
+                                     DetectionMetrics(1, 0, 0, len(packets) - 1))
+                    if ipv6:
+                        for finding, value in zip(findings, segments):
+                            analysis = finding.raw_evidence.outcome.analysis
+                            decoded = analysis.ipv6_tcp if protocol == 6 else analysis.ipv6_udp
+                            self.assertEqual(decoded.checksum, int.from_bytes(value[offset:offset + 2], 'big'))
+                            self.assertIsNone(analysis.tcp_checksum_valid)
+                            self.assertIsNone(analysis.udp_checksum_valid)
+                    else:
+                        outcome = findings[1].raw_evidence.outcome
+                        self.assertIsNone(outcome.analysis)
+                        self.assertEqual(outcome.failure_classification.value, 'integrity_failure')
+                        self.assertEqual(outcome.failure_description,
+                                         'Checksum validation failed for ' + ('TCP' if protocol == 6 else 'UDP'))
+                        if protocol == 17:
+                            omitted = findings[2].raw_evidence.outcome.analysis
+                            self.assertEqual(omitted.udp.checksum, 0)
+                            self.assertIs(omitted.udp_checksum_valid, False)
+                    flows = result.pipeline_result.flow_findings
+                    self.assertEqual([f.detector_id for f in flows], ['volume', 'control'] if protocol == 6 else ['volume'])
+                    snapshot = flows[0].raw_evidence.snapshot
+                    admitted = len(packets) - int(not ipv6)
+                    self.assertEqual(snapshot.flow_volume_features.packet_count, admitted)
+                    self.assertEqual(snapshot.flow_volume_features.captured_bytes, admitted * len(packets[0][1]))
+                    if protocol == 6:
+                        self.assertEqual(flows[1].raw_evidence.observed_value, admitted)
+                    else:
+                        self.assertIsNone(snapshot.coordinated_state.tcp_control_statistics)
+
+    def test_udp_lengths_bound_payload_without_using_ethernet_padding(self):
+        for ipv6 in (False, True):
+            with self.subTest(ipv6=ipv6):
+                segment = transport(17, b'abc', ipv6)
+                segments = (segment, segment[:4] + b'\x00\x07' + segment[6:],
+                            segment[:4] + b'\x00\x0c' + segment[6:], segment[:7], segment + b'excess')
+                packets = tuple((1000000 + index * 100000, frame(17, value, ipv6).ljust(90, b'\x00'))
+                                for index, value in enumerate(segments))
+                _, source = self.source('udp_length_boundaries', packets)
+                result = self.execute(source, GroundTruth(self.packet_truth(packets, (1, 2, 3)), ()))
+                findings = result.pipeline_result.packet_findings
+                self.assertEqual([f.decision.value for f in findings],
+                                 ['no_match', 'match', 'not_evaluable', 'not_evaluable', 'no_match'])
+                self.assertEqual([f.raw_evidence.failure_classification.value for f in findings[1:4]],
+                                 ['structural_failure', 'incomplete', 'incomplete'])
+                self.assertTrue(all(f.raw_evidence.analysis is None for f in findings[1:4]))
+                self.assertEqual(result.report.metrics.packet_metrics, DetectionMetrics(1, 0, 2, 2))
+                for index in (0, 4):
+                    analysis = findings[index].raw_evidence.analysis
+                    datagram = analysis.ipv6_udp if ipv6 else analysis.udp
+                    self.assertEqual((datagram.length, datagram.payload), (11, b'abc'))
+                    self.assertEqual((analysis.ipv6 if ipv6 else analysis.ipv4).payload, segments[index])
+                    if not ipv6:
+                        self.assertIs(analysis.udp_checksum_valid, True)
+                self.assertEqual(len(result.pipeline_result.flow_findings), 1)
+                snapshot = result.pipeline_result.flow_findings[0].raw_evidence.snapshot
+                self.assertEqual((snapshot.flow_volume_features.packet_count, snapshot.flow_volume_features.captured_bytes), (2, 180))
+                self.assertEqual(snapshot.flow_duration_features.duration_seconds, 0.4)
+                self.assertIsNone(snapshot.coordinated_state.tcp_control_statistics)
+
+    def test_ipv4_icmp_checksum_success_still_stops_flow_admission(self):
+        message = bytes.fromhex('0800000012340001') + b'echo'
+        message = message[:2] + checksum(message).to_bytes(2, 'big') + message[4:]
+        packets = ((1000000, frame(1, message)), (1100000, udp_exchange()[0][1]))
+        path, source = self.source('icmp_admission', packets)
+        outcomes = []
+        run_capture_execution(source, outcomes.append)
+        self.assertEqual(list(source), [])
+        self.assertEqual(len(outcomes), 2)
+        analysis = outcomes[0].analysis
+        self.assertIsNone(outcomes[0].failure_classification)
+        self.assertIs(analysis.icmp_checksum_valid, True)
+        self.assertEqual((analysis.icmp.icmp_type, analysis.icmp.code, analysis.icmp.payload), (8, 0, b'echo'))
+        with patch.object(capture_execution, 'analyze_packet_outcome', wraps=capture_execution.analyze_packet_outcome) as analyze, \
+             patch.object(detector_orchestration, 'evaluate_packet_integrity', wraps=detector_orchestration.evaluate_packet_integrity) as detect, \
+             patch.object(detection_pipeline, 'extract_flow_feature_snapshot', wraps=detection_pipeline.extract_flow_feature_snapshot) as extract, \
+             patch.object(end_to_end_validation, 'evaluate_detection_result') as evaluate:
+            with self.assertRaisesRegex(FlowIdentityError, 'supports only IPv4 TCP'):
+                self.execute(PcapPacketSource(path, source=SOURCE))
+            analyze.assert_called_once()
+            detect.assert_called_once()
+            extract.assert_not_called()
+            evaluate.assert_not_called()
+            self.assertTrue(detect.call_args.args[0].succeeded)
+
+    def test_failed_icmp_messages_between_udp_packets_never_create_flows(self):
+        message = bytes.fromhex('0800000012340001') + b'echo'
+        value = checksum(message) ^ 1
+        corrupt = message[:2] + value.to_bytes(2, 'big') + message[4:]
+        valid = udp_exchange()[0][1]
+        packets = ((1000000, valid), (1100000, frame(1, corrupt)),
+                   (1200000, frame(1, message[:7])),
+                   (1300000, frame(58, b'\x80\x00\x00', True, extensions=(60,), fragment=(0, False, 91))),
+                   (1400000, valid))
+        _, source = self.source('icmp_failures_between_datagrams', packets)
+        result = self.execute(source, GroundTruth(self.packet_truth(packets, (1, 2, 3)), ()))
+        findings = result.pipeline_result.packet_findings
+        self.assertEqual([f.decision.value for f in findings],
+                         ['no_match', 'match', 'not_evaluable', 'not_evaluable', 'no_match'])
+        self.assertEqual([f.raw_evidence.failure_classification.value for f in findings[1:4]],
+                         ['integrity_failure', 'incomplete', 'incomplete'])
+        self.assertEqual([f.raw_evidence.failure_description for f in findings[1:4]],
+                         ['Checksum validation failed for ICMPv4',
+                          'ICMP header is too short: expected at least 8 bytes',
+                          'ICMPv6 header is too short: expected at least 4 bytes'])
+        self.assertTrue(all(f.raw_evidence.analysis is None for f in findings[1:4]))
+        self.assertEqual(result.report.metrics.packet_metrics, DetectionMetrics(1, 0, 2, 2))
+        self.assertEqual(len(result.pipeline_result.flow_findings), 1)
+        snapshot = result.pipeline_result.flow_findings[0].raw_evidence.snapshot
+        self.assertEqual(snapshot.identity, FlowIdentity(*addresses(), 12345, 443, 17))
+        self.assertEqual((snapshot.flow_volume_features.packet_count, snapshot.flow_volume_features.captured_bytes), (2, 120))
+
+    def test_non_initial_ipv4_fragments_are_unsupported_without_aborting_capture(self):
+        valid = udp_exchange()[0][1]
+        fragments = tuple(make_observation(protocol, b'fragment', fragment_field=field).raw_bytes.ljust(60, b'\x00')
+                          for protocol in (6, 17, 1) for field in (1, 0x2001))
+        packets = tuple((1000000 + index * 100000, raw) for index, raw in enumerate((valid,) + fragments + (valid,)))
+        _, source = self.source('ipv4_non_initial_fragments', packets)
+        with patch.object(capture_execution, 'analyze_packet_outcome', wraps=capture_execution.analyze_packet_outcome) as analyze:
+            result = self.execute(source, GroundTruth(self.packet_truth(packets, range(1, 7)), ()))
+        self.assertEqual(analyze.call_count, 8)
+        findings = result.pipeline_result.packet_findings
+        self.assertEqual([f.decision.value for f in findings], ['no_match'] + ['not_evaluable'] * 6 + ['no_match'])
+        for finding in findings[1:7]:
+            self.assertEqual(finding.raw_evidence.failure_classification.value, 'unsupported')
+            self.assertIsNone(finding.raw_evidence.analysis)
+        self.assertEqual(result.report.metrics.packet_metrics, DetectionMetrics(0, 0, 6, 2))
+        self.assertEqual(len(result.pipeline_result.flow_findings), 1)
+        snapshot = result.pipeline_result.flow_findings[0].raw_evidence.snapshot
+        self.assertEqual((snapshot.flow_volume_features.packet_count, snapshot.flow_volume_features.captured_bytes), (2, 120))
+        self.assertEqual(snapshot.flow_duration_features.duration_seconds, 0.7)
+
+    def test_same_endpoints_keep_tcp_options_reset_and_udp_state_separate(self):
+        for ipv6 in (False, True):
+            with self.subTest(ipv6=ipv6):
+                options = bytes.fromhex('020405b4')
+                specifications = ((6, False, 2, b'', options), (17, False, 0, b'query', b''),
+                                  (6, True, 20, b'', b''), (17, True, 0, b'reply', b''),
+                                  (6, False, 16, b'abc', options))
+                packets = tuple((1000000 + index * 100000,
+                                 frame(protocol, transport(protocol, payload, ipv6, reverse, flags=flags, options=opts), ipv6, reverse))
+                                for index, (protocol, reverse, flags, payload, opts) in enumerate(specifications))
+                config = replace(self.configuration, tcp_control_configuration=replace(
+                    self.configuration.tcp_control_configuration, metric=TCPControlMetric.REVERSE_RST))
+                truth = GroundTruth(self.packet_truth(packets), (
+                    self.flow_truth(config.flow_volume_configuration, 6, ipv6, 1000000, 1400000, True),
+                    self.flow_truth(config.tcp_control_configuration, 6, ipv6, 1000000, 1400000, True),
+                    self.flow_truth(config.flow_volume_configuration, 17, ipv6, 1100000, 1300000, True, 1)))
+                _, source = self.source('same_endpoints_transport_isolation', packets)
+                with patch.object(detection_pipeline, 'extract_flow_feature_snapshot', wraps=detection_pipeline.extract_flow_feature_snapshot) as extract, \
+                     patch.object(detector_orchestration, 'evaluate_tcp_control_threshold', wraps=detector_orchestration.evaluate_tcp_control_threshold) as control:
+                    result = self.execute(source, truth, config)
+                self.assertEqual(extract.call_count, 2)
+                control.assert_called_once()
+                findings = result.pipeline_result.flow_findings
+                self.assertEqual([f.detector_id for f in findings], ['volume', 'control', 'volume'])
+                self.assertEqual([f.raw_evidence.sequence_number for f in findings], [0, 0, 1])
+                self.assertEqual([f.raw_evidence.identity.protocol for f in findings], [6, 6, 17])
+                self.assertEqual([f.raw_evidence.observed_value for f in findings], [3, 1, 2])
+                tcp, udp = findings[0].raw_evidence.snapshot, findings[2].raw_evidence.snapshot
+                self.assertEqual(tcp.flow_volume_features.captured_bytes, 233 if ipv6 else 181)
+                self.assertEqual(udp.flow_volume_features.captured_bytes, 134 if ipv6 else 120)
+                self.assertEqual((tcp.flow_volume_features.forward_packet_count, tcp.flow_volume_features.reverse_packet_count), (2, 1))
+                self.assertEqual((udp.flow_volume_features.forward_packet_count, udp.flow_volume_features.reverse_packet_count), (1, 1))
+                self.assertEqual(tcp.directional_inter_arrival_features.forward_mean_inter_arrival_seconds, 0.4)
+                self.assertIsNone(udp.coordinated_state.tcp_control_statistics)
+                self.assertEqual(tcp.observation_window.closure_reason.value, 'capture_session_end')
+                self.assertEqual(result.report.metrics.packet_metrics, DetectionMetrics(0, 0, 0, 5))
+                self.assertEqual(result.report.metrics.flow_metrics, DetectionMetrics(3, 0, 0, 0))
+                analyses = [f.raw_evidence.analysis for f in result.pipeline_result.packet_findings]
+                decoded = [analyses[i].ipv6_tcp if ipv6 else analyses[i].tcp for i in (0, 2, 4)]
+                self.assertEqual([p.options for p in decoded], [options, b'', options])
+                self.assertEqual([p.payload for p in decoded], [b'', b'', b'abc'])
+                self.assertTrue(decoded[1].rst)
+                if not ipv6:
+                    self.assertTrue(all(analyses[i].tcp_checksum_valid for i in (0, 2, 4)))
+
+    def test_ipv6_initial_tcp_fragment_and_variable_extensions_share_transport_flow(self):
+        options = bytes.fromhex('020405b4')
+        segment = transport(6, b'abcdefghijklmnop', True, options=options)
+        routing = bytes((60, 2, 0, 0)) + bytes(20)
+        destination = bytes((6, 1)) + bytes(14)
+        extended = observation_for(6, transport(6, b'abc', True, flags=16, options=options),
+                                   routing + destination, 43).raw_bytes
+        packets = ((1000000, frame(6, segment[:32], True, fragment=(0, True, 92))),
+                   (1100000, extended),
+                   (1200000, frame(6, transport(6, ipv6=True, flags=16), True, fragment=(0, False, 93))))
+        _, source = self.source('ipv6_initial_fragment_transport', packets)
+        result = self.execute(source, GroundTruth(self.packet_truth(packets), ()))
+        findings = result.pipeline_result.packet_findings
+        self.assertEqual([f.decision.value for f in findings], ['no_match'] * 3)
+        analyses = [f.raw_evidence.analysis for f in findings]
+        self.assertTrue(analyses[0].ipv6_fragmentation.headers[0].is_first_fragment)
+        self.assertTrue(analyses[2].ipv6_fragmentation.headers[0].is_whole_datagram)
+        self.assertEqual([a.ipv6_tcp.payload for a in analyses], [b'abcdefgh', b'abc', b''])
+        self.assertEqual([a.ipv6_tcp.options for a in analyses], [options, options, b''])
+        self.assertEqual([(h.header_type, h.offset, h.declared_length) for h in analyses[1].ipv6_extension_headers.headers],
+                         [(43, 40, 24), (60, 64, 16)])
+        self.assertEqual(analyses[1].ipv6_extension_headers.terminating_next_header, 6)
+        flows = result.pipeline_result.flow_findings
+        self.assertEqual([f.raw_evidence.observed_value for f in flows], [3, 1])
+        self.assertEqual([f.raw_evidence.sequence_number for f in flows], [0, 0])
+        snapshot = flows[0].raw_evidence.snapshot
+        self.assertEqual(snapshot.flow_volume_features.captured_bytes, 297)
+        self.assertEqual(snapshot.flow_duration_features.duration_seconds, 0.2)
+        self.assertEqual(result.report.metrics.packet_metrics, DetectionMetrics(0, 0, 0, 3))
+
+    def test_opaque_ipv6_selectors_do_not_scan_payload_or_complete_evaluation(self):
+        for selector in (50, 51, 59, 253):
+            with self.subTest(selector=selector):
+                raw = frame(selector, transport(6, b'opaque', True), True, extensions=(60,))
+                packets = ((1000000, udp_exchange(True)[0][1]), (1100000, raw),
+                           (1200000, tcp_exchange(True)[0][1]))
+                _, source = self.source('opaque_ipv6_terminal', packets)
+                with patch.object(capture_execution, 'analyze_packet_outcome', wraps=capture_execution.analyze_packet_outcome) as analyze, \
+                     patch.object(detector_orchestration, 'evaluate_packet_integrity', wraps=detector_orchestration.evaluate_packet_integrity) as packet, \
+                     patch.object(detection_pipeline, 'extract_flow_feature_snapshot', wraps=detection_pipeline.extract_flow_feature_snapshot) as extract, \
+                     patch.object(detector_orchestration, 'evaluate_flow_volume_threshold', wraps=detector_orchestration.evaluate_flow_volume_threshold) as volume, \
+                     patch.object(detector_orchestration, 'evaluate_tcp_control_threshold', wraps=detector_orchestration.evaluate_tcp_control_threshold) as control, \
+                     patch.object(end_to_end_validation, 'evaluate_detection_result') as evaluate:
+                    with self.assertRaisesRegex(FlowIdentityError, 'supports only IPv6 TCP'):
+                        self.execute(source)
+                    self.assertEqual((analyze.call_count, packet.call_count), (2, 2))
+                    extract.assert_called_once()
+                    volume.assert_called_once()
+                    control.assert_not_called()
+                    evaluate.assert_not_called()
+                outcome = packet.call_args.args[0]
+                self.assertTrue(outcome.succeeded)
+                self.assertEqual(outcome.observation.raw_bytes, raw)
+                analysis = outcome.analysis
+                self.assertEqual(analysis.ipv6_extension_headers.terminating_next_header, selector)
+                self.assertIsNone(analysis.ipv6_tcp)
+                self.assertIsNone(analysis.ipv6_udp)
+                self.assertIsNone(analysis.ipv6_icmpv6)
+                window = extract.call_args.args[0]
+                self.assertEqual(window.identity.protocol, 17)
+                self.assertEqual(window.coordinated_state.flow_statistics.packet_count, 1)
+                self.assertEqual(window.closure_reason.value, 'capture_session_end')
 
     def test_new_exchange_scenarios_have_repeatable_cli_subprocess_results(self):
         root = Path(__file__).resolve().parents[1]
