@@ -258,6 +258,14 @@ Positive expectations require MATCH; negative expectations require NO_MATCH. NOT
 
 Packet identities combine detector configuration, position in the supplied result sequence, and capture metadata. Their scope requires caller-aligned input provenance; they are not content fingerprints or cross-dataset IDs. Flow identities reuse configuration, existing window keys, canonical packed endpoints, and timestamps. No raw bytes, object identity, repr, wall clock, or persistent matching state participate. All matching is local, one-to-one, and deterministic. No metrics, ground-truth files, datasets, benchmarking, ML, correlation, persistence, or additional CLI behavior is introduced.
 
+## Explicit external ground truth
+
+The application [ground-truth boundary](../src/application/ground_truth.py) represents externally supplied positive/negative truth using frozen `GroundTruthRecord` values and separate ordered packet/flow tuples in `GroundTruth`. `GroundTruthPolarity` requires explicit labeling; an unlisted target is unlabeled, never implicitly negative. Truth is independent of actual detector decisions, including NOT_EVALUABLE.
+
+Targets reuse the existing packet and flow detection identities. Packet-position/provenance limitations remain unchanged, and flow targets reuse canonical packed endpoints, window keys, and timestamps. Existing immutable detector configuration scopes which target is labeled without retaining implementation state or detector output. Each target can occur only once in a truth collection; duplicate and contradictory records are rejected deterministically. This does not change evaluation's existing duplicate-expectation semantics.
+
+Ground truth describes externally asserted truth; detection results describe produced decisions; evaluation compares results with explicit expectations. [The ground-truth contract](../src/application/README.md#explicit-ground-truth) defines validation and identity scope. Conversion into evaluation expectations remains future explicit work: no current evaluator, pipeline, or CLI consumes truth automatically. Construction executes no acquisition, analysis, features, detectors, or evaluation and reads no packets or files. No datasets, metrics, benchmarks, experiment framework, ML, persistence, or alerting are introduced.
+
 ## Cross-cutting requirements for later tasks
 
 - Preserve sensor/source identity, capture time, processing time where needed, and provenance across transformations. Specify identifier and schema evolution rules before persisting records.

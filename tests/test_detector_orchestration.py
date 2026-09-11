@@ -89,7 +89,8 @@ class DetectorOrchestrationTests(unittest.TestCase):
             application.__all__,
             ["DetectionClassification", "DetectionEvaluationEntry", "DetectionEvaluationResult",
              "DetectionPipelineResult", "DetectionSession", "ExpectedDetection", "ExpectedDetectionResult",
-             "FlowDetectionIdentity", "PacketDetectionIdentity", "detection_identity", "evaluate_detection_result",
+             "FlowDetectionIdentity", "GroundTruth", "GroundTruthPolarity", "GroundTruthRecord",
+             "PacketDetectionIdentity", "detection_identity", "evaluate_detection_result",
              "run_capture_execution", "run_closed_flow_detectors", "run_detection_pipeline",
              "run_flow_observation_session", "run_packet_detectors"],
         )

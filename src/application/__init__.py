@@ -17,6 +17,7 @@ from application.detector_orchestration import (
     run_packet_detectors,
 )
 from application.flow_observation_session import run_flow_observation_session
+from application.ground_truth import GroundTruth, GroundTruthPolarity, GroundTruthRecord
 
 __all__ = [
     "DetectionClassification",
@@ -27,6 +28,9 @@ __all__ = [
     "ExpectedDetection",
     "ExpectedDetectionResult",
     "FlowDetectionIdentity",
+    "GroundTruth",
+    "GroundTruthPolarity",
+    "GroundTruthRecord",
     "PacketDetectionIdentity",
     "detection_identity",
     "evaluate_detection_result",

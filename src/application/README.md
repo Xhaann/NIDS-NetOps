@@ -146,3 +146,24 @@ Matching is one-to-one and multiplicity-sensitive. For each channel, expectation
 Public constructors reject wrong types, mutable collections, invalid identity metadata, inconsistent audit entries, and mixed channels using `TypeError` or `ValueError`. Evaluation is synchronous and deterministic; exceptions propagate without retries or partial returned results. All working assignments are local to one call. The evaluator retains references to supplied immutable evidence but never reads raw packet bytes or creates execution state.
 
 No precision, recall, F1, accuracy, benchmarking, dataset ingestion, experiment tracking, ML, persistence, correlation, alerting, or CLI evaluation mode is introduced. Those remain separate future work.
+
+
+## Explicit ground truth
+
+[ground_truth.py](ground_truth.py) adds three frozen/value contracts through the application exports:
+
+- `GroundTruthPolarity` has `POSITIVE` (the target is externally expected to be present) and `NEGATIVE` (explicitly absent/non-detected). These are truth assertions, not detector decisions.
+- `GroundTruthRecord(target, polarity)` requires an existing `PacketDetectionIdentity` or `FlowDetectionIdentity` and an explicit `GroundTruthPolarity` member.
+- `GroundTruth(packet_records, flow_records)` holds two ordered tuples of those records, validating the target domain of each tuple.
+
+No record for a target means **unlabeled**, never negative. Empty tuples express no supplied truth. Omitting polarity from a record is an error; there is no default label. NOT_EVALUABLE remains a detector result, not a truth polarity. Ground truth introduces no attack classification or probabilistic label.
+
+Targets reuse Commit #31's identity contracts without changing them. Packet targets retain their position in the corresponding packet-result sequence, capture metadata, and packet-integrity configuration. They remain family-neutral and require caller-aligned provenance; they cannot distinguish content substitutions with identical metadata at the same position. No packet-content fingerprint or additional IP-family field is introduced. Flow targets retain the canonical packed IPv4/IPv6 TCP/UDP identity, existing window key, timestamps, and applicable detector configuration. Existing detector IDs, versions, and flow metric/threshold values scope the target being labeled; these immutable configuration references are not detector execution state. Truth contains no actual finding, decision, observed counter, feature snapshot, or analytical evidence graph.
+
+Construct targets directly from externally supplied metadata and the existing configuration/identity constructors. Ground-truth construction neither derives an identity from a finding nor infers a label from detector output or absence. Existing target/configuration constructors remain responsible for their field validation; this module validates only record types, explicit polarity, tuple types, domains, and label consistency. It does not normalize or reinterpret permitted metadata.
+
+A collection permits exactly one truth record per target. Repeated same-polarity targets raise `ValueError` identifying a duplicate; opposite polarities for the same target raise `ValueError` identifying a contradiction, in either order. Equal independently constructed targets and reversed endpoints that canonicalize to the same flow identity obey the same rule. Distinct packet positions, windows, flow identities, or detector configurations remain distinct targets. This uniqueness rule is specific to externally supplied truth; it does not change the multiplicity-sensitive evaluation expectations established in Commit #31.
+
+Collections must be exact tuples of exact `GroundTruthRecord` values. Lists, dictionaries, missing targets, invalid polarity types, and unsupported record types raise `TypeError`; wrong-domain records raise `ValueError`. Records, targets, and configurations are retained by reference without copying or mutation. Input order is preserved without sorting or deduplication. Validation uses only local temporary state and performs no capture, packet access, parsing, feature extraction, detector execution, evaluation, filesystem/network access, or CLI invocation.
+
+Ground truth describes what is externally asserted to be true. `DetectionPipelineResult` describes what the detectors produced. Evaluation compares results with explicit expectations. A future explicit adapter may translate truth into those expectations; this commit adds no conversion, automatic discovery, evaluator overload, pipeline wiring, or CLI/JSON changes. Metrics, datasets, annotation formats, loaders, benchmarking, experiment tracking, ML, storage, correlation, and alerting remain outside this contract.
