@@ -1,4 +1,6 @@
 import unittest
+import os
+import errno
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -7,6 +9,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 import capture
+from capture import pcap_packet_source
 from analysis import PacketAnalysisFailureClassification, analyze_packet_outcome
 from application import DetectionSession, run_detection_pipeline
 from capture import CaptureError, CaptureSource, LinkType, PacketSource, PcapPacketSource, consume
@@ -176,7 +179,7 @@ class PcapPacketSourceTests(unittest.TestCase):
     def test_public_export_and_construction_do_not_open_file(self):
         self.assertIs(capture.PcapPacketSource, PcapPacketSource)
         self.assertIn("PcapPacketSource", capture.__all__)
-        with patch.object(Path, "open", side_effect=AssertionError("construction must not open")):
+        with patch("capture.pcap_packet_source.io.open", side_effect=AssertionError("construction must not open")):
             source: PacketSource = PcapPacketSource(str(self.path))
             with self.assertRaises(RuntimeError):
                 iter(source)
@@ -188,15 +191,97 @@ class PcapPacketSourceTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             PcapPacketSource(3)
 
+    @unittest.skipUnless(hasattr(os, 'mkfifo'), 'requires filesystem FIFO support')
+    def test_nonregular_paths_are_rejected_before_open_without_delivery(self):
+        fifo = self.path.parent / 'input.fifo'
+        os.mkfifo(fifo)
+        alias = self.path.parent / 'fifo-link'
+        alias.symlink_to(fifo)
+        for path in (fifo, alias, self.path.parent):
+            for _ in range(2):
+                with self.subTest(path=path.name):
+                    source = PcapPacketSource(path)
+                    consumer = Mock()
+                    with patch('io.open', side_effect=AssertionError('nonregular path opened')) as opened, \
+                         patch.object(source, 'stop', wraps=source.stop) as stop:
+                        with self.assertRaisesRegex(CaptureError, '^PCAP source requires a regular file$'):
+                            consume(source, consumer)
+                        opened.assert_not_called()
+                        stop.assert_called_once()
+                    consumer.assert_not_called()
+                    self.assertEqual(list(source), [])
+                    with self.assertRaisesRegex(RuntimeError, 'source cannot be restarted'):
+                        source.start()
+
+    @unittest.skipUnless(hasattr(os, 'mkfifo') and hasattr(os, 'O_NONBLOCK'), 'requires nonblocking FIFO support')
+    def test_path_replaced_by_fifo_after_stat_is_rejected_and_descriptor_closed(self):
+        source = self.write(global_header() + record())
+        descriptors = []
+        original_open = os.open
+
+        def replace_and_open(path, flags):
+            self.assertEqual(Path(path), self.path)
+            self.assertEqual(flags & os.O_NONBLOCK, os.O_NONBLOCK)
+            self.path.unlink()
+            os.mkfifo(self.path)
+            descriptor = original_open(path, flags)
+            descriptors.append(descriptor)
+            return descriptor
+
+        consumer = Mock()
+        with patch.object(pcap_packet_source.os, 'open', side_effect=replace_and_open) as opened, \
+             patch.object(source, '_read_exact', side_effect=AssertionError('nonregular descriptor read')) as read, \
+             patch.object(source, 'stop', wraps=source.stop) as stop:
+            with self.assertRaisesRegex(CaptureError, '^PCAP source requires a regular file$'):
+                consume(source, consumer)
+            opened.assert_called_once()
+            read.assert_not_called()
+            stop.assert_called_once()
+        consumer.assert_not_called()
+        self.assertEqual(len(descriptors), 1)
+        with self.assertRaises(OSError) as closed:
+            os.fstat(descriptors[0])
+        self.assertEqual(closed.exception.errno, errno.EBADF)
+        self.assertEqual(list(source), [])
+        source.stop()
+
+    def test_metadata_failures_preserve_cause_and_close_only_acquired_handle(self):
+        for phase in ('stat', 'fstat'):
+            with self.subTest(phase=phase):
+                source = self.write(global_header() + record())
+                error = PermissionError('metadata unavailable')
+                consumer = Mock()
+                with self.path.open('rb') as handle:
+                    tracked = Mock(wraps=handle)
+                    target = 'pathlib.Path.stat' if phase == 'stat' else 'capture.pcap_packet_source.fstat'
+                    with patch(target, side_effect=error), \
+                         patch('capture.pcap_packet_source.io.open', return_value=tracked) as opened, \
+                         patch.object(source, 'stop', wraps=source.stop) as stop:
+                        with self.assertRaisesRegex(CaptureError, '^PCAP source could not start$') as raised:
+                            consume(source, consumer)
+                        self.assertIs(raised.exception.__cause__, error)
+                        stop.assert_called_once()
+                    consumer.assert_not_called()
+                    tracked.read.assert_not_called()
+                    if phase == 'stat':
+                        opened.assert_not_called()
+                        tracked.close.assert_not_called()
+                        self.assertFalse(handle.closed)
+                    else:
+                        opened.assert_called_once()
+                        tracked.close.assert_called_once()
+                        self.assertTrue(handle.closed)
+                self.assertEqual(list(source), [])
+
     def test_start_and_stop_once_through_consume_and_close_owned_handle(self):
         source = self.write(global_header() + record())
         handle = self.path.open("rb")
         tracked = Mock(wraps=handle)
-        with patch.object(Path, "open", return_value=tracked) as opened, \
+        with patch("capture.pcap_packet_source.io.open", return_value=tracked) as opened, \
              patch.object(source, "start", wraps=source.start) as start, \
              patch.object(source, "stop", wraps=source.stop) as stop:
             consume(source, lambda value: None)
-        opened.assert_called_once_with("rb")
+        opened.assert_called_once_with(self.path, "rb", opener=pcap_packet_source._open_nonblocking)
         start.assert_called_once()
         stop.assert_called_once()
         tracked.close.assert_called_once()
@@ -254,7 +339,7 @@ class PcapPacketSourceTests(unittest.TestCase):
             source = self.write(data)
             handle = self.path.open("rb")
             tracked = Mock(wraps=handle)
-            with patch.object(Path, "open", return_value=tracked), patch.object(source, "stop", wraps=source.stop) as stop:
+            with patch("capture.pcap_packet_source.io.open", return_value=tracked), patch.object(source, "stop", wraps=source.stop) as stop:
                 with self.assertRaises(CaptureError):
                     consume(source, lambda value: None)
             stop.assert_called_once()
@@ -278,7 +363,7 @@ class PcapPacketSourceTests(unittest.TestCase):
                 tracked.read.side_effect = (global_header(), error)
             else:
                 tracked.close.side_effect = close
-            with patch.object(Path, "open", return_value=tracked):
+            with patch("capture.pcap_packet_source.io.open", return_value=tracked):
                 with self.assertRaises(CaptureError) as raised:
                     consume(source, lambda value: None)
             self.assertIs(raised.exception.__cause__, error)
@@ -289,7 +374,7 @@ class PcapPacketSourceTests(unittest.TestCase):
         handle = self.path.open("rb")
         tracked = Mock(wraps=handle)
         tracked.read.side_effect = (global_header(), record()[:16], b"short")
-        with patch.object(Path, "open", return_value=tracked):
+        with patch("capture.pcap_packet_source.io.open", return_value=tracked):
             with self.assertRaisesRegex(CaptureError, "truncated PCAP packet payload"):
                 consume(source, lambda value: None)
         self.assertTrue(handle.closed)
@@ -300,7 +385,7 @@ class PcapPacketSourceTests(unittest.TestCase):
         tracked = Mock(wraps=handle)
         error = ValueError("downstream sentinel")
         consumer = Mock(side_effect=error)
-        with patch.object(Path, "open", return_value=tracked):
+        with patch("capture.pcap_packet_source.io.open", return_value=tracked):
             with self.assertRaises(ValueError) as raised:
                 consume(source, consumer)
         self.assertIs(raised.exception, error)
@@ -312,7 +397,7 @@ class PcapPacketSourceTests(unittest.TestCase):
         source = self.write(global_header() + b"".join(record(b"abcdefgh") for _ in range(100)))
         handle = self.path.open("rb")
         tracked = Mock(wraps=handle)
-        with patch.object(Path, "open", return_value=tracked):
+        with patch("capture.pcap_packet_source.io.open", return_value=tracked):
             try:
                 source.start()
                 self.assertEqual([call.args for call in tracked.read.call_args_list], [(24,)])
@@ -328,7 +413,7 @@ class PcapPacketSourceTests(unittest.TestCase):
         source = self.write(global_header(snaplen=0xFFFFFFFF) + record(b"", captured=0xFFFFFFFF))
         handle = self.path.open("rb")
         tracked = Mock(wraps=handle)
-        with patch.object(Path, "open", return_value=tracked):
+        with patch("capture.pcap_packet_source.io.open", return_value=tracked):
             with self.assertRaisesRegex(CaptureError, "truncated PCAP packet payload"):
                 consume(source, lambda value: None)
         self.assertEqual([call.args for call in tracked.read.call_args_list], [(24,), (16,)])

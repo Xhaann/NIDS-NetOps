@@ -533,9 +533,25 @@ class CLITests(unittest.TestCase):
         args[0] = str(self.path.parent)
         self.assertEqual(self.invoke(args), (1, "", '{"error":"capture_error"}\n'))
 
+    @unittest.skipUnless(hasattr(os, 'mkfifo'), 'requires filesystem FIFO support')
+    def test_fifo_and_symlink_subprocess_failures_have_repeatable_safe_output(self):
+        fifo = self.path.parent / 'private-input.fifo'
+        os.mkfifo(fifo)
+        alias = self.path.parent / 'private-fifo-link'
+        alias.symlink_to(fifo)
+        for path in (fifo, alias):
+            with self.subTest(path=path.name):
+                args = self.arguments()
+                args[0] = str(path)
+                results = [subprocess.run([sys.executable, '-B', '-m', 'application'] + args,
+                           capture_output=True, text=True, env=dict(os.environ, PYTHONPATH='src'),
+                           check=False, timeout=10) for _ in range(2)]
+                self.assertEqual([(result.returncode, result.stdout, result.stderr) for result in results],
+                                 [(1, '', '{"error":"capture_error"}\n')] * 2)
+
     def test_unreadable_input_is_diagnosed_after_existing_cleanup(self):
         error = PermissionError("private-file-location")
-        with patch.object(Path, "open", side_effect=error), \
+        with patch("capture.pcap_packet_source.io.open", side_effect=error), \
              patch.object(PcapPacketSource, "stop", autospec=True, wraps=None) as stop, \
              patch.object(cli, "diagnose_error", wraps=diagnose_error) as diagnose:
             self.assertEqual(self.invoke(), (1, "", '{"error":"capture_error"}\n'))

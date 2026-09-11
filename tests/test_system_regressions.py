@@ -1,4 +1,5 @@
 import unittest
+import os
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
@@ -12,7 +13,7 @@ from application import (
     PerformanceBenchmarkConfiguration, diagnose_error, run_capture_execution, run_detection_benchmark,
     run_end_to_end_validation, run_performance_benchmark,
 )
-from application import capture_execution, end_to_end_validation
+from application import capture_execution, detection_pipeline, detector_orchestration, end_to_end_validation
 from capture import CaptureError, PcapPacketSource
 from detection import FlowVolumeMetric
 from tests.test_end_to_end_validation import SOURCE, packet_truth, settings, timestamp, truth_for, wire
@@ -45,6 +46,59 @@ class SystemRegressionTests(unittest.TestCase):
             source, configuration=self.configuration if configuration is None else configuration,
             capture_session_id='validation', ground_truth=GroundTruth((), ()) if truth is None else truth,
         )
+
+    @unittest.skipUnless(hasattr(os, 'mkfifo'), 'requires filesystem FIFO support')
+    def test_fifo_startup_failure_never_reaches_analysis_detection_or_evaluation(self):
+        fifo = self.path.parent / 'input.fifo'
+        os.mkfifo(fifo)
+        failures, diagnostics = [], []
+        for _ in range(2):
+            source = PcapPacketSource(fifo, source=SOURCE)
+            with patch('io.open', side_effect=AssertionError('FIFO opened')) as opened, \
+                 patch.object(source, 'stop', wraps=source.stop) as stop, \
+                 patch.object(capture_execution, 'analyze_packet_outcome') as analyze, \
+                 patch.object(detection_pipeline, 'extract_flow_feature_snapshot') as extract, \
+                 patch.object(detector_orchestration, 'evaluate_packet_integrity') as packet, \
+                 patch.object(detector_orchestration, 'evaluate_flow_volume_threshold') as volume, \
+                 patch.object(detector_orchestration, 'evaluate_tcp_control_threshold') as control, \
+                 patch.object(end_to_end_validation, 'evaluate_detection_result') as evaluate, \
+                 patch.object(end_to_end_validation, 'calculate_detection_metrics') as metrics, \
+                 patch.object(end_to_end_validation, 'EvaluationReport') as report:
+                with self.assertRaisesRegex(CaptureError, '^PCAP source requires a regular file$') as raised:
+                    self.execute(source)
+                for operation in (opened, analyze, extract, packet, volume, control, evaluate, metrics, report):
+                    operation.assert_not_called()
+                stop.assert_called_once()
+            self.assertEqual(list(source), [])
+            failures.append((type(raised.exception), raised.exception.args))
+            diagnostics.append(diagnose_error(raised.exception, operation_id='validation', message='capture failed'))
+        self.assertEqual(failures[0], failures[1])
+        self.assertEqual(diagnostics[0], diagnostics[1])
+        self.assertIs(diagnostics[0].category, OperationalErrorCategory.CAPTURE_FAILURE)
+        observation = wire()
+        truth = truth_for((observation,), (1,))
+        first = self.execute(self.source((observation,)), truth)
+        second = self.execute(PcapPacketSource(self.path, source=SOURCE), truth)
+        self.assertEqual(first, second)
+        self.assertEqual(first.report.metrics.packet_metrics, DetectionMetrics(0, 0, 0, 1))
+        self.assertEqual(first.report.metrics.flow_metrics, DetectionMetrics(1, 0, 0, 0))
+
+    def test_regular_file_symlink_preserves_repeatable_pipeline_results(self):
+        observations = (wire(False, 6), wire(True, 17))
+        source = self.source(observations)
+        truth = GroundTruth(tuple(packet_truth(o, index, index + 1) for index, o in enumerate(observations)), ())
+        expected = self.execute(source, truth)
+        alias = self.path.parent / 'regular-link.pcap'
+        alias.symlink_to(self.path)
+        for _ in range(2):
+            source = PcapPacketSource(alias, source=SOURCE)
+            with patch.object(source, 'stop', wraps=source.stop) as stop:
+                result = self.execute(source, truth)
+                stop.assert_called_once()
+            self.assertEqual(result, expected)
+            self.assertEqual(list(source), [])
+        self.assertEqual(expected.report.metrics.packet_metrics, DetectionMetrics(0, 0, 0, 2))
+        self.assertEqual([f.detector_id for f in expected.pipeline_result.flow_findings], ['volume', 'control', 'volume'])
 
     def test_all_pcap_encodings_produce_equal_mixed_protocol_reports(self):
         observations = (wire(False, 6), wire(False, 17),

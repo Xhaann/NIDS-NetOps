@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta, timezone
+import io
+import os
 from os import PathLike, fstat
 from pathlib import Path
 from stat import S_ISREG
@@ -7,6 +9,10 @@ from typing import BinaryIO, Iterator, Optional, Union
 
 from capture.packet_observation import CaptureSource, LinkType, PacketObservation
 from capture.packet_source import CaptureError
+
+
+def _open_nonblocking(path: str, flags: int) -> int:
+    return os.open(path, flags | getattr(os, "O_NONBLOCK", 0))
 
 
 class PcapPacketSource:
@@ -36,7 +42,9 @@ class PcapPacketSource:
             raise RuntimeError("source cannot be restarted")
         self._started = True
         try:
-            self._file = self._path.open("rb")
+            if not S_ISREG(self._path.stat().st_mode):
+                raise CaptureError("PCAP source requires a regular file")
+            self._file = io.open(self._path, "rb", opener=_open_nonblocking)
             metadata = fstat(self._file.fileno())
             if not S_ISREG(metadata.st_mode):
                 raise CaptureError("PCAP source requires a regular file")

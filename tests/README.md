@@ -1,6 +1,6 @@
 # Automated testing strategy
 
-The current suite contains 1607 standard-library `unittest` tests. It covers capture/source contracts and classic PCAP input; Ethernet, IPv4/IPv6 and transport analysis; flow identity, lifecycle, statistics and features; detector configurations, predicates and findings; evaluation, truth, metrics and reporting; datasets, experiments, version references, end-to-end composition, performance methodology, diagnostics, and the CLI.
+The current suite contains 1613 standard-library `unittest` tests. It covers capture/source contracts and classic PCAP input; Ethernet, IPv4/IPv6 and transport analysis; flow identity, lifecycle, statistics and features; detector configurations, predicates and findings; evaluation, truth, metrics and reporting; datasets, experiments, version references, end-to-end composition, performance methodology, diagnostics, and the CLI.
 
 The verified interpreter is Python 3.9.6. Run from the repository root:
 
@@ -57,5 +57,19 @@ The matrix records coverage inspected at `7f27d98` and the selected additions in
 These eight additional test methods use subtests for related protocol cases; subtests are not counted as separate tests. Assertions use production outcomes, findings, flow snapshots and reports. Failure scenarios also check source cleanup and relevant execution counts. Existing packet/PCAP helpers construct the wire data; the shared transport helper additionally supports TCP option bytes.
 
 This review is not an exhaustive protocol matrix. IPv4 option combinations, repeated extension headers, and ICMPv6 partial-fragment combinations retain unit coverage without new dedicated PCAP scenarios here. Reassembly, IPv6 checksum validation, AH/ESP decoding, ICMP subtype semantics, VLAN decoding and application protocols remain unimplemented; tests do not invent them.
+
+## File-acquisition reliability regressions
+
+The security/reliability review at `5515814` identified an acquisition defect: opening a FIFO before checking its file type could wait for a writer instead of reaching the existing regular-file rejection. The [source correction](../src/capture/README.md#classic-pcap-packet-source) checks before opening, retains descriptor validation, and requests nonblocking acquisition where supported.
+
+Six additional tests establish the following specific properties:
+
+- [PCAP source tests](test_pcap_packet_source.py) reject FIFO, FIFO-symlink and directory paths before opening; preserve terminal source state and zero delivery; replace a regular path with a FIFO at the open boundary without concurrency and verify rejection before reads plus descriptor closure; and preserve metadata-error causes and ownership-sensitive cleanup.
+- [System regressions](test_system_regressions.py) repeat rejected startup and assert zero analysis, feature extraction, detector, evaluation, metric and report calls. Subsequent valid captures produce equivalent reports. Symlinks to regular captures retain equivalent packet/flow results across repeated runs.
+- [CLI tests](test_cli.py) repeatedly execute FIFO and FIFO-symlink inputs in subprocesses and require exactly exit 1, empty stdout and the existing capture-error JSON on stderr. A subprocess timeout is a hang safeguard, not an elapsed-time or throughput assertion.
+
+Temporary FIFOs, symlinks and captures are removed by the existing temporary-directory cleanup. FIFO tests are conditional on platform support; the replacement test additionally requires `os.O_NONBLOCK`. Existing handle-tracking tests intercept `io.open`, the acquisition boundary now used to supply an opener, with their read, close, ordering and error-cause assertions retained.
+
+The review also checked existing parser bounds, maximum repeated IPv6 extension traversal, checksum/outcome distinctions, flow admission and state isolation, lifecycle/error precedence, feature validation, finding construction, evaluation, diagnostics and deterministic execution. Their established regressions remain in place, including historical NOT_EVALUABLE positive-expectation false negatives. This pass adds no protocol or detector semantics. Per-record memory can scale with the represented capture length; accumulated findings and active flows scale with input volume, and new-flow insertion copies the active mapping. No global memory/CPU limit, arbitrary-filesystem timeout or immunity to resource exhaustion is established. The input-stability requirement and existing protocol limitations remain unchanged.
 
 Authorized lab methodology belongs to [labs](../labs/README.md). Portable checks derived from future lab results should become regressions where appropriate. The test count records the verified baseline and is not a coverage target.

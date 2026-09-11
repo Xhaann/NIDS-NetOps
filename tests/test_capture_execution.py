@@ -202,7 +202,7 @@ class CaptureExecutionTests(unittest.TestCase):
                 handle = path.open("rb")
                 error = RuntimeError("consumer")
                 consumer = Mock(side_effect=None if corrupt else error)
-                with patch.object(Path, "open", return_value=handle):
+                with patch("capture.pcap_packet_source.io.open", return_value=handle):
                     with self.assertRaises(CaptureError if corrupt else RuntimeError):
                         run_capture_execution(source, consumer)
                 consumer.assert_called_once()
