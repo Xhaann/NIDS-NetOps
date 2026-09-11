@@ -14,7 +14,7 @@ Supporting boundaries remain distinct:
 
 - `DetectionDataset` defines ordered evaluation cases; `run_detection_benchmark()` invokes a supplied operation once per case.
 - `DetectionExperiment` describes a dataset and an explicit operation ID/version without executing it.
-- [ResearchExample](src/research/README.md) associates an existing feature projection with optional caller-supplied research truth, independently of detector/evaluation targets.
+- [ResearchExample and ResearchDataset](src/research/README.md) associate existing projections with optional research truth and preserve explicit ordered example membership, independently of detector/evaluation targets.
 - `DetectionConfiguration`, `DetectorVersion`, and `FeatureContractVersion` preserve explicit settings and provenance.
 - `run_performance_benchmark()` measures a supplied operation with explicit repetitions and warmups, preserving ordered elapsed observations and summary statistics.
 - `OperationalDiagnostic` describes a failure; `diagnose_error()` conservatively classifies a supplied exception without catching, retrying, or logging an operation.
@@ -36,7 +36,7 @@ PYTHONPATH=src python3 -B -m unittest discover -s tests
 PYTHONPATH=src python3 -B -m application --help
 ```
 
-The current suite contains 1643 tests. Fixtures are synthetic; PCAP tests create local temporary files. Tests use controlled clocks for timing semantics rather than machine-speed thresholds.
+The current suite contains 1650 tests. Fixtures are synthetic; PCAP tests create local temporary files. Tests use controlled clocks for timing semantics rather than machine-speed thresholds.
 
 To run detection, supply your own local classic PCAP file in place of `input.pcap`:
 
@@ -66,7 +66,7 @@ Equivalent explicit observations, configuration, ground truth, and caller operat
 
 The current implementation has no live network capture, PCAPNG, fragment/stream reassembly, application-protocol parsing, TCP connection state machine, autonomous response, blocking, firewall/SIEM integration, threat intelligence, correlation, alert management, or persistence. In-memory results can grow with input size; operational resource hardening and deployment are not established. Benchmarking measures elapsed execution, not CPU/memory use or function-level profiling, and does not optimize algorithms or store results.
 
-The [ML feature projection](src/ml/README.md) provides 49 ordered canonical numerical inputs with explicit version and availability semantics, keeping labels and detector outcomes outside the representation. Models, preprocessing, ML datasets, training, inference, feature stores, model registries, drift detection, serving, and experiment tracking infrastructure remain unimplemented. Projection is separate from the deterministic detection path.
+The [ML feature projection](src/ml/README.md) provides 49 ordered canonical numerical inputs with explicit version and availability semantics, keeping labels and detector outcomes outside the representation. Research datasets provide in-memory membership only. Models, preprocessing, dataset loading, splitting, training, inference, feature stores, model registries, drift detection, serving, and experiment tracking infrastructure remain unimplemented. Projection is separate from the deterministic detection path.
 
 ## Repository guide
 
