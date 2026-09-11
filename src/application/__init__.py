@@ -22,6 +22,7 @@ from application.detector_orchestration import (
     run_packet_detectors,
 )
 from application.flow_observation_session import run_flow_observation_session
+from application.evaluation_report import EvaluationReport
 from application.ground_truth import GroundTruth, GroundTruthPolarity, GroundTruthRecord
 
 __all__ = [
@@ -38,6 +39,7 @@ __all__ = [
     "DetectionMetrics",
     "DetectionPipelineResult",
     "DetectionSession",
+    "EvaluationReport",
     "ExpectedDetection",
     "ExpectedDetectionResult",
     "FlowDetectionIdentity",

@@ -88,7 +88,7 @@ class DetectorOrchestrationTests(unittest.TestCase):
         self.assertEqual(
             application.__all__,
             ["DetectionBenchmarkCaseResult", "DetectionBenchmarkResult", "DetectionClassification", "DetectionConfiguration", "DetectionDataset", "DetectionDatasetCase", "DetectionEvaluationEntry", "DetectionEvaluationMetrics", "DetectionEvaluationResult",
-             "DetectionExperiment", "DetectionMetrics", "DetectionPipelineResult", "DetectionSession", "ExpectedDetection", "ExpectedDetectionResult",
+             "DetectionExperiment", "DetectionMetrics", "DetectionPipelineResult", "DetectionSession", "EvaluationReport", "ExpectedDetection", "ExpectedDetectionResult",
              "FlowDetectionIdentity", "GroundTruth", "GroundTruthPolarity", "GroundTruthRecord",
              "PacketDetectionIdentity", "calculate_detection_metrics", "detection_identity", "evaluate_detection_result",
              "run_capture_execution", "run_closed_flow_detectors", "run_detection_benchmark", "run_detection_pipeline",

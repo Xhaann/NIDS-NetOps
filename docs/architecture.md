@@ -322,6 +322,14 @@ The seven snapshot fields, field order, exact retained window, feature formulas,
 
 Detector versions and operational configurations remain separate. Existing finding/evaluation/ground-truth identities, datasets, benchmarks, and experiments do not gain feature-version fields or new matching behavior. Flow-volume evidence already retains the snapshot; consumers can inspect its provenance through that association. Construction and inspection execute no features or NIDS behavior and access no external state. No registry, migration, discovery, serialization, persistence, reporting, or performance infrastructure is introduced.
 
+## Evaluation reporting data contract
+
+The application [EvaluationReport](../src/application/evaluation_report.py) retains either an existing `DetectionEvaluationResult` with optional supplied `DetectionEvaluationMetrics`, or an existing `DetectionBenchmarkResult` whose case results already retain evaluations and metrics. This avoids a duplicate report-entry model. Benchmark reports reject top-level metrics because no aggregate benchmark metric contract exists.
+
+Optional exact experiment and system-configuration references preserve explicitly declared context. Benchmark/experiment datasets must compare equal in full; dataset identity and case count are projected from retained objects, never independently copied or discovered. Missing dataset context remains `None`; an empty dataset has zero cases. No report identity, benchmark identity, execution attestation, or new version fields are generated.
+
+[The reporting contract](../src/application/README.md#evaluation-reporting-representation) preserves classifications, packet/flow separation, undefined metric values, unclassified/unlabeled distinctions, exact input references, and ordering. Evaluation owns matching; metrics own counts and derived values; reporting owns only an immutable presentation-neutral association. It neither checks numerical consistency by recomputing metrics nor reinterprets NOT_EVALUABLE. Rendering, serialization, persistence, execution, discovery, and timing remain outside this boundary. CLI output and all upstream semantics remain unchanged.
+
 ## Cross-cutting requirements for later tasks
 
 - Preserve sensor/source identity, capture time, processing time where needed, and provenance across transformations. Specify identifier and schema evolution rules before persisting records.
