@@ -163,9 +163,7 @@ class FlowObservationWindowManager:
             state,
             FlowObservationWindowClosureReason.EXPLICIT_SEGMENTATION,
         )
-        active = self._active.copy()
-        del active[identity]
-        self._active = active
+        del self._active[identity]
         return closed
 
     def end_capture_session(self) -> tuple[FlowObservationWindow, ...]:
@@ -207,9 +205,7 @@ class FlowObservationWindowManager:
         )
         active_window = FlowObservationWindow(key, state, None)
         update = FlowObservationWindowUpdate(active_window, closed_windows)
-        active = self._active.copy()
-        active[identity] = (key, coordinator)
-        self._active = active
+        self._active[identity] = (key, coordinator)
         self._next_sequence_number += 1
         self._latest_accepted_capture_time = analysis.observation.captured_at
         return update

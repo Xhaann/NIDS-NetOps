@@ -1,7 +1,9 @@
+import sys
 import unittest
 from dataclasses import FrozenInstanceError, fields, replace
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from analysis import (
     CoordinatedFlowState,
@@ -19,9 +21,11 @@ from analysis import (
     PacketAnalysis,
     TCPPacket,
     UDPPacket,
+    extract_flow_feature_snapshot,
     flow_identity_from_packet,
 )
 from capture.packet_observation import CaptureSource, PacketObservation
+from tests.test_ipv6_flow import packet_at as ipv6_packet_at
 
 
 TIMESTAMP = datetime(2026, 9, 7, 12, tzinfo=timezone.utc)
@@ -234,6 +238,156 @@ class FlowObservationWindowModelTests(unittest.TestCase):
 
 
 class FlowObservationWindowManagerTests(unittest.TestCase):
+    def test_admission_and_explicit_closure_do_not_copy_active_flow_entries(self) -> None:
+        for count in (128, 512, 2048):
+            manager = FlowObservationWindowManager("capture", timedelta(seconds=5))
+            packets = tuple(packet_at(0, source_port=10000 + i, protocol=6 if i % 2 else 17)
+                            for i in range(count))
+            copied_sizes = []
+
+            def count_copies(frame, event, function):
+                if event == "c_call" and getattr(function, "__name__", None) == "copy" and getattr(function, "__self__", None) is manager._active:
+                    copied_sizes.append(len(manager._active))
+
+            previous_profile = sys.getprofile()
+            sys.setprofile(count_copies)
+            try:
+                published = tuple(manager.record(packet).active_window for packet in packets)
+            finally:
+                sys.setprofile(previous_profile)
+            admission_copies = tuple(copied_sizes)
+            self.assertEqual(manager.active_windows(), published)
+            copied_sizes.clear()
+            sys.setprofile(count_copies)
+            try:
+                closed = tuple(manager.close(window.identity) for window in published)
+            finally:
+                sys.setprofile(previous_profile)
+            for operation, sizes in (("admission", admission_copies), ("closure", tuple(copied_sizes))):
+                with self.subTest(count=count, operation=operation):
+                    self.assertEqual((len(sizes), sum(sizes)), (0, 0))
+            self.assertEqual([window.key.sequence_number for window in closed], list(range(count)))
+            for active, finished in zip(published, closed):
+                self.assertIs(finished.coordinated_state, active.coordinated_state)
+                self.assertIs(finished.closure_reason, FlowObservationWindowClosureReason.EXPLICIT_SEGMENTATION)
+            self.assertEqual(manager.active_windows(), ())
+            self.assertEqual(manager.end_capture_session(), ())
+
+    def test_mixed_flow_mutations_preserve_published_windows_and_feature_snapshots(self) -> None:
+        packets = (packet_at(0), packet_at(0, protocol=17), ipv6_packet_at(6), ipv6_packet_at(17))
+        packets = tuple(replace(packet, observation=replace(packet.observation, captured_at=TIMESTAMP)) for packet in packets)
+        manager = FlowObservationWindowManager("capture", timedelta(seconds=5))
+        first = tuple(manager.record(packet).active_window for packet in packets)
+        snapshots = tuple(extract_flow_feature_snapshot(window) for window in first)
+        original = repr((first, snapshots))
+        states = tuple(window.coordinated_state for window in first)
+        for index in (2, 0, 3, 1):
+            packet = packets[index]
+            update = manager.record(replace(packet, observation=replace(packet.observation, captured_at=TIMESTAMP + timedelta(seconds=1))))
+            self.assertEqual(update.active_window.key, first[index].key)
+            self.assertEqual(update.active_window.coordinated_state.flow_statistics.packet_count, 2)
+            self.assertEqual(update.closed_windows, ())
+        continued = manager.active_windows()
+        closed = manager.close(first[1].identity)
+        closed_snapshot = extract_flow_feature_snapshot(closed)
+        retained = repr((closed, closed_snapshot, continued))
+        self.assertIs(closed.coordinated_state, continued[1].coordinated_state)
+        replacement = manager.record(replace(packets[1], observation=replace(packets[1].observation, captured_at=TIMESTAMP + timedelta(seconds=2))))
+        self.assertEqual(replacement.active_window.key.sequence_number, 4)
+        timeout = manager.record(replace(packets[0], observation=replace(packets[0].observation, captured_at=TIMESTAMP + timedelta(seconds=6))))
+        self.assertEqual(timeout.active_window.key.sequence_number, 5)
+        self.assertEqual(len(timeout.closed_windows), 1)
+        self.assertIs(timeout.closed_windows[0].coordinated_state, continued[0].coordinated_state)
+        self.assertIs(timeout.closed_windows[0].closure_reason, FlowObservationWindowClosureReason.INACTIVITY)
+        final = manager.end_capture_session()
+        self.assertEqual([window.key.sequence_number for window in final], [2, 3, 4, 5])
+        self.assertEqual([window.coordinated_state.flow_statistics.packet_count for window in final], [2, 2, 1, 1])
+        self.assertEqual(repr((first, snapshots)), original)
+        self.assertEqual(repr((closed, closed_snapshot, continued)), retained)
+        self.assertEqual(tuple(extract_flow_feature_snapshot(window) for window in first), snapshots)
+        for window, state, feature in zip(first, states, snapshots):
+            self.assertIs(window.coordinated_state, state)
+            self.assertIs(feature.observation_window, window)
+            self.assertIs(feature.coordinated_state, state)
+            assert_cross_family(self, window)
+        self.assertEqual(manager.active_windows(), ())
+        self.assertEqual(manager.end_capture_session(), ())
+
+    def test_failed_creation_validation_preserves_windows_sequence_and_time(self) -> None:
+        for mode in ("empty", "new", "inactivity"):
+            for model in (CoordinatedFlowState, FlowObservationWindowKey, FlowObservationWindow, FlowObservationWindowUpdate):
+                with self.subTest(mode=mode, model=model):
+                    manager = FlowObservationWindowManager("capture", timedelta(seconds=5))
+                    if mode != "empty":
+                        manager.record(packet_at(0))
+                        manager.record(packet_at(0, source_port=20000))
+                    before = manager.active_windows()
+                    candidate = packet_at(5, source_port=12345 if mode == "inactivity" else 30000)
+                    error = RuntimeError("publication validation failed")
+                    with patch.object(model, "__post_init__", side_effect=error):
+                        with self.assertRaises(RuntimeError) as raised:
+                            manager.record(candidate)
+                    self.assertIs(raised.exception, error)
+                    after = manager.active_windows()
+                    self.assertEqual(after, before)
+                    for old, current in zip(before, after):
+                        self.assertIs(current.coordinated_state, old.coordinated_state)
+                    accepted = manager.record(packet_at(1, source_port=31000))
+                    self.assertEqual(accepted.active_window.key.sequence_number, len(before))
+                    self.assertEqual(accepted.closed_windows, ())
+
+    def test_failed_closure_and_invalid_sequence_leave_publication_unchanged(self) -> None:
+        manager = FlowObservationWindowManager("capture", timedelta(seconds=5))
+        first = manager.record(packet_at(0)).active_window
+        manager.record(packet_at(0, source_port=20000))
+        before = manager.active_windows()
+        error = RuntimeError("closure validation failed")
+        with patch.object(FlowObservationWindow, "__post_init__", side_effect=error):
+            with self.assertRaises(RuntimeError) as raised:
+                manager.close(first.identity)
+        self.assertIs(raised.exception, error)
+        self.assertEqual(manager.active_windows(), before)
+        with patch.object(manager, "_next_sequence_number", -1):
+            with self.assertRaisesRegex(FlowObservationWindowError, "^sequence_number must not be negative$"):
+                manager.record(packet_at(5))
+            self.assertEqual(manager.active_windows(), before)
+        accepted = manager.record(packet_at(1, source_port=30000))
+        self.assertEqual(accepted.active_window.key.sequence_number, 2)
+        closed = manager.close(first.identity)
+        self.assertIs(closed.coordinated_state, first.coordinated_state)
+        self.assertEqual([window.key.sequence_number for window in manager.end_capture_session()], [1, 2])
+
+    def test_mapping_key_failures_preserve_admission_and_closure_state(self) -> None:
+        for operation in ("new", "inactivity", "close"):
+            with self.subTest(operation=operation):
+                manager = FlowObservationWindowManager("capture", timedelta(seconds=5))
+                first = manager.record(packet_at(0)).active_window
+                manager.record(packet_at(0, source_port=20000))
+                before = manager.active_windows()
+                calls = []
+                original_hash = FlowIdentity.__hash__
+                error = RuntimeError("identity hash failed")
+
+                def fail_mutation_hash(identity):
+                    calls.append(identity)
+                    if len(calls) == 2:
+                        raise error
+                    return original_hash(identity)
+
+                with patch.object(FlowIdentity, "__hash__", fail_mutation_hash):
+                    with self.assertRaises(RuntimeError) as raised:
+                        if operation == "close":
+                            manager.close(first.identity)
+                        else:
+                            manager.record(packet_at(5, source_port=30000 if operation == "new" else 12345))
+                self.assertIs(raised.exception, error)
+                self.assertEqual(len(calls), 2)
+                self.assertEqual(manager.active_windows(), before)
+                for old, current in zip(before, manager.active_windows()):
+                    self.assertIs(current.coordinated_state, old.coordinated_state)
+                accepted = manager.record(packet_at(1, source_port=31000))
+                self.assertEqual(accepted.active_window.key.sequence_number, 2)
+
     def test_first_continuation_equal_time_and_canonical_direction(self) -> None:
         manager = FlowObservationWindowManager("capture-a", timedelta(seconds=10))
         first = manager.record(packet_at(0, syn=True))
