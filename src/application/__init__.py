@@ -1,4 +1,5 @@
 from application.capture_execution import run_capture_execution
+from application.detection_benchmark import DetectionBenchmarkCaseResult, DetectionBenchmarkResult, run_detection_benchmark
 from application.detection_dataset import DetectionDataset, DetectionDatasetCase
 from application.detection_evaluation import (
     DetectionClassification,
@@ -22,6 +23,8 @@ from application.flow_observation_session import run_flow_observation_session
 from application.ground_truth import GroundTruth, GroundTruthPolarity, GroundTruthRecord
 
 __all__ = [
+    "DetectionBenchmarkCaseResult",
+    "DetectionBenchmarkResult",
     "DetectionClassification",
     "DetectionDataset",
     "DetectionDatasetCase",
@@ -43,6 +46,7 @@ __all__ = [
     "evaluate_detection_result",
     "run_capture_execution",
     "run_closed_flow_detectors",
+    "run_detection_benchmark",
     "run_detection_pipeline",
     "run_flow_observation_session",
     "run_packet_detectors",
