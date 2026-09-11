@@ -227,7 +227,7 @@ Type violations raise `TypeError`; count or case-association violations raise `V
 
 The framework owns only ordered invocation, association validation, and immutable result collection. Dataset representation owns cases; ground truth supplies external truth; evaluation compares supplied results with expectations; metrics aggregate existing classifications. A caller may explicitly invoke those existing APIs inside its operation. The framework never invokes them internally, converts truth to expectations, inspects findings/evidence, or recalculates classifications or ratios. It introduces no capture or pipeline wrapper. Deterministic callable outputs over equivalent datasets produce equal ordered benchmark results; determinism and side effects inside the supplied operation remain caller-owned.
 
-No timing, performance measurement, concurrency, filesystem/network access, randomness, hidden caches, dataset loading, reporting, experiment metadata, or ML is introduced. Performance benchmarking and reproducible experiment tracking remain separate future concerns. Existing capture, detection, evaluation, metrics, and CLI contracts are unchanged.
+No timing, performance measurement, concurrency, filesystem/network access, randomness, hidden caches, dataset loading, reporting, experiment metadata, or ML is introduced. Performance measurement is provided separately by the performance boundary below; reproducible experiment tracking remains a future concern. Existing capture, detection, evaluation, metrics, and CLI contracts are unchanged.
 
 
 ## Reproducible experiment definition
@@ -291,3 +291,35 @@ Frozen `EndToEndValidationResult(pipeline_result, ground_truth, report)` retains
 A returned result means the composition completed, not that all expectations passed: FP, FN, unclassified entries, and undefined metrics remain observable. The wrapper propagates failures without retries or partial success results and preserves the pipeline's existing source cleanup and flow-finalization behavior. Unsupported flow transports and non-initial IPv6 fragments retain their existing flow-admission exceptions; atomic IPv6 fragments retain transport admission. Structured packet-analysis failures remain packet findings where the existing pipeline permits completion.
 
 Tests exercise real deterministic PCAP bytes through IPv4/IPv6 TCP/UDP, inactivity closure, directional features, packet integrity failures, explicit truth, and final reports. Execution guards verify one analysis per observation, one extraction per closed window, pipeline-owned detector calls, and one evaluation, metrics calculation, and report construction. This boundary introduces no capture/parser implementation, rendering, serialization, storage, networking, automatic metadata discovery, or performance measurement.
+
+
+## Performance benchmarking
+
+`run_performance_benchmark(operation, *, configuration, clock=None)` measures a synchronous, caller-supplied zero-argument operation. `PerformanceBenchmarkConfiguration(operation_id, operation_version, measured_executions, warmup_executions=0, dataset=None, experiment=None, detection_configuration=None)` declares the methodology and optional existing context. Identity/version are exact nonblank strings, preserved without normalization or discovery. Measured executions must be positive exact integers; warmups must be nonnegative exact integers. Booleans and coercible alternatives are rejected. Invalid configuration, operation, or clock references fail before warmups or measured calls.
+
+Each warmup calls the operation once without reading the clock. Measured calls then run serially: start clock, operation, end clock. A successful run invokes the operation exactly `warmup_executions + measured_executions` times and reads the clock exactly twice per measured call. There are no implicit repetitions, retries, calibration runs, overhead subtraction, or concurrent calls. The interval includes the operation call and small timing-wrapper overhead; observation aggregation and measured-output disposal occur after the end reading. Warmup output disposal is also untimed. An operation's own side effects, setup, cleanup, retained outputs, and internal work remain its responsibility.
+
+The production default is `time.perf_counter`, a monotonic high-resolution elapsed-time clock. An injected clock must return finite exact floats in seconds with a consistent origin and nondecreasing readings, including between repetitions. Negative origins and equal readings are valid. Invalid readings, reversed clocks, or nonfinite elapsed differences raise immediately. Real timings are environment-sensitive: deterministic methodology and controlled-clock equality do not imply identical measurements on real machines. Timings are not rounded, formatted, converted into throughput, or assigned machine-speed thresholds.
+
+Frozen `PerformanceBenchmarkResult(configuration, elapsed_seconds)` retains the exact configuration and an ordered tuple of finite nonnegative float durations, one per measured execution. Zero duration is valid. Mutable collections and mismatched observation counts are rejected. Read-only `minimum_elapsed_seconds`, `maximum_elapsed_seconds`, `total_elapsed_seconds`, `mean_elapsed_seconds`, and `median_elapsed_seconds` derive from those observations. Total uses `math.fsum`; mean divides that total by the measured count. Median uses the standard-library median without reordering the stored observations. An unrepresentable total raises `OverflowError` rather than publishing an infinite summary. Equality includes configuration and ordered observations; no separate aggregate fields can drift from the raw measurements.
+
+Dataset, experiment, and detection-configuration references must be exact existing value objects. If supplied together, dataset and experiment dataset must compare equal in full, and the experiment operation ID/version must match the declared measured operation. These are caller-declared associations, not executable bindings or automatic validation of a callable's implementation. Result `dataset` projects the explicit dataset, otherwise the experiment dataset, otherwise `None`; `dataset_case_count` is its existing case count, or `None` without context. Empty datasets retain zero cases, while a configured whole-dataset invocation is still measured. Case order, packet/flow targets, ground truth, detector configurations, and detector versions remain on their existing objects unchanged. Feature-contract provenance remains on the original feature snapshots; timing does not create, infer, copy, or rewrite it.
+
+The operation can explicitly bind `run_detection_pipeline` or `run_end_to_end_validation`, `DetectionSession.run_packets` over prepared outcomes, `DetectionSession.run_closed_flows` over prepared snapshots, or `run_detection_benchmark(dataset, case_operation)`. One observation always means one call of the supplied operation: measuring a whole dataset is distinct from measuring a single case, and the declared operation identity must describe that scope. The performance layer never traverses cases, inspects findings, calls individual detectors, extracts features, evaluates results, or computes detection metrics independently.
+
+For example, a caller can measure the existing dataset framework:
+
+```python
+configuration = PerformanceBenchmarkConfiguration(
+    "dataset-evaluation", "1", measured_executions=5, warmup_executions=1,
+    dataset=dataset,
+)
+result = run_performance_benchmark(
+    lambda: run_detection_benchmark(dataset, case_operation),
+    configuration=configuration,
+)
+```
+
+The callable must complete its work synchronously; a returned iterator or awaitable is not consumed or awaited. Return values are not retained in the performance result or interpreted as success/failure classifications. A caller can retain authoritative outputs explicitly if needed. For complete PCAP runs, create a fresh `PcapPacketSource` inside each invocation; setup inside that callable is included in the measurement. Reusing an exhausted source preserves its existing error rather than triggering an automatic reset. The framework does not reset external state between repetitions or verify that the caller supplied equivalent workloads.
+
+An operation or clock exception propagates unchanged, stops further work, and returns no partial success summary. Failed operations get no fabricated end reading or elapsed observation. Earlier caller side effects are not rolled back. Detection benchmarking remains ordered case execution; end-to-end validation remains composition of the existing system; performance benchmarking measures an explicitly selected boundary. No optimization, caching, detailed profiling, storage, serialization, network access, randomness, metadata discovery, registries, or ML/MLOps is introduced. Existing evaluation metrics and reporting semantics remain unchanged.

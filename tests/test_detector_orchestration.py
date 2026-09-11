@@ -90,9 +90,9 @@ class DetectorOrchestrationTests(unittest.TestCase):
             ["DetectionBenchmarkCaseResult", "DetectionBenchmarkResult", "DetectionClassification", "DetectionConfiguration", "DetectionDataset", "DetectionDatasetCase", "DetectionEvaluationEntry", "DetectionEvaluationMetrics", "DetectionEvaluationResult",
              "DetectionExperiment", "DetectionMetrics", "DetectionPipelineResult", "DetectionSession", "EndToEndValidationResult", "EvaluationReport", "ExpectedDetection", "ExpectedDetectionResult",
              "FlowDetectionIdentity", "GroundTruth", "GroundTruthPolarity", "GroundTruthRecord",
-             "PacketDetectionIdentity", "calculate_detection_metrics", "detection_identity", "evaluate_detection_result",
+             "PacketDetectionIdentity", "PerformanceBenchmarkConfiguration", "PerformanceBenchmarkResult", "calculate_detection_metrics", "detection_identity", "evaluate_detection_result",
              "run_capture_execution", "run_closed_flow_detectors", "run_detection_benchmark", "run_detection_pipeline",
-             "run_end_to_end_validation", "run_flow_observation_session", "run_packet_detectors"],
+             "run_end_to_end_validation", "run_flow_observation_session", "run_packet_detectors", "run_performance_benchmark"],
         )
 
     def test_packet_evaluates_and_normalizes_exact_objects_once(self) -> None:
