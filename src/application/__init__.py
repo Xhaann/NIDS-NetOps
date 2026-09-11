@@ -26,6 +26,7 @@ from application.end_to_end_validation import EndToEndValidationResult, run_end_
 from application.evaluation_report import EvaluationReport
 from application.ground_truth import GroundTruth, GroundTruthPolarity, GroundTruthRecord
 
+from application.operational_diagnostics import OperationalDiagnostic, OperationalErrorCategory, diagnose_error
 from application.performance_benchmark import PerformanceBenchmarkConfiguration, PerformanceBenchmarkResult, run_performance_benchmark
 
 __all__ = [
@@ -50,11 +51,14 @@ __all__ = [
     "GroundTruth",
     "GroundTruthPolarity",
     "GroundTruthRecord",
+    "OperationalDiagnostic",
+    "OperationalErrorCategory",
     "PacketDetectionIdentity",
     "PerformanceBenchmarkConfiguration",
     "PerformanceBenchmarkResult",
     "calculate_detection_metrics",
     "detection_identity",
+    "diagnose_error",
     "evaluate_detection_result",
     "run_capture_execution",
     "run_closed_flow_detectors",

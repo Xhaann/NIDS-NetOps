@@ -323,3 +323,41 @@ result = run_performance_benchmark(
 The callable must complete its work synchronously; a returned iterator or awaitable is not consumed or awaited. Return values are not retained in the performance result or interpreted as success/failure classifications. A caller can retain authoritative outputs explicitly if needed. For complete PCAP runs, create a fresh `PcapPacketSource` inside each invocation; setup inside that callable is included in the measurement. Reusing an exhausted source preserves its existing error rather than triggering an automatic reset. The framework does not reset external state between repetitions or verify that the caller supplied equivalent workloads.
 
 An operation or clock exception propagates unchanged, stops further work, and returns no partial success summary. Failed operations get no fabricated end reading or elapsed observation. Earlier caller side effects are not rolled back. Detection benchmarking remains ordered case execution; end-to-end validation remains composition of the existing system; performance benchmarking measures an explicitly selected boundary. No optimization, caching, detailed profiling, storage, serialization, network access, randomness, metadata discovery, registries, or ML/MLOps is introduced. Existing evaluation metrics and reporting semantics remain unchanged.
+
+
+## Operational errors and diagnostics
+
+`diagnose_error(error, *, operation_id, message, context=())` describes an already-caught `Exception`. It returns frozen `OperationalDiagnostic(category, operation_id, message, context)`. It does not invoke an operation, install a handler, wrap an exception, attach state to an exception, or return an execution result. Existing capture, pipeline, evaluation, and benchmark APIs already propagate failures; this passive boundary adds a diagnostic value without replacing that behavior. The caller remains responsible for propagating or handling the original exception according to its existing contract.
+
+`OperationalErrorCategory` distinguishes five domains using exact existing exception types:
+
+- `CAPTURE_FAILURE`: `CaptureError`.
+- `PACKET_ANALYSIS_FAILURE`: existing packet-analysis/outcome, Ethernet/IP/transport/ICMP decoding, and checksum-validation exceptions.
+- `FLOW_PROCESSING_FAILURE`: existing flow identity, direction, tracking, statistics, coordination, window, and feature-value exceptions.
+- `DETECTION_FAILURE`: packet-integrity, flow-volume, TCP-control, and finding-contract exceptions.
+- `UNCLASSIFIED_FAILURE`: other exceptions, including plain `TypeError`, `ValueError`, `OverflowError`, `RuntimeError`, and unrecognized subclasses.
+
+These categories identify the domain of a known exception contract, not its root cause, security meaning, or recoverability. Evaluation and configuration validation commonly use generic built-in exceptions shared with programmer errors; diagnosis does not guess their origin from message text or call stacks. An explicit `operation_id` locates the caller's boundary while the generic failure remains unclassified. No classification is inferred from an exception's cause chain. Existing cleanup-error precedence and the original exception's type, arguments, traceback, cause, and context remain untouched and available to the caller.
+
+Operation names and messages must be exact nonblank strings, preserved without normalization. The message must be explicitly supplied by the caller: arbitrary exception text, arguments, representations, tracebacks, packet bytes, paths, or environment state are never copied automatically. Callers should supply an appropriate explanation without sensitive content. No generated diagnostic ID, timestamp, exception object, operational handle, or security severity is stored.
+
+Optional context must be an exact tuple of existing immutable `CaptureSource`, `FlowObservationWindowKey`, `DetectionConfiguration`, `DetectionDataset`, `DetectionExperiment`, `DetectorVersion`, or `FeatureContractVersion` objects. Exact references, order, and multiplicity are preserved, including duplicate references; empty context remains empty. Arbitrary text entries, mappings, mutable collections, findings, outcomes, snapshots, and raw packets are rejected. Context is caller-declared, not discovered or reconciled into new provenance. Nested contracts continue to own their own semantics. Diagnostic equality uses all four frozen fields.
+
+A caller may diagnose a capture exception at its existing catch boundary and then re-raise it:
+
+```python
+try:
+    result = run_detection_pipeline(source, detection_session=session,
+                                    capture_session_id=capture_session_id,
+                                    inactivity_timeout=inactivity_timeout)
+except CaptureError as error:
+    diagnostic = diagnose_error(error, operation_id="detection-pipeline",
+                                message="Capture failed", context=(capture_source,))
+    raise
+```
+
+The example executes the pipeline once. Diagnosis performs no capture, parsing, feature extraction, detection, evaluation, metric calculation, reporting, or benchmark execution. Invalid diagnostic arguments raise their own validation error; callers should supply valid explicit metadata when diagnosing a caught failure. The adapter itself never catches or suppresses an operation exception. Interrupts such as `KeyboardInterrupt` and `SystemExit` are outside its `Exception` input contract.
+
+A `PacketAnalysisOutcome` already represents expected analysis non-success and retains its authoritative classification/description. It is not an operational exception and is not accepted by `diagnose_error`. Detection findings remain detector outputs; evaluation outcomes remain comparisons against explicit expectations. MATCH, NO_MATCH, NOT_EVALUABLE, TP/FP/FN/TN, and undefined/unclassified metrics retain their historical semantics. End-to-end validation continues to compose these systems; performance benchmarking continues to time only the configured operation, with unchanged counts and warmup policy. Diagnosis adds no clock reads or retries. If callers put diagnostic work inside a measured callable, that explicit work is part of the measured boundary.
+
+No logging, telemetry, rendering, serialization, persistence, storage, network access, randomness, automatic metadata discovery, registries, optimization, or ML/MLOps is introduced. The CLI's existing output and exception behavior remain unchanged. Diagnostics describe failure; they do not fabricate partial or successful results, alerts, incidents, or attack classifications.

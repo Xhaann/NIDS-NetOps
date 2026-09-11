@@ -346,6 +346,14 @@ The default clock is `time.perf_counter`; deterministic tests supply finite nond
 
 [The performance contract](../src/application/README.md#performance-benchmarking) can bind existing complete pipeline/validation operations, packet or closed-flow session methods, or dataset benchmark execution. It measures the supplied boundary without reproducing any detection, evaluation, feature, or reporting work. Callers explicitly supply fresh sources and define the measured workload. Existing dataset order, ground truth, configuration, detector versions, and feature-contract provenance remain unchanged. Performance observation adds no optimization, concurrency, persistence, serialization, network access, or automatic metadata discovery.
 
+## Operational error and diagnostic boundary
+
+The application [operational diagnostics](../src/application/operational_diagnostics.py) add a passive adapter from an already-caught exception to a frozen `OperationalDiagnostic`. `diagnose_error` classifies exact existing capture, packet-analysis, flow-processing, and detection-domain exception types. Other exceptions remain unclassified. Explicit operation names locate the caller's boundary without guessing the source of generic configuration/evaluation `TypeError` or `ValueError` failures.
+
+[The diagnostic contract](../src/application/README.md#operational-errors-and-diagnostics) retains a caller-supplied message and an ordered tuple of supported existing immutable context references. It never copies arbitrary exception text, tracebacks, raw packets, or external state. It neither runs nor catches an operation, leaving original exception identity, chaining, cleanup precedence, and caller propagation intact. No wrapper exception hierarchy or second pipeline is introduced.
+
+Operational errors indicate execution or contract failure; packet-analysis outcomes, detection findings, and evaluation classifications keep their established separate meanings. End-to-end validation continues to compose authoritative stages, and performance benchmarking keeps its exact configured execution and timing methodology. Diagnosis adds no retries, duplicate execution, fabricated results, logging, telemetry, storage, network access, hidden timing, or metadata discovery. CLI behavior and all upstream semantics remain unchanged.
+
 ## Cross-cutting requirements for later tasks
 
 - Preserve sensor/source identity, capture time, processing time where needed, and provenance across transformations. Specify identifier and schema evolution rules before persisting records.
