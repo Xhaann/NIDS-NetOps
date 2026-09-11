@@ -2,6 +2,18 @@
 
 The `application` package composes implemented subsystem contracts without taking ownership of their internal state. It does not define packet acquisition, protocol decoding, flow identity, accumulation, feature extraction, detection, persistence, or user interfaces.
 
+## Capture execution
+
+[capture_execution.py](capture_execution.py) exports `run_capture_execution(source: PacketSource, consumer: Callable[[PacketAnalysisOutcome], None]) -> None`. This synchronous application boundary delegates source startup, ordered delivery, and cleanup to unchanged `consume()`. It invokes `analyze_packet_outcome()` once per observation and immediately passes that exact outcome to the caller's consumer. The original observation, bytes, timestamps, lengths, and link type remain unchanged. Empty sources deliver no outcomes.
+
+A callback fits the existing ingestion lifecycle: it runs before the next observation is requested, and its exceptions remain inside `consume()`'s cleanup guarantee. The boundary retains no source-wide buffer, result collection, or execution history. Caller-owned consumers may collect outcomes if desired. An abandoned lazy iterator would require an additional explicit cleanup contract; none is introduced here.
+
+Successful and failed analytical outcomes are both delivered without reconstruction, filtering, or reclassification. Acquisition errors, unexpected analysis exceptions, and consumer exceptions propagate without retry and stop further delivery. Source cleanup is attempted exactly once by `consume()`, even after startup failure; cleanup failures preserve existing Python exception precedence and context. Earlier delivered outcomes are neither rolled back nor converted into synthetic results.
+
+Both `IterablePacketSource` and `PcapPacketSource` use this same path. Record order, duplicate observations, and decreasing timestamps remain intact. Determinism is relative to observations supplied by the source: PCAP timestamps remain deterministic, while the iterable source retains its existing acquisition-time clock behavior. Repeatable reads use independent source instances according to their existing lifecycle contracts.
+
+The detection pipeline uses this public boundary. The standalone flow-observation session reuses its private execution primitive with `analyze_packet()` to preserve the established parser-exception and checksum behavior; it does not substitute failure outcomes for exceptions. The primitive only couples one analysis call to one consumer call through `consume()`. Packet interpretation remains in analysis, window lifecycle remains in flow observation, and detection remains explicit through `DetectionSession`. Direct capture execution invokes no detectors and creates no flow state, features, reassembly, persistence, or background work.
+
 ## Detector orchestration
 
 [detector_orchestration.py](detector_orchestration.py) exports two synchronous functions through the `application` package:
@@ -38,7 +50,7 @@ The session accepts established semantic inputs only. It does not capture packet
 
 [detection_pipeline.py](detection_pipeline.py) exports `run_detection_pipeline(source, *, detection_session, capture_session_id, inactivity_timeout) -> DetectionPipelineResult`. The caller supplies an existing `PacketSource` and exact `DetectionSession`; detector configuration is not duplicated. Only invoking this function performs the composition. Capture/observation APIs and session construction do not automatically run detectors.
 
-The pipeline and `run_flow_observation_session()` share a private lifecycle runner. That runner alone constructs the observation-window manager, delegates acquisition and cleanup to `consume()`, records admitted analyses, and finalizes windows. The public flow-observation API still uses `analyze_packet()` and preserves its existing signature and behavior. The pipeline supplies a different analysis callback: it calls `analyze_packet_outcome()` exactly once per observation, passes the exact outcome to `DetectionSession.run_packets()`, then returns its analysis for normal flow admission. Detection never receives raw bytes or repeats analysis.
+The pipeline and `run_flow_observation_session()` share a private lifecycle runner. That runner alone constructs the observation-window manager, records admitted analyses, and finalizes windows. Source execution delegates to the shared capture-execution primitive around `consume()`. The public flow-observation API still uses `analyze_packet()` and preserves its existing signature and behavior. The pipeline executes `run_capture_execution()` once: each exact outcome reaches `DetectionSession.run_packets()` before its analysis is supplied for normal flow admission. Detection never receives raw bytes or repeats analysis.
 
 Recognized analysis failures remain structured outcomes: packet detection evaluates them using its existing semantics, and their absent analysis contributes no flow observation. Exceptions escaping the outcome API propagate. Successful analyses without supported transport, including ICMPv6, unsupported protocols, and non-first IPv6 fragments, retain the existing flow-admission errors. They are not silently skipped or assigned fabricated transport state.
 
@@ -52,7 +64,7 @@ The pipeline owns composition only. Capture owns acquisition; analysis owns pack
 
 ## Flow observation sessions
 
-[flow_observation_session.py](flow_observation_session.py) exports `run_flow_observation_session(source, *, capture_session_id, inactivity_timeout, closed_window_consumer) -> None`. One invocation constructs one `FlowObservationWindowManager`, runs the source exactly once through `consume()`, analyzes each delivered `PacketObservation` with `analyze_packet()`, and passes the resulting `PacketAnalysis` unchanged to the manager.
+[flow_observation_session.py](flow_observation_session.py) exports `run_flow_observation_session(source, *, capture_session_id, inactivity_timeout, closed_window_consumer) -> None`. One invocation constructs one `FlowObservationWindowManager`, runs the source exactly once through the shared capture-execution primitive and `consume()`, analyzes each delivered `PacketObservation` with `analyze_packet()`, and passes the resulting `PacketAnalysis` unchanged to the manager.
 
 The caller selects `capture_session_id` and owns its uniqueness outside the invocation. The function passes it unchanged to the manager and does not generate identifiers from time, flow identity, process state, or object identity.
 

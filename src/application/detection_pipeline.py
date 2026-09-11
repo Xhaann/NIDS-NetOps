@@ -1,14 +1,14 @@
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Optional
+from typing import Callable, Optional
 
 from analysis.flow_feature_snapshot import extract_flow_feature_snapshot
 from analysis.flow_observation_window import FlowObservationWindow
 from analysis.packet_analysis import PacketAnalysis
-from analysis.packet_analysis_outcome import analyze_packet_outcome
+from analysis.packet_analysis_outcome import PacketAnalysisOutcome
+from application.capture_execution import run_capture_execution
 from application.detection_session import DetectionSession
 from application.flow_observation_session import _run_flow_observation_session
-from capture.packet_observation import PacketObservation
 from capture.packet_source import PacketSource
 from detection.detection_finding import DetectionFinding
 
@@ -39,15 +39,20 @@ def run_detection_pipeline(
     flow_findings = []
     packet_detection_failed = False
 
-    def analyze_observation(observation: PacketObservation) -> Optional[PacketAnalysis]:
-        nonlocal packet_detection_failed
-        outcome = analyze_packet_outcome(observation)
-        try:
-            packet_findings.extend(detection_session.run_packets((outcome,)))
-        except BaseException:
-            packet_detection_failed = True
-            raise
-        return outcome.analysis
+    def execute_analysis(
+        packet_source: PacketSource,
+        admit: Callable[[Optional[PacketAnalysis]], None],
+    ) -> None:
+        def receive_outcome(outcome: PacketAnalysisOutcome) -> None:
+            nonlocal packet_detection_failed
+            try:
+                packet_findings.extend(detection_session.run_packets((outcome,)))
+            except BaseException:
+                packet_detection_failed = True
+                raise
+            admit(outcome.analysis)
+
+        run_capture_execution(packet_source, receive_outcome)
 
     def detect_closed_window(window: FlowObservationWindow) -> None:
         if packet_detection_failed:
@@ -60,6 +65,6 @@ def run_detection_pipeline(
         capture_session_id=capture_session_id,
         inactivity_timeout=inactivity_timeout,
         closed_window_consumer=detect_closed_window,
-        analyze_observation=analyze_observation,
+        execute_analysis=execute_analysis,
     )
     return DetectionPipelineResult(tuple(packet_findings), tuple(flow_findings))

@@ -18,7 +18,7 @@ from analysis import (
     extract_flow_feature_snapshot,
 )
 from application import DetectionPipelineResult, DetectionSession, run_detection_pipeline, run_flow_observation_session
-from application import detection_pipeline, flow_observation_session
+from application import capture_execution, detection_pipeline, flow_observation_session
 from capture import CaptureError
 from detection import DetectionFinding, FlowVolumeMetric, PacketIntegrityConfiguration, PacketIntegrityDecision
 from tests.test_flow_observation_session import MemoryPacketSource
@@ -126,7 +126,7 @@ class DetectionPipelineTests(unittest.TestCase):
         with patch.object(detection_pipeline, "_run_flow_observation_session", wraps=flow_observation_session._run_flow_observation_session) as lifecycle, \
              patch.object(flow_observation_session, "FlowObservationWindowManager", side_effect=create_manager), \
              patch.object(FlowObservationWindowManager, "record", autospec=True, side_effect=record), \
-             patch.object(detection_pipeline, "analyze_packet_outcome", side_effect=outcome_for) as analyze, \
+             patch.object(capture_execution, "analyze_packet_outcome", side_effect=outcome_for) as analyze, \
              patch("analysis.packet_analysis_outcome.analyze_packet", wraps=analyze_packet) as parse, \
              patch.object(DetectionSession, "run_packets", autospec=True, side_effect=packet_detection), \
              patch.object(detection_pipeline, "extract_flow_feature_snapshot", side_effect=features) as extract, \
@@ -277,7 +277,7 @@ class DetectionPipelineTests(unittest.TestCase):
         valid = observation_at()
         outcome = analyze_packet_outcome(valid)
         source = MemoryPacketSource((valid, observation_at(seconds=1), observation_at(seconds=2)))
-        with patch.object(detection_pipeline, "analyze_packet_outcome", side_effect=(outcome, error)) as analysis, \
+        with patch.object(capture_execution, "analyze_packet_outcome", side_effect=(outcome, error)) as analysis, \
              patch.object(detection_pipeline, "extract_flow_feature_snapshot", wraps=extract_flow_feature_snapshot) as features:
             with self.assertRaises(RuntimeError) as raised:
                 self.execute(source=source)
@@ -330,7 +330,7 @@ class DetectionPipelineTests(unittest.TestCase):
         observation = observation_at(6, extensions=(0, 43, 60))
         outcome = analyze_packet_outcome(observation)
         with ExitStack() as stack:
-            analyze = stack.enter_context(patch.object(detection_pipeline, "analyze_packet_outcome", return_value=outcome))
+            analyze = stack.enter_context(patch.object(capture_execution, "analyze_packet_outcome", return_value=outcome))
             for target in ("analysis.packet_analysis.analyze_packet", "analysis.packet_analysis_outcome.analyze_packet",
                            "analysis.packet_analysis.decode_ipv6", "analysis.packet_analysis.decode_tcp", "analysis.packet_analysis.decode_udp",
                            "analysis.packet_analysis.validate_ipv6_extension_headers", "analysis.packet_analysis.analyze_ipv6_fragmentation",
@@ -350,7 +350,7 @@ class DetectionPipelineTests(unittest.TestCase):
         windows = []
         with patch.object(DetectionSession, "run_packets", side_effect=AssertionError("automatic packet detection")), \
              patch.object(DetectionSession, "run_closed_flows", side_effect=AssertionError("automatic flow detection")), \
-             patch.object(detection_pipeline, "analyze_packet_outcome", side_effect=AssertionError("pipeline not invoked")):
+             patch.object(capture_execution, "analyze_packet_outcome", side_effect=AssertionError("pipeline not invoked")):
             run_flow_observation_session(source, capture_session_id="existing", inactivity_timeout=timedelta(seconds=5),
                                          closed_window_consumer=windows.append)
         self.assertEqual(len(windows), 1)

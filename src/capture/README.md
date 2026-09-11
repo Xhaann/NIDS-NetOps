@@ -47,7 +47,7 @@ Ingestion owns the consumer-side lifecycle obligation above: `start()` and deliv
 
 Source `CaptureError` and lifecycle errors propagate unchanged. Callback exceptions retain their original type and are not classified as capture failures. If cleanup also raises, its exception propagates with the earlier failure retained through Python's normal exception context. No failure is logged, suppressed, or converted into a security finding.
 
-The function depends only on the capture contracts and standard-library typing. Callers provide the source and callback; no analysis implementation is selected. The API adds no persistent state, concurrency, retries, or completion records.
+The function depends only on the capture contracts and standard-library typing. Callers provide the source and callback; no analysis implementation is selected. The API adds no persistent state, concurrency, retries, or completion records. The application [capture execution boundary](../application/README.md#capture-execution) composes `consume()` with one analysis-outcome call per observation; capture sources and ingestion remain independent of analysis and detection.
 
 ## Iterable packet source
 
