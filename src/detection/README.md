@@ -2,17 +2,15 @@
 
 This directory owns detector-specific evaluation contracts. Implemented detectors evaluate packet-local integrity outcomes, flow-volume and flow-rate thresholds over finalized analysis windows, and raw TCP control-counter thresholds. It does not provide a generic detector framework, event correlation, alerting, or a numerical vector boundary.
 
-| Family | Responsibility |
+| Implemented family | Responsibility |
 | --- | --- |
-| Signature | Match defined patterns against supported analysis inputs. |
-| Rule | Evaluate explicit predicates over structured observations or features. |
-| Threshold | Evaluate counters or measurements against configured limits and windows. Deterministic flow-volume and flow-rate threshold evaluation is implemented. |
-| Statistical | Compare measurements with defined statistical baselines. |
-| Behavioral | Evaluate entity activity or sequences using bounded state. |
+| Packet integrity | Classify the existing packet-analysis outcome using its fixed predicate. |
+| Flow volume/rate threshold | Compare one selected measurement from a closed feature snapshot with an explicit threshold. |
+| TCP control threshold | Compare one selected raw directional control counter from a closed TCP window with an explicit threshold. |
 
 Detectors consume [analysis](../analysis/README.md) outputs through explicit contracts and produce immutable evaluations with detector identity/version, supporting evidence, and a bounded interpretation. Severity and confidence require separately defined meanings and are not supplied by the current detector. Each detector owns only its detection-specific state, not protocol or session state.
 
-The families use detector-specific input contracts and remain independently testable and configurable. [Event processing](../events/README.md) owns cross-finding correlation, risk scoring, deduplication, and alert lifecycle. External intelligence access belongs to [enrichment](../enrichment/README.md). No signature, statistical, behavioral, training, or model implementation is established here.
+The families use detector-specific input contracts and remain independently testable and configurable. The future [event-processing notes](../events/README.md) assign correlation, risk scoring, deduplication, and alert lifecycle; the future [enrichment notes](../enrichment/README.md) assign external intelligence access. Neither subsystem is implemented. No signature, statistical, behavioral, training, or model implementation is established here.
 
 ## IPv4 and IPv6 applicability
 
@@ -81,7 +79,7 @@ Raw evidence retains the exact snapshot, configuration, selected metric value, a
 
 Security interpretation is a separate typed field. It states only that the configured threshold was exceeded, was not exceeded, or could not be evaluated. A match does not establish DoS, DDoS, flooding, scanning, brute force, exfiltration, malware, maliciousness, service degradation, or resource exhaustion. Forward and reverse remain canonical endpoint directions rather than client/server, initiator/responder, or attacker/victim roles.
 
-Evaluation is synchronous, deterministic, stateless, and constant-memory. It retains no packet or window history, cross-flow state, cache, queue, timer, filesystem resource, or network resource. It does not inspect packet-size, inter-arrival, ratio, or TCP-control features. Detector integration into capture-session application orchestration remains unimplemented.
+Evaluation is synchronous, deterministic, stateless, and constant-memory. It retains no packet or window history, cross-flow state, cache, queue, timer, filesystem resource, or network resource. It does not inspect packet-size, inter-arrival, ratio, or TCP-control features. The explicit application `run_detection_pipeline()` integrates this detector through `DetectionSession`; direct capture and flow-observation APIs remain detector-free.
 
 The detector evaluates the finalized analytical state it receives. A difference between captured-byte and original-byte totals preserves capture truncation already represented by packet observations, but the current input carries no packet-loss or duplication classification. Loss, duplication, asymmetric visibility, lifecycle configuration, and capture position can change the measurement and must not be inferred from the detector result.
 
@@ -103,7 +101,7 @@ Security interpretation is a separate typed field and states only whether the co
 
 Each evaluation covers one finalized observation window closed by inactivity, capture-session end, or explicit segmentation. Counts reset through the existing new-window coordinator boundary and never span windows. TCP flags do not create, close, or segment windows. Because analysis retains aggregate counters rather than packet or flag-transition order, distinct packet orders with the same counters are intentionally indistinguishable to this detector.
 
-Evaluation is synchronous, deterministic, stateless, immutable, and constant-memory. It retains no packet history, window history, cross-flow or host state, cache, queue, timer, thread, filesystem resource, or network resource. It introduces no derived TCP numerical feature family, state machine, normalization, vectorization, persistence, machine learning, severity, confidence, score, finding identifier, correlation, alert state, or response action. Automatic detector execution within capture sessions remains unimplemented.
+Evaluation is synchronous, deterministic, stateless, immutable, and constant-memory. It retains no packet history, window history, cross-flow or host state, cache, queue, timer, thread, filesystem resource, or network resource. It introduces no derived TCP numerical feature family, state machine, normalization, vectorization, persistence, machine learning, severity, confidence, score, finding identifier, correlation, alert state, or response action. The explicit application pipeline invokes this detector for closed TCP windows. Direct capture calls do not automatically run detectors.
 
 
 ## Explicit detector version references

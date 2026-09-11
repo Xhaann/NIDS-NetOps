@@ -1,6 +1,6 @@
 # Application composition
 
-The `application` package composes implemented subsystem contracts without taking ownership of their internal state. It does not define packet acquisition, protocol decoding, flow identity, accumulation, feature extraction, detection, persistence, or graphical interfaces.
+The `application` package composes capture, analysis, and detection, and owns the evaluation, metrics, reporting, dataset, experiment, configuration, benchmark, and operational-diagnostic contracts documented below. It does not redefine packet decoding, flow accumulation, feature formulas, or detector predicates. See the [architecture reference](../../docs/architecture.md) for the current data flow and cross-layer limits; public exports are defined in [__init__.py](__init__.py).
 
 ## Command-line adapter
 
@@ -145,7 +145,7 @@ Matching is one-to-one and multiplicity-sensitive. For each channel, expectation
 
 Public constructors reject wrong types, mutable collections, invalid identity metadata, inconsistent audit entries, and mixed channels using `TypeError` or `ValueError`. Evaluation is synchronous and deterministic; exceptions propagate without retries or partial returned results. All working assignments are local to one call. The evaluator retains references to supplied immutable evidence but never reads raw packet bytes or creates execution state.
 
-Evaluation does not calculate metrics. The separate [metrics boundary](#detection-evaluation-metrics) consumes its completed classifications. Benchmarking, dataset ingestion, experiment tracking, ML, persistence, correlation, alerting, and a CLI evaluation mode remain unimplemented.
+Evaluation does not calculate metrics. The separate [metrics boundary](#detection-evaluation-metrics) consumes its completed classifications. Detection and performance benchmarking are separate APIs described below. Dataset ingestion, experiment tracking, ML, persistence, correlation, alerting, and a CLI evaluation mode remain unimplemented.
 
 
 ## Explicit ground truth
@@ -166,7 +166,7 @@ A collection permits exactly one truth record per target. Repeated same-polarity
 
 Collections must be exact tuples of exact `GroundTruthRecord` values. Lists, dictionaries, missing targets, invalid polarity types, and unsupported record types raise `TypeError`; wrong-domain records raise `ValueError`. Records, targets, and configurations are retained by reference without copying or mutation. Input order is preserved without sorting or deduplication. Validation uses only local temporary state and performs no capture, packet access, parsing, feature extraction, detector execution, evaluation, filesystem/network access, or CLI invocation.
 
-Ground truth describes what is externally asserted to be true. `DetectionPipelineResult` describes what the detectors produced. Evaluation compares results with explicit expectations. A future explicit adapter may translate truth into those expectations; this commit adds no conversion, automatic discovery, evaluator overload, pipeline wiring, or CLI/JSON changes. Metrics, datasets, annotation formats, loaders, benchmarking, experiment tracking, ML, storage, correlation, and alerting remain outside this contract.
+Ground truth describes what is externally asserted to be true. `DetectionPipelineResult` describes what the detectors produced. Evaluation compares results with explicit expectations. `run_end_to_end_validation()` explicitly converts supplied truth records into those expectations before invoking the existing evaluation API. Ground-truth construction itself performs no conversion, inference, or execution. Metrics, datasets, annotation formats, loaders, benchmarking, experiment tracking, ML, storage, correlation, and alerting remain outside this contract.
 
 
 ## Detection evaluation metrics
@@ -190,7 +190,7 @@ A defined `0.0` remains distinct from `None`. In particular, TP=0 with FP>0 and 
 
 `DetectionMetrics` accepts four required counts and an optional `unclassified_count` defaulting to zero. Count types must be exactly `int`, excluding booleans; wrong types raise `TypeError`, and negative counts raise `ValueError`. `DetectionEvaluationMetrics` requires exact `DetectionMetrics` values for both channels. Aggregation relies on the existing evaluation result's validated immutable entries.
 
-Calculation uses only local aggregation state and does not mutate inputs, reorder entries, infer truth, construct ground truth, rerun evaluation, or execute any capture, analysis, features, detectors, pipeline, or CLI. Ground truth remains external truth; evaluation compares actual results with explicit expectations; metrics aggregate the completed classifications. Ground-truth adaptation, reporting, performance benchmarking, dataset loading, and experiment tracking remain separate future work. No CLI JSON change is introduced.
+Calculation uses only local aggregation state and does not mutate inputs, reorder entries, infer truth, construct ground truth, rerun evaluation, or execute any capture, analysis, features, detectors, pipeline, or CLI. Ground truth remains external truth; evaluation compares actual results with explicit expectations; metrics aggregate the completed classifications. Ground-truth adaptation is explicit in `run_end_to_end_validation()`; reporting and performance benchmarking have separate contracts below. Dataset loading and experiment tracking remain unimplemented. No CLI JSON change is introduced.
 
 
 ## Detection dataset representation
@@ -238,11 +238,11 @@ The dataset is retained by reference, including its name, ordered cases, existin
 
 The benchmark-operation ID/version pair is an explicit caller-supplied reference to the intended operation, including the caller-defined evaluation procedure and any operation-specific inputs or settings. The pair must change when that declared procedure changes. It is not a callable, import path, executable binding, registry key lookup, generated fingerprint, or proof that external code and inputs are available. The definition neither inspects a callable nor verifies its implementation. Callers remain responsible for assigning stable references and preserving the corresponding external procedure. There is no automatic execution or resolution bridge to `run_detection_benchmark()`.
 
-Detector IDs, versions, metrics, and thresholds already reside in immutable configurations on dataset targets and participate through dataset equality. They are retained without a second detector-configuration list. Evaluation and metrics currently expose fixed contracts rather than independent configuration/version objects; this definition introduces none. There is no existing feature-contract version to copy, and no feature version is invented. The operation reference distinguishes caller-defined procedures without adding arbitrary parameter mappings, configuration management, detector version management, or feature version management.
+Detector IDs, versions, metrics, and thresholds already reside in immutable configurations on dataset targets and participate through dataset equality. They are retained without a second detector-configuration list. Evaluation and metrics currently expose fixed contracts rather than independent configuration/version objects; this definition introduces none. Feature-contract provenance exists on `FlowFeatureSnapshot.feature_contract`; dataset targets and experiment definitions contain no feature-contract field. It is not inferred from detector versions or the operation ID. The operation reference distinguishes caller-defined procedures without adding arbitrary parameter mappings, configuration management, detector version management, or feature version management.
 
 Dataset representation defines cases. Benchmark execution invokes an explicit operation over those cases. An experiment describes the intended dataset and operation but contains no benchmark result, evaluation result, calculated metrics, finding, raw packet, execution timestamp, or runtime measurement. Construction and inspection perform no capture, analysis, detection, feature extraction, evaluation, metrics, benchmark execution, filesystem/network access, timing, randomness, or persistence. The only nested collection is the dataset's existing immutable case tuple; input values remain unchanged and no execution state is retained.
 
-Experiment execution, tracking, result storage, configuration management, detector versioning, feature-contract versioning, performance benchmarking, dataset loading, reporting, and ML remain outside this feature. An experiment ID is an explicit logical label, not a globally generated identifier or stored run record. Existing benchmark, pipeline, evaluation, metrics, and CLI APIs remain unchanged.
+Experiment execution, tracking, result storage, dataset loading, and ML are not implemented. Configuration, detector/feature version references, reporting representation, and performance measurement are separate existing contracts; the experiment definition does not execute them. An experiment ID is an explicit logical label, not a globally generated identifier or stored run record. Existing benchmark, pipeline, evaluation, metrics, and CLI APIs remain unchanged.
 
 
 ## Deterministic configuration representation
@@ -255,7 +255,7 @@ Value equality includes all four settings, using the existing nested value seman
 
 Datasets define evaluation cases and truth associations; benchmarks execute explicit operations over datasets; experiments describe a dataset and a declared operation. None of these contracts is modified or automatically connected to this configuration. Evaluation and metrics retain their fixed contracts. Configuration construction and inspection perform no capture, analysis, feature extraction, detection, evaluation, metrics, benchmark or experiment execution, external access, timing, randomness, or persistence.
 
-Configuration management here means representation and validation only. Loading, environment/CLI configuration, discovery, registries, merging, persistence, result storage, and reporting are not implemented. Existing detector configurations now expose the [explicit detector version reference](../detection/README.md#explicit-detector-version-references) through `version_reference`; their stored ID/version strings and configuration equality remain unchanged. The [feature contract reference](../analysis/README.md#explicit-feature-contract-version) is static snapshot provenance, separate from these configurable detector settings. Configuration management itself introduces no version discovery or feature-contract version.
+Configuration management here means representation and validation only. Configuration-file/environment loading, discovery, registries, merging, and persistence are not implemented. The existing CLI parses explicit detector settings; `EvaluationReport` may retain a supplied `DetectionConfiguration` without executing it. Existing detector configurations now expose the [explicit detector version reference](../detection/README.md#explicit-detector-version-references) through `version_reference`; their stored ID/version strings and configuration equality remain unchanged. The [feature contract reference](../analysis/README.md#explicit-feature-contract-version) is static snapshot provenance, separate from these configurable detector settings. Configuration management itself introduces no version discovery or feature-contract version.
 
 
 ## Evaluation reporting representation

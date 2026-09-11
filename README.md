@@ -1,100 +1,83 @@
 # NIDS-NetOps
 
-NIDS-NetOps is a network intrusion detection system project intended for production-quality engineering and reproducible security research. Its planned scope spans packet observation, protocol analysis, flow tracking, multiple detection methods, evidence management, and actionable alerts.
+NIDS-NetOps is a deterministic network intrusion detection research implementation. It makes packet interpretation, flow measurements, detector decisions, and evaluation against explicit expectations inspectable through separate typed contracts. The current offline path processes local classic PCAP input with the Python standard library; no external runtime service is required.
 
-## Current status
+The implementation provides packet-integrity detection, closed-flow volume/rate thresholds, and TCP-control counter thresholds for supported IPv4/IPv6 traffic. Findings describe those specific predicates. They are not alerts, incidents, risk scores, or proof of an attack. This repository is not a production SOC, SIEM, or deployable IDS appliance.
 
-The accepted baseline includes capture contracts, synchronous ingestion, an iterable packet source, classic PCAP file ingestion, Ethernet II/IPv4/TCP/UDP/ICMPv4 decoding and checksum validation, single-packet analysis, and immutable failure-preserving packet-analysis outcomes. IPv4 and IPv6 TCP/UDP flow analysis provides canonical identity and direction, coordinated raw flow state, directional TCP control observations, protocol-neutral observation windows, and immutable typed feature snapshots. The application layer composes one packet-source run with analysis and observation-window lifecycle management and synchronously emits closed windows. Detection includes packet-local deterministic integrity/structural evaluation plus deterministic flow-volume/rate and raw TCP control-counter threshold evaluation, all with exact raw evidence and bounded interpretations. Completed detector evaluations can be normalized into immutable common findings without replacing their detector-specific evidence or interpretation.
+## Current architecture
 
-Canonical `FlowIdentity` values support same-family IPv4 and IPv6 packed endpoints, with validated textual construction through the standard library. Ethernet IPv6 analysis includes the fixed base header, declared-payload bounds, validated supported extension chains, Fragment Header semantics, and the common ICMPv6 header. Validated IPv6 transport boundaries now feed the existing TCP/UDP decoders and immutable semantic models. Non-first fragments produce neither TCP nor UDP; first fragments require the complete indicated TCP header or complete declared UDP datagram. No reassembly or transport checksum validation is performed for IPv6. Valid IPv6 TCP/UDP results now enter the existing canonical flow identity, direction, tracker, coordinator, and observation-window lifecycle. IPv4 and IPv6 TCP/UDP share the existing generic volume, directional, packet-size, duration, rate, and inter-arrival feature layer, with applicable directional TCP control statistics. Extraction consumes coordinated flow state without packet parsing or detector execution. The existing flow-volume thresholds apply to IPv4 and IPv6 TCP/UDP, and TCP-control thresholds apply to TCP in both families. Packet-integrity decisions use the existing packet-analysis outcome classifications. Detection remains explicitly invoked and introduces no IPv6-specific attack semantics, reassembly, or full IPv6 attack coverage.
+Capture supplies immutable `PacketObservation` values. Analysis produces `PacketAnalysisOutcome` values, retaining recognized non-success outcomes. `run_detection_pipeline()` uses `DetectionSession` for packet detection and for detection over closed flow-window features, returning ordered packet and flow findings in `DetectionPipelineResult`.
 
-The application package also exposes deterministic packet and closed-flow detector orchestration. It returns immutable finding tuples, preserves all detector decisions and exact evidence/configuration references, runs volume before TCP control for TCP windows, and runs only volume for UDP windows. Failures propagate without retry or partial results. A frozen application `DetectionSession` retains existing detector configurations and explicitly executes ordered batches of packet outcomes or closed-flow feature snapshots through that same orchestration. It preserves finding order and duplicates, retains no execution history, and does not enable detection inside capture/observation sessions.
+Explicit ground truth supplies evaluation expectations. `evaluate_detection_result()` compares completed findings against them; `calculate_detection_metrics()` aggregates the resulting classifications. `EvaluationReport` preserves already-computed results and metrics without rendering them. `run_end_to_end_validation()` composes these existing operations through report construction.
 
-The opt-in `run_detection_pipeline()` composes an existing packet source, one packet analysis outcome per observation, packet detection, the shared flow-observation lifecycle, and feature extraction and detection for each closed window. Callers supply a `DetectionSession`; the immutable result groups packet findings in observation order and flow findings in closure order. IPv4 and IPv6 use the same path. Direct capture/flow-observation calls remain detector-free. No new detector, reassembly, correlation, or alerting is introduced. See the [application pipeline contract](src/application/README.md#explicit-detection-pipeline) for admission and failure boundaries.
+Supporting boundaries remain distinct:
 
-The capture package now provides `PcapPacketSource` for incremental classic PCAP 2.4 ingestion in both byte orders and microsecond/nanosecond formats. Packet bytes, lengths, order, and portable link codes are preserved. Timestamps use canonical UTC; sub-microsecond nanosecond precision is explicitly truncated to the existing timestamp type. Malformed records raise capture errors. The source works with the existing opt-in pipeline without changing analysis or detection. See the [PCAP input contract](src/capture/README.md#classic-pcap-packet-source) for format and lifecycle limits.
+- `DetectionDataset` defines ordered evaluation cases; `run_detection_benchmark()` invokes a supplied operation once per case.
+- `DetectionExperiment` describes a dataset and an explicit operation ID/version without executing it.
+- `DetectionConfiguration`, `DetectorVersion`, and `FeatureContractVersion` preserve explicit settings and provenance.
+- `run_performance_benchmark()` measures a supplied operation with explicit repetitions and warmups, preserving ordered elapsed observations and summary statistics.
+- `OperationalDiagnostic` describes a failure; `diagnose_error()` conservatively classifies a supplied exception without catching, retrying, or logging an operation.
 
-The application `run_capture_execution(source, consumer)` boundary exposes ordered packet-analysis outcomes without requiring callers to manage source lifecycle. It delegates to `consume()`, analyzes each observation once, delivers both successful and failed outcomes, and retains no result history. The detection pipeline uses this boundary; standalone flow observation shares its execution primitive while preserving its existing analysis errors. Capture execution itself remains detector-free. See the [capture execution contract](src/application/README.md#capture-execution).
+The [architecture reference](docs/architecture.md) explains the actual execution path, ownership, evaluation rules, reproducibility limits, and preserved boundaries. The [application API guide](src/application/README.md) documents public signatures and failure behavior.
 
-The complete deterministic suite contains 1542 passing tests. Code uses only the Python standard library and supports Python 3.9 or newer. Live network capture, application parsing, reassembly, TCP connection state, other detector families, automatic detector wiring into capture sessions, machine learning, storage, and graphical interfaces are not implemented. Findings do not establish alerting, correlation, risk, incident, persistence, or response semantics. Packaging and deployment remain undecided. Production quality is a design objective, not a claim of operational readiness.
+## Protocol scope
 
-The explicit [detection evaluation boundary](src/application/README.md#detection-result-evaluation) compares an existing `DetectionPipelineResult` with immutable, independently supplied packet/flow expectations. MATCH is positive, NO_MATCH is negative, and NOT_EVALUABLE stays distinguishable. Evaluation retains auditable TP/FP/FN/TN classifications without running the pipeline again; it introduces no datasets and does not change CLI output.
+Packet analysis supports Ethernet II carrying IPv4 or IPv6. IPv4 includes TCP, UDP, and ICMPv4 structural decoding and checksum validation. IPv6 includes the fixed header, bounded Hop-by-Hop/Routing/Destination Options/Fragment header traversal, packet-local fragmentation information, TCP/UDP headers, and the common four-byte ICMPv6 header. IPv6 transport and ICMPv6 checksum validation, ICMPv6 subtype interpretation, and Neighbor Discovery are not implemented.
 
-The in-memory [ground-truth contract](src/application/README.md#explicit-ground-truth) represents externally supplied positive or negative truth about those existing targets. Unspecified targets remain unlabeled. It stores no detector result and performs no execution or automatic conversion into evaluation expectations.
+Canonical bidirectional flows accept decoded IPv4/IPv6 TCP and UDP. They accumulate directional statistics, packet sizes, inter-arrival measurements, and TCP-control counters, with observation-driven inactivity closure. TCP receives volume then TCP-control detection; UDP receives volume detection only. Analysis of ICMP or an opaque upper-layer payload does not make it an admissible flow. The pipeline propagates existing flow-admission errors. See [protocol and fragment limits](docs/architecture.md#protocol-coverage-and-admission) before choosing inputs.
 
-The pure [evaluation metrics boundary](src/application/README.md#detection-evaluation-metrics) counts the existing evaluation classifications separately for packets and flows and derives precision, recall, F1, and accuracy. Undefined ratios are `None`; unclassified entries are counted separately and excluded from binary denominators. Metrics neither reinterpret detector decisions nor rerun evaluation.
+## Run and verify
 
-The [dataset representation](src/application/README.md#detection-dataset-representation) groups an explicitly named, ordered tuple of immutable cases. Each case retains an existing packet/flow target and optional externally supplied ground truth. Construction performs no loading, execution, evaluation, or metrics calculation.
+The verified interpreter is Python 3.9.6. From the repository root, no installation or third-party package is needed:
 
-The explicit [benchmark framework](src/application/README.md#deterministic-benchmark-execution) invokes a supplied case operation once per dataset case in source order, preserving optional evaluation and metrics values in immutable results. It is synchronous and fail-fast, and adds no performance measurement, dataset loading, or experiment tracking.
+```sh
+PYTHONPATH=src python3 -B -m unittest discover -s tests
+PYTHONPATH=src python3 -B -m application --help
+```
 
-The [experiment definition](src/application/README.md#reproducible-experiment-definition) retains an explicit experiment ID, the immutable dataset, and an explicit benchmark-operation ID/version. It describes intended work without retaining a callable or results, resolving operations, or executing anything.
+The current suite contains 1542 tests. Fixtures are synthetic; PCAP tests create local temporary files. Tests use controlled clocks for timing semantics rather than machine-speed thresholds.
 
-The [configuration contract](src/application/README.md#deterministic-configuration-representation) composes existing immutable detector configurations and a positive observation-window inactivity timeout. It represents and validates settings without executing, loading, or persisting them.
-
-The [detector version reference](src/detection/README.md#explicit-detector-version-references) provides an immutable pair of existing detector ID and version strings, available from detector configurations and findings without changing their stored fields or evaluation matching. Versions are explicitly supplied, never discovered.
-
-The [feature contract reference](src/analysis/README.md#explicit-feature-contract-version) identifies the current typed flow snapshot contract as `flow-feature-snapshot` / `1`. Snapshots expose immutable static provenance while retaining their existing fields, values, equality, and detector compatibility.
-
-The [evaluation report](src/application/README.md#evaluation-reporting-representation) retains an existing evaluation or benchmark result, supplied metrics, and optional experiment/configuration context as immutable presentation-neutral data. It neither evaluates nor renders results.
-
-The [end-to-end validation boundary](src/application/README.md#end-to-end-system-validation) composes the existing capture-to-detection pipeline, explicit ground-truth expectations, evaluation, metrics, and reporting. Its frozen result retains authoritative artifacts without rerunning any stage or redefining their semantics.
-
-The [performance benchmark](src/application/README.md#performance-benchmarking) measures an explicit existing operation with configured warmups and repetitions, ordered elapsed observations, and immutable timing summaries. It uses `perf_counter` by default and supports controlled clocks for testing; real timings are environment-sensitive.
-
-The [operational diagnostic contract](src/application/README.md#operational-errors-and-diagnostics) describes already-caught exceptions using stable domain categories, an explicit operation name and message, and optional existing immutable context. It leaves exception propagation, packet-analysis outcomes, findings, and evaluation semantics unchanged.
-
-## Command-line execution
-
-Run a local classic PCAP through the existing detection pipeline with explicit configuration:
+To run detection, supply your own local classic PCAP file in place of `input.pcap`:
 
 ```sh
 PYTHONPATH=src python3 -B -m application input.pcap \
-  --capture-session-id offline-example \
+  --capture-session-id review-session \
   --inactivity-timeout-microseconds 5000000 \
-  --packet-detector-id packet-integrity --packet-detector-version 1 \
-  --volume-detector-id flow-volume-threshold --volume-detector-version 1 \
-  --volume-metric packet_count --volume-threshold 100 \
-  --tcp-detector-id tcp-control-threshold --tcp-detector-version 1 \
-  --tcp-metric forward_syn_count --tcp-threshold 20
+  --packet-detector-id packet-integrity \
+  --packet-detector-version 1 \
+  --volume-detector-id flow-volume-threshold \
+  --volume-detector-version 1 \
+  --volume-metric packet_count \
+  --volume-threshold 100 \
+  --tcp-detector-id tcp-control-threshold \
+  --tcp-detector-version 1 \
+  --tcp-metric forward_syn_count \
+  --tcp-threshold 20
 ```
 
-These values are explicit examples, not canonical detector defaults or attack criteria. All shown settings are required; `--help` lists supported metrics. TCP configuration is supplied for every run, but UDP still receives only volume detection. Timeout units are integer microseconds.
+These are explicit example settings, not recommended operational thresholds. All shown options are required, including TCP settings for UDP-only input. `--help` lists supported metrics. The CLI runs the detection pipeline once and writes one JSON object with `packet_findings` and `flow_findings`; it does not run evaluation or render `EvaluationReport`.
 
-Successful execution writes one JSON object to stdout with ordered `packet_findings` and `flow_findings` arrays and exits 0, including when findings match or packet analysis reports a failure outcome. Capture errors exit 1 with `{"error":"capture_error"}` on stderr and no result. Invalid arguments exit 2 through argparse; other pipeline exceptions propagate. The [CLI contract](src/application/README.md#command-line-adapter) defines the evidence projection and remaining error behavior. Output contains capture timestamps, not execution-time metadata or automatically derived file paths.
+Successful execution exits 0 regardless of detector decisions. Invalid arguments/configuration exit 2. A `CaptureError` exits 1 with `{"error":"capture_error"}` on stderr. Other execution/output exceptions propagate from `main()` without a synthetic result or retry. The [CLI contract](src/application/README.md#command-line-adapter) describes the evidence projection and error boundaries.
 
-This is an opt-in adapter over the existing pipeline. It adds no live capture, PCAPNG, reassembly, new detector, correlation, persistence, or alerting. Source and flow ordering rules remain authoritative, including rejection of decreasing admitted-flow timestamps.
+## Reproducibility and limits
 
-## Repository structure
+Equivalent explicit observations, configuration, ground truth, and caller operations preserve defined ordering and value semantics. Detector and feature versions are explicit strings, not discovered from Git or packages. PCAP preserves recorded timestamps; `IterablePacketSource` uses acquisition-time timestamps, so deterministic replay requires explicit observations or PCAP. Performance timing is environment-sensitive and is not claimed to be bit-for-bit reproducible. Warmups and measured repetitions are explicit; no retries or hidden executions are added.
 
-| Path | Responsibility |
+The current implementation has no live network capture, PCAPNG, fragment/stream reassembly, application-protocol parsing, TCP connection state machine, autonomous response, blocking, firewall/SIEM integration, threat intelligence, correlation, alert management, or persistence. In-memory results can grow with input size; operational resource hardening and deployment are not established. Benchmarking measures elapsed execution, not CPU/memory use or function-level profiling, and does not optimize algorithms or store results.
+
+ML/MLOps is not implemented: there are no models, training, inference, feature stores, model registries, drift detection, serving, or experiment tracking infrastructure. Any future work must build on the explicit feature and evaluation contracts; it is not part of the current detection path.
+
+## Repository guide
+
+| Documentation | Purpose |
 | --- | --- |
-| [docs/architecture.md](docs/architecture.md) | Subsystem map, planned data flow, ownership boundaries, and design constraints. |
-| [docs/development.md](docs/development.md) | Contribution discipline, validation expectations, and research reproducibility. |
-| [src/capture/](src/capture/README.md) | Packet observation and capture-source contracts, packet ingestion, and future packet acquisition. |
-| [src/analysis/](src/analysis/README.md) | Layer 2–4 decoding, checksum validation, packet/flow analysis, raw statistics, and explicit feature families. |
-| [src/application/](src/application/README.md) | Capture-session composition and deterministic packet/closed-flow detector orchestration. |
-| [src/detection/](src/detection/README.md) | Three deterministic detector contracts and their common immutable finding boundary. |
-| [src/enrichment/](src/enrichment/README.md) | Future threat-intelligence context. |
-| [src/events/](src/events/README.md) | Future correlation, risk scoring, and alert lifecycle. |
-| [src/storage/](src/storage/README.md) | Future event persistence and PCAP evidence management. |
-| [src/integrations/](src/integrations/README.md) | Future dashboard and external-system adapters. |
-| [tests/](tests/README.md) | Capture and analysis unit tests, accumulation and feature tests, and automated verification strategy. |
-| [labs/](labs/README.md) | Isolated VM security-testing strategy and reproducible experiment requirements. |
-| [.gitignore](.gitignore) | Keeps local environments and generated or sensitive artifacts out of version control. |
+| [Architecture](docs/architecture.md) | Current data flow, semantics, ownership, and limitations. |
+| [Application](src/application/README.md) | Execution, evaluation, reporting, datasets, benchmarking, and diagnostics APIs. |
+| [Capture](src/capture/README.md) | Sources, observations, ingestion, and classic PCAP lifecycle. |
+| [Analysis](src/analysis/README.md) | Protocol models, flow lifecycle, raw statistics, and feature contracts. |
+| [Detection](src/detection/README.md) | Detector predicates, configurations, evidence, and findings. |
+| [Tests](tests/README.md) | Verification scope and commands. |
+| [Development](docs/development.md) | Scope, source policy, and evidence discipline. |
+| [Labs](labs/README.md) | Planned authorized lab methodology, not an implemented runtime. |
 
-Every established directory contains documentation defining its purpose. Additional modules, configuration directories, fixtures, and tooling should be introduced with the task that needs them; no empty scaffolding is required.
-
-## Architectural direction
-
-Start with one cohesive system organized into explicit internal modules. Module boundaries do not imply separate services, processes, queues, or deployment units. Capture supplies packet observations; analysis produces protocol, flow, and feature observations; detectors produce findings; event processing correlates findings, assesses risk, and manages alerts. Enrichment provides external context, storage preserves records and evidence, and integration adapters expose supported views to external consumers.
-
-The [architecture guide](docs/architecture.md) defines all 21 subsystem boundaries. Capture primitives, the analysis components described above, capture-session composition, three deterministic detector contracts, common findings, and detector orchestration are implemented; other detection and downstream records remain conceptual.
-
-## Development philosophy
-
-Build in small, verifiable increments. Prefer explicit ownership, bounded resource use, testable modules, reproducible experiments, and evidence-backed detection decisions. Treat network inputs as untrusted and traffic evidence as potentially sensitive. Add dependencies only when an approved implementation task needs them and the choice is justified.
-
-Source code must contain no comments unless a comment is genuinely necessary to explain a non-obvious technical reason. Keep architecture and rationale in documentation.
-
-See the [development guide](docs/development.md), [test commands and strategy](tests/README.md), and [VM-lab strategy](labs/README.md) before implementing a subsystem. The [capture boundary](src/capture/README.md) documents the observation contract.
+The `enrichment`, `events`, `storage`, and `integrations` directories contain future responsibility notes, not implemented services. Documentation lives in Markdown; source follows the repository's zero-comment rule.

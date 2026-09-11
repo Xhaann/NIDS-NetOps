@@ -2,7 +2,7 @@
 
 This directory implements Ethernet II, IPv4, TCP, UDP, and generic ICMPv4 decoding and checksum validation, IPv6 base-header, extension, fragmentation, ICMPv6, and structural TCP/UDP analysis, single-packet analysis and failure-preserving analysis outcomes, canonical IPv4/IPv6 identity values and TCP/UDP packet direction for both families, in-memory tracking, and explicit raw accumulation and feature boundaries. Raw accumulation includes global and directional volume, packet-size statistics, global and directional inter-arrival statistics, and directional TCP control observations. Implemented features cover volume and directional balance, packet sizes, duration, rates, and global and directional inter-arrival statistics. Each module's exact scope is documented below.
 
-Additional link formats, fragment and stream reassembly, TCP connection state, flow expiration, and application parsing remain unimplemented.
+Additional link formats, fragment and stream reassembly, TCP connection state, and application parsing remain unimplemented. Observation-driven inactivity closure is implemented by `FlowObservationWindowManager`; there is no background expiration timer.
 
 ## Single-packet analysis
 
@@ -28,7 +28,7 @@ The bounded classifications are `STRUCTURAL_FAILURE`, `UNSUPPORTED`, `INCOMPLETE
 
 An IPv4 UDP zero checksum remains a successful analysis with `udp_checksum_valid is False` because the existing boolean validator cannot distinguish omission from mismatch without inspecting the decoded checksum field; the outcome helper uses that field and does not label omission as an integrity failure. Unknown IPv4 protocol numbers likewise retain the existing successful network-layer analysis behavior. A failure classification records what happened under implemented analysis rules and does not establish maliciousness, an attack type, intent, or RFC-wide noncompliance.
 
-This boundary keeps no state or packet history and does not perform detection. A future network-integrity detector may consume it, but that detector and its security predicate are outside this feature.
+This boundary keeps no state or packet history and does not perform detection. The packet-integrity detector consumes it through explicit application orchestration; the detector predicate remains outside analysis.
 
 ## IPv6 base-header analysis
 
@@ -143,7 +143,7 @@ The shared lifecycle preserves canonical UTC capture times, directional raw accu
 
 Wrong argument types raise `TypeError`. Missing IPv4 or corresponding transport models, conflicting transport models, ICMP, and unsupported protocols retain the existing `FlowIdentityError` boundary. A supported packet with a different protocol or endpoint pair from the supplied identity raises `FlowDirectionError(ValueError)`. Inputs remain unchanged.
 
-Direction is stateless and deterministic, independent of checksum results, timestamps, payload contents, TCP flags, and call order. Port values participate only in endpoint equality; no client/server or initiator/responder roles are inferred. The module does not calculate statistics or depend on `FlowTracker` or `FlowStatistics`. It adds no IPv6 or ICMP direction, application parsing, flow tracking, TCP state, reassembly, timeouts, persistence, concurrency, feature extraction, detection, alerting, PCAP, or live capture.
+Direction is stateless and deterministic, independent of checksum results, timestamps, payload contents, TCP flags, and call order. Port values participate only in endpoint equality; no client/server or initiator/responder roles are inferred. The module does not calculate statistics or depend on `FlowTracker` or `FlowStatistics`. It supports IPv4/IPv6 TCP/UDP direction. ICMP direction, application parsing, TCP state, reassembly, and detection remain outside this boundary; tracking and window lifecycle are separate analysis operations.
 
 ## In-memory bidirectional flow tracking
 
@@ -197,9 +197,9 @@ The state records observed flags only. Flags are not mutually exclusive, a packe
 
 Memory remains constant because only the identity and fixed scalar counters are retained. No packet, payload, timestamp, history, collection, cache, or hidden state is stored. `FlowStateCoordinator` includes this raw state for TCP flows and publishes `None` for UDP flows. It is not a direct `FlowFeatureSnapshot` field or a numerical feature family. Detection and machine-learning semantics remain outside the analysis layer.
 
-## Raw-statistics input for future features
+## Raw-statistics input for features
 
-`analysis` exports `FlowFeatureInput`, `FlowFeatureInputError`, and `flow_feature_input_from_statistics(statistics: FlowStatistics, directional: DirectionalFlowStatistics) -> FlowFeatureInput` from [flow_feature_input.py](flow_feature_input.py). This is an explicit input contract for future feature extraction; it performs no feature extraction or detection and computes no derived metric.
+`analysis` exports `FlowFeatureInput`, `FlowFeatureInputError`, and `flow_feature_input_from_statistics(statistics: FlowStatistics, directional: DirectionalFlowStatistics) -> FlowFeatureInput` from [flow_feature_input.py](flow_feature_input.py). This is the explicit input contract consumed by volume feature extraction; it performs no feature extraction or detection and computes no derived metric.
 
 The frozen model contains exactly ten fields: `identity`, `packet_count`, `captured_bytes`, `original_bytes`, `forward_packet_count`, `reverse_packet_count`, `forward_captured_bytes`, `reverse_captured_bytes`, `forward_original_bytes`, and `reverse_original_bytes`. It retains only the immutable `FlowIdentity` and nine integer values, with no packets, raw bytes, timestamps, source-statistics objects, or mutable collections.
 
@@ -233,7 +233,7 @@ This is one explicit numerical feature family. It retains no identity, packets, 
 
 ## Raw packet-size accumulation
 
-`analysis` exports `FlowPacketSizeStatistics`, `FlowPacketSizeStatisticsError`, and `update_flow_packet_size_statistics(current: Optional[FlowPacketSizeStatistics], analysis: PacketAnalysis, identity: FlowIdentity) -> FlowPacketSizeStatistics` from [flow_packet_size_statistics.py](flow_packet_size_statistics.py). This independent, stateless update accumulates raw packet lengths for future packet-size feature extraction without changing existing trackers or feature models.
+`analysis` exports `FlowPacketSizeStatistics`, `FlowPacketSizeStatisticsError`, and `update_flow_packet_size_statistics(current: Optional[FlowPacketSizeStatistics], analysis: PacketAnalysis, identity: FlowIdentity) -> FlowPacketSizeStatistics` from [flow_packet_size_statistics.py](flow_packet_size_statistics.py). This independent, stateless update accumulates raw packet lengths for the separate packet-size feature extractor without changing existing trackers or feature models.
 
 The frozen model contains exactly 28 fields: `identity`; global `packet_count`, `captured_bytes`, `original_bytes`, `min_captured_length`, `max_captured_length`, `sum_captured_length_squares`, `min_original_length`, `max_original_length`, and `sum_original_length_squares`; and nine fields for each of the `forward_` and `reverse_` prefixes: `packet_count`, `captured_bytes`, `min_captured_length`, `max_captured_length`, `sum_captured_length_squares`, `original_bytes`, `min_original_length`, `max_original_length`, and `sum_original_length_squares`.
 
@@ -381,7 +381,7 @@ The frozen snapshot retains exactly these seven typed fields in the listed order
 
 The snapshot retains the exact objects returned by each extractor. Lifecycle provenance remains available through `observation_window.key` and `observation_window.closure_reason` without becoming numerical feature content. It stores no duplicate coordinated state, identity, raw source fields, raw directional statistics, intermediate `FlowFeatureInput`, coordinator reference, cache, or flattened values. The directional feature object is derived from the raw directional statistics reached through the retained window. Its forward and reverse groups independently contain five `None` values when that direction has no intervals; an observed zero-second interval produces five real `0.0` values. Global features continue to describe adjacent packets, while directional features describe same-direction intervals. Later lifecycle admissions do not change an earlier window or snapshot, and repeated extraction from the same window produces equal values without caching.
 
-One-packet windows preserve zero duration, absent rates, zero global inter-arrival features, and unavailable directional inter-arrival groups. Equal packet timestamps and unused directions preserve their established interval and packet-size semantics. Closure reason does not alter any numerical formula. Mathematical definitions, population variances, rounding policy, and validation remain owned by the existing extractors. Eager typed composition avoids repeated lazy extraction and duplicate raw-state references. This is not an ML vector or detector input contract; no numerical ordering, flattening, serialization, detection, or machine learning is defined.
+One-packet windows preserve zero duration, absent rates, zero global inter-arrival features, and unavailable directional inter-arrival groups. Equal packet timestamps and unused directions preserve their established interval and packet-size semantics. Closure reason does not alter any numerical formula. Mathematical definitions, population variances, rounding policy, and validation remain owned by the existing extractors. Eager typed composition avoids repeated lazy extraction and duplicate raw-state references. The flow-volume detector consumes this snapshot through the separate application boundary. It is not an ML vector: stored field order is preserved, but no flattened numerical ordering, serialization, or machine learning is defined, and extraction does not execute detection.
 
 ## Ethernet II decoder
 
@@ -472,7 +472,7 @@ The decoder requires at least eight bytes and validates that the declared length
 
 Invalid protocol, fragment offset, header size, or declared length raises `UDPDecodeError`, an analysis-specific `ValueError`, never `CaptureError`. Wrong input types raise `TypeError`. Direct model construction requires exact integers, rejects booleans and mutable payload containers, checks numeric ranges, and enforces `length == 8 + len(payload)`. Invalid field types raise `TypeError`; invalid values raise `ValueError`.
 
-This decoder performs no UDP application parsing, flow/session tracking, or detection. Bidirectional IPv4 flow tracking is provided separately by `FlowTracker`; live capture remains unimplemented. IPv6 transport decoding follows the validated-context contract above. TCP and UDP share no transport abstraction and do not dispatch to each other.
+This decoder performs no UDP application parsing, flow/session tracking, or detection. Bidirectional IPv4/IPv6 TCP/UDP flow tracking is provided separately by `FlowTracker`; live capture remains unimplemented. IPv6 transport decoding follows the validated-context contract above. TCP and UDP share no transport abstraction and do not dispatch to each other.
 
 ## UDP checksum validation over IPv4
 
@@ -498,7 +498,7 @@ Payload is exactly `packet.payload[8:]`, including an empty value for an eight-b
 
 Incorrect protocol, non-initial fragments, or fewer than eight bytes raise `ICMPDecodeError`, an analysis-specific `ValueError`, never `CaptureError`. Wrong input types raise `TypeError`. Direct model construction requires exact integers, rejects booleans and mutable byte containers, checks numeric ranges, and enforces the four-byte rest-of-header length. Invalid field types raise `TypeError`; invalid values raise `ValueError`. No partial results, padding, or corrections are produced.
 
-ICMP type/code semantics, fragment reassembly, application protocols, detection, and flow/session functionality remain unimplemented.
+ICMP type/code-specific interpretation, fragment reassembly, and application protocols remain unimplemented. ICMP is not admitted to the TCP/UDP flow path and has no dedicated detector; the separate packet-integrity detector consumes packet-analysis outcomes.
 
 ## ICMPv4 checksum validation
 
