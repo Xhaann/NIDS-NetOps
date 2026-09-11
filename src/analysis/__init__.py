@@ -15,6 +15,7 @@ from analysis.directional_inter_arrival_statistics import (
     update_directional_inter_arrival_statistics,
 )
 from analysis.flow_direction import FlowDirection, FlowDirectionError, flow_direction_from_packet
+from analysis.feature_contract_version import FeatureContractVersion
 from analysis.flow_duration_features import FlowDurationFeatures, FlowDurationFeaturesError, extract_flow_duration_features
 from analysis.flow_feature_input import FlowFeatureInput, FlowFeatureInputError, flow_feature_input_from_statistics
 from analysis.flow_feature_snapshot import FlowFeatureSnapshot, FlowFeatureSnapshotError, extract_flow_feature_snapshot
@@ -94,6 +95,7 @@ __all__ = [
     "DirectionalInterArrivalStatisticsError",
     "EthernetDecodeError",
     "EthernetFrame",
+    "FeatureContractVersion",
     "FlowDirection",
     "FlowDirectionError",
     "FlowDurationFeatures",

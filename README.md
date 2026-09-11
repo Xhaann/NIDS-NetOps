@@ -16,7 +16,7 @@ The capture package now provides `PcapPacketSource` for incremental classic PCAP
 
 The application `run_capture_execution(source, consumer)` boundary exposes ordered packet-analysis outcomes without requiring callers to manage source lifecycle. It delegates to `consume()`, analyzes each observation once, delivers both successful and failed outcomes, and retains no result history. The detection pipeline uses this boundary; standalone flow observation shares its execution primitive while preserving its existing analysis errors. Capture execution itself remains detector-free. See the [capture execution contract](src/application/README.md#capture-execution).
 
-The complete deterministic suite contains 1319 passing tests. Code uses only the Python standard library and supports Python 3.9 or newer. Live network capture, application parsing, reassembly, TCP connection state, other detector families, automatic detector wiring into capture sessions, machine learning, storage, and graphical interfaces are not implemented. Findings do not establish alerting, correlation, risk, incident, persistence, or response semantics. Packaging and deployment remain undecided. Production quality is a design objective, not a claim of operational readiness.
+The complete deterministic suite contains 1360 passing tests. Code uses only the Python standard library and supports Python 3.9 or newer. Live network capture, application parsing, reassembly, TCP connection state, other detector families, automatic detector wiring into capture sessions, machine learning, storage, and graphical interfaces are not implemented. Findings do not establish alerting, correlation, risk, incident, persistence, or response semantics. Packaging and deployment remain undecided. Production quality is a design objective, not a claim of operational readiness.
 
 The explicit [detection evaluation boundary](src/application/README.md#detection-result-evaluation) compares an existing `DetectionPipelineResult` with immutable, independently supplied packet/flow expectations. MATCH is positive, NO_MATCH is negative, and NOT_EVALUABLE stays distinguishable. Evaluation retains auditable TP/FP/FN/TN classifications without running the pipeline again; it introduces no datasets and does not change CLI output.
 
@@ -33,6 +33,8 @@ The [experiment definition](src/application/README.md#reproducible-experiment-de
 The [configuration contract](src/application/README.md#deterministic-configuration-representation) composes existing immutable detector configurations and a positive observation-window inactivity timeout. It represents and validates settings without executing, loading, or persisting them.
 
 The [detector version reference](src/detection/README.md#explicit-detector-version-references) provides an immutable pair of existing detector ID and version strings, available from detector configurations and findings without changing their stored fields or evaluation matching. Versions are explicitly supplied, never discovered.
+
+The [feature contract reference](src/analysis/README.md#explicit-feature-contract-version) identifies the current typed flow snapshot contract as `flow-feature-snapshot` / `1`. Snapshots expose immutable static provenance while retaining their existing fields, values, equality, and detector compatibility.
 
 ## Command-line execution
 

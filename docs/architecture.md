@@ -296,7 +296,7 @@ The application [configuration value](../src/application/detection_configuration
 
 Existing detector values own identity/version, metric selection, threshold validation, and semantics; window lifecycle still owns how the timeout is applied. The configuration validates only composition types and the established positive-duration constraint. Equality uses all supplied immutable settings, with no generated configuration identity, copying, normalization, sorting, or hidden state. [The configuration contract](../src/application/README.md#deterministic-configuration-representation) documents optional TCP configuration and exact reference preservation.
 
-Construction and inspection execute no NIDS or evaluation behavior. Existing experiment, dataset, benchmark, session, pipeline, CLI, evaluation, and metrics contracts remain unchanged. This boundary provides representation and validation only, with no loading, persistence, registries, reporting, or execution. Detector version references are a separate detection value contract; Feature Contract Versioning (Commit #39) remains future work.
+Construction and inspection execute no NIDS or evaluation behavior. Existing experiment, dataset, benchmark, session, pipeline, CLI, evaluation, and metrics contracts remain unchanged. This boundary provides representation and validation only, with no loading, persistence, registries, reporting, or execution. Detector version references are a separate detection value contract; feature-contract provenance is owned separately by analysis.
 
 ## Reproducible experiment definitions
 
@@ -312,7 +312,15 @@ The detection layer exports the frozen [DetectorVersion](../src/detection/detect
 
 The three detector configurations and `DetectionFinding` provide a read-only `version_reference` projection from their existing fields, adding no stored state. Operational metrics/thresholds remain in configurations. Evidence, configuration constructors, finding schema, CLI output, and evaluation matching remain unchanged. Evaluation, truth, dataset, benchmark, and experiment identities retain full configuration and packet/flow provenance; a version reference is not a replacement matching key.
 
-[The version-reference contract](../src/detection/README.md#explicit-detector-version-references) performs no execution or external access and introduces no registry, loading, Git/package discovery, persistence, or deployment. Configuration management continues to compose settings; Feature Contract Versioning is separate future work in Commit #39.
+[The version-reference contract](../src/detection/README.md#explicit-detector-version-references) performs no execution or external access and introduces no registry, loading, Git/package discovery, persistence, or deployment. Configuration management continues to compose settings; feature-contract provenance remains a separate analysis contract.
+
+## Explicit feature contract provenance
+
+Analysis exports the frozen [FeatureContractVersion](../src/analysis/feature_contract_version.py) pair of exact nonblank `contract_id` and `contract_version` strings. The current `FlowFeatureSnapshot.feature_contract` statically declares `flow-feature-snapshot` / `1`. This read-only projection adds no stored field, selectable extractor, generated identity, or cache. It names the current typed snapshot composition and existing nested feature/availability semantics without duplicating a schema.
+
+The seven snapshot fields, field order, exact retained window, feature formulas, numeric precision, TCP/UDP optionality, IPv4/IPv6 parity, and lifecycle remain unchanged. Snapshot equality retains its original fields: there is only one controlled snapshot implementation, so provenance is fixed rather than a new caller-selectable equality dimension. Independently supplied contract reference values may differ, but cannot relabel or migrate existing snapshots. [The feature-contract documentation](../src/analysis/README.md#explicit-feature-contract-version) defines that scope and the current zero/absent semantics.
+
+Detector versions and operational configurations remain separate. Existing finding/evaluation/ground-truth identities, datasets, benchmarks, and experiments do not gain feature-version fields or new matching behavior. Flow-volume evidence already retains the snapshot; consumers can inspect its provenance through that association. Construction and inspection execute no features or NIDS behavior and access no external state. No registry, migration, discovery, serialization, persistence, reporting, or performance infrastructure is introduced.
 
 ## Cross-cutting requirements for later tasks
 

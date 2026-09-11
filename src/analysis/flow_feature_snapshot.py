@@ -6,6 +6,7 @@ from analysis.directional_inter_arrival_features import (
     extract_directional_inter_arrival_features,
 )
 from analysis.flow_duration_features import FlowDurationFeatures, extract_flow_duration_features
+from analysis.feature_contract_version import FeatureContractVersion
 from analysis.flow_feature_input import flow_feature_input_from_statistics
 from analysis.flow_identity import FlowIdentity
 from analysis.flow_observation_window import FlowObservationWindow
@@ -40,6 +41,10 @@ class FlowFeatureSnapshot:
     @property
     def identity(self) -> FlowIdentity:
         return self.observation_window.identity
+
+    @property
+    def feature_contract(self) -> FeatureContractVersion:
+        return FeatureContractVersion("flow-feature-snapshot", "1")
 
 
 def extract_flow_feature_snapshot(window: FlowObservationWindow) -> FlowFeatureSnapshot:
