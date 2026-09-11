@@ -1,4 +1,5 @@
 from application.capture_execution import run_capture_execution
+from application.detection_dataset import DetectionDataset, DetectionDatasetCase
 from application.detection_evaluation import (
     DetectionClassification,
     DetectionEvaluationEntry,
@@ -22,6 +23,8 @@ from application.ground_truth import GroundTruth, GroundTruthPolarity, GroundTru
 
 __all__ = [
     "DetectionClassification",
+    "DetectionDataset",
+    "DetectionDatasetCase",
     "DetectionEvaluationEntry",
     "DetectionEvaluationMetrics",
     "DetectionEvaluationResult",

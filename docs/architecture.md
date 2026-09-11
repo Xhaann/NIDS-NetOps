@@ -272,7 +272,15 @@ The application [metrics boundary](../src/application/detection_metrics.py) cons
 
 Classification is authoritative: an existing FN associated with NOT_EVALUABLE remains an FN. Metrics do not inspect findings, evidence, expectations, detector decisions, or ground truth. Entries with `classification=None` contribute only to `unclassified_count` and are excluded from binary denominators. This does not identify unevaluable cases; the existing result exposes no independent unevaluable count. Neither the evaluation contract nor its semantics changes.
 
-Ground truth supplies external truth, evaluation compares actual results with explicit expectations, and metrics aggregate already-produced classifications. Calculation performs no upstream execution, file access, hidden caching, ground-truth adaptation, or input mutation. Packet and flow channels remain independent. Reporting, benchmarking, datasets, experiment tracking, and CLI metrics output are not introduced.
+Ground truth supplies external truth, evaluation compares actual results with explicit expectations, and metrics aggregate already-produced classifications. Calculation performs no upstream execution, file access, hidden caching, ground-truth adaptation, or input mutation. Packet and flow channels remain independent. Reporting, benchmarking, dataset loading, experiment tracking, and CLI metrics output are not introduced.
+
+## Immutable detection datasets
+
+The application [dataset representation](../src/application/detection_dataset.py) consists of `DetectionDataset(name, cases)` and `DetectionDatasetCase(case_id, target, ground_truth=None)`. Both are frozen values. Dataset names and case IDs are explicit nonblank strings, with no generation or path interpretation. Cases form an exact ordered tuple; empty datasets are valid and duplicate case IDs are rejected across domains without overwriting or deduplication.
+
+Each case retains an existing typed packet or flow detection identity and optional matching `GroundTruthRecord`. Supplied truth must describe that exact semantic target; absence is unlabeled, never negative. Existing identity, packet-position provenance, flow/window, detector configuration, and truth semantics remain authoritative. No new domain enum, label model, matching key, or automatic expectation conversion is introduced. Distinct cases remain independent associations rather than an implicitly merged truth collection.
+
+[The dataset contract](../src/application/README.md#detection-dataset-representation) organizes already-defined evaluation targets and external truth for later consumers. It does not require actual detector output, establish truth, load data, execute capture or the pipeline, run evaluation, or calculate metrics. Ordering is caller-defined, references are immutable, and validation uses only local temporary state. Dataset loaders, benchmarks, experiment frameworks, reporting, and storage remain unimplemented.
 
 ## Cross-cutting requirements for later tasks
 
