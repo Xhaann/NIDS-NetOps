@@ -330,6 +330,14 @@ Optional exact experiment and system-configuration references preserve explicitl
 
 [The reporting contract](../src/application/README.md#evaluation-reporting-representation) preserves classifications, packet/flow separation, undefined metric values, unclassified/unlabeled distinctions, exact input references, and ordering. Evaluation owns matching; metrics own counts and derived values; reporting owns only an immutable presentation-neutral association. It neither checks numerical consistency by recomputing metrics nor reinterprets NOT_EVALUABLE. Rendering, serialization, persistence, execution, discovery, and timing remain outside this boundary. CLI output and all upstream semantics remain unchanged.
 
+## End-to-end system validation
+
+The application [validation operation](../src/application/end_to_end_validation.py) composes existing calls: `PcapPacketSource` (or another explicitly supplied packet source) → `run_detection_pipeline` → `evaluate_detection_result` → `calculate_detection_metrics` → `EvaluationReport`. The pipeline continues to own capture execution, packet analysis, flow lifecycle, feature extraction, and detector orchestration. Supplied `GroundTruth` records are explicitly adapted into existing packet/flow expectations without consulting detector output.
+
+`EndToEndValidationResult` retains the authoritative pipeline result, supplied truth, and report. Observations/outcomes and windows/snapshots remain accessible through existing finding evidence. Report evaluation, metrics, configuration, and optional experiment references are preserved. Dataset context remains explicitly declared context, not an executed dataset benchmark. Feature and detector versions keep their established independent semantics.
+
+[The validation contract](../src/application/README.md#end-to-end-system-validation) preserves ordering, failures, source cleanup, and historical evaluation semantics. Returning a result establishes completed composition rather than a new pass/fail classification. Repeated deterministic PCAP inputs use fresh sources; no timing or external metadata enters the operation. Tests guard against duplicate analysis, extraction, detection, evaluation, metric calculation, and report construction. No upstream contract, renderer, serializer, storage, network, or performance framework is added.
+
 ## Cross-cutting requirements for later tasks
 
 - Preserve sensor/source identity, capture time, processing time where needed, and provenance across transformations. Specify identifier and schema evolution rules before persisting records.

@@ -22,6 +22,7 @@ from application.detector_orchestration import (
     run_packet_detectors,
 )
 from application.flow_observation_session import run_flow_observation_session
+from application.end_to_end_validation import EndToEndValidationResult, run_end_to_end_validation
 from application.evaluation_report import EvaluationReport
 from application.ground_truth import GroundTruth, GroundTruthPolarity, GroundTruthRecord
 
@@ -39,6 +40,7 @@ __all__ = [
     "DetectionMetrics",
     "DetectionPipelineResult",
     "DetectionSession",
+    "EndToEndValidationResult",
     "EvaluationReport",
     "ExpectedDetection",
     "ExpectedDetectionResult",
@@ -54,6 +56,7 @@ __all__ = [
     "run_closed_flow_detectors",
     "run_detection_benchmark",
     "run_detection_pipeline",
+    "run_end_to_end_validation",
     "run_flow_observation_session",
     "run_packet_detectors",
 ]

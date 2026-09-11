@@ -88,11 +88,11 @@ class DetectorOrchestrationTests(unittest.TestCase):
         self.assertEqual(
             application.__all__,
             ["DetectionBenchmarkCaseResult", "DetectionBenchmarkResult", "DetectionClassification", "DetectionConfiguration", "DetectionDataset", "DetectionDatasetCase", "DetectionEvaluationEntry", "DetectionEvaluationMetrics", "DetectionEvaluationResult",
-             "DetectionExperiment", "DetectionMetrics", "DetectionPipelineResult", "DetectionSession", "EvaluationReport", "ExpectedDetection", "ExpectedDetectionResult",
+             "DetectionExperiment", "DetectionMetrics", "DetectionPipelineResult", "DetectionSession", "EndToEndValidationResult", "EvaluationReport", "ExpectedDetection", "ExpectedDetectionResult",
              "FlowDetectionIdentity", "GroundTruth", "GroundTruthPolarity", "GroundTruthRecord",
              "PacketDetectionIdentity", "calculate_detection_metrics", "detection_identity", "evaluate_detection_result",
              "run_capture_execution", "run_closed_flow_detectors", "run_detection_benchmark", "run_detection_pipeline",
-             "run_flow_observation_session", "run_packet_detectors"],
+             "run_end_to_end_validation", "run_flow_observation_session", "run_packet_detectors"],
         )
 
     def test_packet_evaluates_and_normalizes_exact_objects_once(self) -> None:
