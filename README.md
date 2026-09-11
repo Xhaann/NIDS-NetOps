@@ -16,7 +16,28 @@ The capture package now provides `PcapPacketSource` for incremental classic PCAP
 
 The application `run_capture_execution(source, consumer)` boundary exposes ordered packet-analysis outcomes without requiring callers to manage source lifecycle. It delegates to `consume()`, analyzes each observation once, delivers both successful and failed outcomes, and retains no result history. The detection pipeline uses this boundary; standalone flow observation shares its execution primitive while preserving its existing analysis errors. Capture execution itself remains detector-free. See the [capture execution contract](src/application/README.md#capture-execution).
 
-The complete deterministic suite contains 921 passing tests. Code uses only the Python standard library and supports Python 3.9 or newer. Live network capture, application parsing, reassembly, TCP connection state, other detector families, automatic detector wiring into capture sessions, machine learning, storage, and interfaces are not implemented. Findings do not establish alerting, correlation, risk, incident, persistence, or response semantics. Packaging and deployment remain undecided. Production quality is a design objective, not a claim of operational readiness.
+The complete deterministic suite contains 962 passing tests. Code uses only the Python standard library and supports Python 3.9 or newer. Live network capture, application parsing, reassembly, TCP connection state, other detector families, automatic detector wiring into capture sessions, machine learning, storage, and graphical interfaces are not implemented. Findings do not establish alerting, correlation, risk, incident, persistence, or response semantics. Packaging and deployment remain undecided. Production quality is a design objective, not a claim of operational readiness.
+
+## Command-line execution
+
+Run a local classic PCAP through the existing detection pipeline with explicit configuration:
+
+```sh
+PYTHONPATH=src python3 -B -m application input.pcap \
+  --capture-session-id offline-example \
+  --inactivity-timeout-microseconds 5000000 \
+  --packet-detector-id packet-integrity --packet-detector-version 1 \
+  --volume-detector-id flow-volume-threshold --volume-detector-version 1 \
+  --volume-metric packet_count --volume-threshold 100 \
+  --tcp-detector-id tcp-control-threshold --tcp-detector-version 1 \
+  --tcp-metric forward_syn_count --tcp-threshold 20
+```
+
+These values are explicit examples, not canonical detector defaults or attack criteria. All shown settings are required; `--help` lists supported metrics. TCP configuration is supplied for every run, but UDP still receives only volume detection. Timeout units are integer microseconds.
+
+Successful execution writes one JSON object to stdout with ordered `packet_findings` and `flow_findings` arrays and exits 0, including when findings match or packet analysis reports a failure outcome. Capture errors exit 1 with `{"error":"capture_error"}` on stderr and no result. Invalid arguments exit 2 through argparse; other pipeline exceptions propagate. The [CLI contract](src/application/README.md#command-line-adapter) defines the evidence projection and remaining error behavior. Output contains capture timestamps, not execution-time metadata or automatically derived file paths.
+
+This is an opt-in adapter over the existing pipeline. It adds no live capture, PCAPNG, reassembly, new detector, correlation, persistence, or alerting. Source and flow ordering rules remain authoritative, including rejection of decreasing admitted-flow timestamps.
 
 ## Repository structure
 

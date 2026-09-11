@@ -58,7 +58,7 @@ PCAP evidence and structured event records have different storage and retention 
 - Enrichment owns intelligence access and caching. Protocol parsers and detectors must not embed provider-specific network clients.
 - Event processing owns correlation state, scoring policy, and alert transitions. Its policies must remain independent of dashboard rendering and storage engines.
 - Storage implements persistence and query boundaries. Integrations use supported operations instead of reaching into detector state or database internals.
-- Application composition owns only the implemented synchronous binding among one source run, packet analysis, and one observation-window manager. Broader configuration, executable startup, and downstream subsystem lifecycle remain future work.
+- Application composition owns only the implemented synchronous binding among one source run, packet analysis, and one observation-window manager. The CLI adapts explicit arguments to this pipeline; broader configuration and downstream subsystem lifecycle remain future work.
 
 Define small, versioned contracts as the first consumers are implemented. Place shared contracts only when there are real consumers; avoid a general-purpose shared module with unclear ownership. Implementation dependencies should remain acyclic, using narrow interfaces at storage and integration boundaries.
 
@@ -241,6 +241,14 @@ The [PCAP packet source](../src/capture/pcap_packet_source.py) incrementally sup
 Global-header validation precedes delivery. Record headers and payload lengths are checked before yielding each observation. Exact bytes, captured/original length distinctions, unknown portable link codes, and record order are preserved. Historical timezone/significant-figures values are ignored; unsigned epoch seconds and fractional fields become canonical UTC timestamps through integer arithmetic. Nanoseconds below microsecond precision are truncated explicitly. PCAPNG and additional network-field metadata are outside this first boundary; see the [capture contract](../src/capture/README.md#classic-pcap-packet-source).
 
 The file is read-only and processed within its startup extent without whole-file buffering. Callers supply an unchanged file, and fresh instances provide deterministic repeated reads. Existing single-session startup, permanent exhaustion, failure, and cleanup rules apply. Corruption raises `CaptureError`; previously delivered observations are not rolled back. No live capture backend, reassembly, storage/retention policy, automatic detection, or correlation is introduced.
+
+## Explicit command-line adapter
+
+`python -m application` invokes [cli.main()](../src/application/cli.py), a standard-library argparse adapter over the single authoritative `run_detection_pipeline()` path. It requires a local PCAP path, explicit detector configuration, session identity, and inactivity duration. It constructs the existing public configuration/session models and `PcapPacketSource`, without owning source lifecycle, packet analysis, flow state, feature derivation, or detector orchestration.
+
+Successful execution emits ordered packet and flow finding arrays as JSON. A private explicit projection preserves the five finding field names and selected existing evidence properties without changing domain schemas or recursively serializing packet/state graphs. Capture timestamps come from observations; no execution-time identifiers, host metadata, or path-derived identities are generated. Address hex encoding is presentation only. The [CLI contract](../src/application/README.md#command-line-adapter) specifies every output field and exit behavior.
+
+Success exits 0 independently of detector decisions; invalid arguments use argparse's exit 2; capture errors exit 1 with a fixed JSON error on stderr and no result. Other exceptions propagate normally without retries or fake findings. Analytical failure outcomes retain their existing meanings. The CLI preserves source/pipeline ordering and existing flow-admission errors, including decreasing admitted-flow timestamps. Capture and detection remain opt-in, and no live capture, PCAPNG, reassembly, persistence, alerting, or new detection semantics are added.
 
 ## Cross-cutting requirements for later tasks
 

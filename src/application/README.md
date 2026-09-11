@@ -1,6 +1,37 @@
 # Application composition
 
-The `application` package composes implemented subsystem contracts without taking ownership of their internal state. It does not define packet acquisition, protocol decoding, flow identity, accumulation, feature extraction, detection, persistence, or user interfaces.
+The `application` package composes implemented subsystem contracts without taking ownership of their internal state. It does not define packet acquisition, protocol decoding, flow identity, accumulation, feature extraction, detection, persistence, or graphical interfaces.
+
+## Command-line adapter
+
+[cli.py](cli.py) provides `main(argv=None) -> int`; [__main__.py](__main__.py) exposes it through `PYTHONPATH=src python3 -B -m application`. Importing either module performs no execution. The package export list is unchanged; serialization helpers stay private. The adapter accepts one authoritative local classic PCAP path, constructs `PcapPacketSource`, and invokes `run_detection_pipeline()` exactly once. Capture acquisition, execution, analysis, flow lifecycle, feature derivation, and detector orchestration remain delegated to their existing owners.
+
+All detector configuration is explicit because the domain models define no canonical defaults. Required options are `--capture-session-id`, `--inactivity-timeout-microseconds`, `--packet-detector-id`, `--packet-detector-version`, `--volume-detector-id`, `--volume-detector-version`, `--volume-metric`, `--volume-threshold`, `--tcp-detector-id`, `--tcp-detector-version`, `--tcp-metric`, and `--tcp-threshold`. Metric choices are the existing enum values shown by `--help`. Count/byte and TCP thresholds become integers; rate thresholds become floats. The existing configuration models validate their values. Timeout is a positive integer microsecond duration representable by `timedelta`. Detector metadata and session identity must be nonblank. TCP settings are always explicit, even for a UDP-only input; applicability remains owned by the pipeline. PCAP provenance retains its existing `local-pcap` default, and no path-derived identity is introduced.
+
+### JSON result
+
+Successful execution writes one compact ASCII-escaped JSON object followed by a newline. Its only root fields are `packet_findings` and `flow_findings`, both arrays. They retain pipeline order and duplicates, with no sorting or correlation. Each finding has exactly the existing five field names: `detector_id`, `detector_version`, `decision`, `raw_evidence`, and `security_interpretation`. Enum members use their existing values. `raw_evidence` is an explicit presentation projection, not a lossless serialization of the nested analytical object graph:
+
+- Packet evidence: `captured_at`, `capture_source`, `link_type`, `captured_length`, `original_length`, `protocol`, `failure_classification`, and `failure_description`.
+- Both flow evidence types: `capture_session_id`, `sequence_number`, `closure_reason`, `identity`, `first_captured_at`, `last_captured_at`, `selected_metric`, `threshold`, `observed_value`, `comparison_operator`, `total_packet_count`, `forward_packet_count`, and `reverse_packet_count`.
+- Volume evidence additionally includes `captured_byte_total` and `original_byte_total`.
+- Flow `identity` contains `ip_version`, `source_address`, `destination_address`, `source_port`, `destination_port`, and `protocol`. Addresses are lowercase hexadecimal encodings of the canonical packed bytes for presentation only; the domain identity remains packed bytes.
+
+Capture times use ISO 8601 with six fractional digits and the retained UTC offset. Missing metadata, failure fields, and unavailable rate measurements use JSON `null`; integers and floats retain their model values. Nonfinite JSON numbers are prohibited. The projection reads semantic evidence only and excludes packet bytes, full packet models, complete feature snapshots, object representations, and any generated host/process/time/path metadata. Explicit caller-supplied identifiers are preserved as supplied. Findings, configurations, formulas, and decision meanings are unchanged.
+
+### Exit behavior
+
+| Condition | Behavior |
+| --- | --- |
+| Pipeline and serialization succeed | Return/exit 0; one JSON result on stdout, empty stderr. MATCH and NOT_EVALUABLE findings do not change this status. |
+| `--help` | argparse exits 0 with help text; no acquisition. |
+| Invalid/missing arguments or invalid configuration | argparse exits 2 with usage/error text on stderr; no acquisition. |
+| Pipeline raises `CaptureError` | Return/exit 1; exactly `{"error":"capture_error"}` plus newline on stderr; empty stdout. Exception details and source paths are not printed. |
+| Other pipeline, serialization, or output exception | Propagate unchanged from `main()`; normal uncaught Python failure when invoked as a module, with no synthetic success result or retry. |
+
+The JSON string is fully prepared before writing stdout; pipeline/serialization failure publishes no partial result. Output-stream failures follow Python stream behavior and are not given rollback guarantees. Standard tracebacks for unexpected exceptions are not JSON and may include normal Python source locations. Structured packet-analysis failures remain findings and do not become capture errors. Successful unsupported-transport analyses and decreasing admitted-flow timestamps retain existing pipeline errors. Decreasing timestamps for observations that never enter flow state remain in packet-finding order.
+
+Equivalent PCAP observations and configuration produce equivalent output; no execution history or cache is retained. The CLI does not load the PCAP itself, manage source startup/cleanup, decode packets, extract features, invoke individual detectors, or build flow state. It serializes the pipeline's existing in-memory result, so memory still grows with retained findings. No live capture, PCAPNG, reassembly, application parsing, ML, storage, alerting, or correlation is introduced.
 
 ## Capture execution
 
