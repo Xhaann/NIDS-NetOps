@@ -97,9 +97,9 @@ def _direction_features(
             f"{direction} inter-arrival variance must be finite"
         )
     if variance < 0.0:
-        mean_error = ulp(mean)
+        mean_error = count * ulp(mean)
         roundoff_bound = (
-            ulp(second_moment)
+            count * ulp(second_moment)
             + ulp(mean_squared)
             + mean_error * (2 * abs(mean) + mean_error)
         )

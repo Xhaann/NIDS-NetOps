@@ -44,8 +44,8 @@ def extract_inter_arrival_features(statistics: FlowInterArrivalStatistics) -> In
     if not isfinite(variance):
         raise InterArrivalFeaturesError("inter-arrival variance must be finite")
     if variance < 0.0:
-        mean_error = ulp(mean)
-        roundoff_bound = (ulp(second_moment) + ulp(mean_squared)
+        mean_error = statistics.inter_arrival_count * ulp(mean)
+        roundoff_bound = (statistics.inter_arrival_count * ulp(second_moment) + ulp(mean_squared)
                           + mean_error * (2 * abs(mean) + mean_error))
         if -variance > roundoff_bound:
             raise InterArrivalFeaturesError("inter-arrival population variance is materially negative")

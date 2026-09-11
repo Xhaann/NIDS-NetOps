@@ -8,7 +8,7 @@ This directory owns the packet observation and capture-source contracts, synchro
 
 | Field | Type | Contract |
 | --- | --- | --- |
-| `captured_at` | `datetime` | Required capture time with a non-`None` UTC offset. The supplied timezone and microsecond precision are preserved; no clock reading or timezone conversion is performed. |
+| `captured_at` | `datetime` | Required exact built-in `datetime` with a fixed `datetime.timezone` and zero UTC offset. Naive timestamps, nonzero offsets, and custom timezone implementations are rejected. The supplied timestamp and microsecond precision are preserved; no clock reading or timezone conversion is performed. |
 | `link_type` | `Optional[LinkType]` | Portable LINKTYPE code, or `None` when unavailable. |
 | `captured_length` | `int` | Nonnegative byte count exactly equal to `len(raw_bytes)`. |
 | `original_length` | `Optional[int]` | Original byte count before capture truncation, at least `captured_length`, or `None` when unavailable. |

@@ -118,6 +118,19 @@ class InterArrivalFeaturesTests(unittest.TestCase):
         self.assertEqual(result.variance_inter_arrival_seconds, ulp(1.0))
         self.assertEqual(result.standard_deviation_inter_arrival_seconds, sqrt(ulp(1.0)))
 
+    def test_accumulated_roundoff_does_not_reject_constant_intervals(self) -> None:
+        for interval in (0.1, 0.3, 0.000001):
+            with self.subTest(interval=interval):
+                statistics = statistics_for((interval,) * 500)
+                result = extract_inter_arrival_features(statistics)
+                self.assertAlmostEqual(result.mean_inter_arrival_seconds / interval, 1.0)
+                self.assertAlmostEqual(result.variance_inter_arrival_seconds / interval ** 2, 0.0)
+                self.assertGreaterEqual(result.variance_inter_arrival_seconds, 0.0)
+                self.assertEqual(result.min_inter_arrival_seconds, interval)
+                self.assertEqual(result.max_inter_arrival_seconds, interval)
+                self.assert_unchanged_failure(replace(statistics,
+                    inter_arrival_sum_seconds_squared=statistics.inter_arrival_sum_seconds_squared * 0.9))
+
     def test_overflow_and_nonfinite_derived_values_fail_without_mutation(self) -> None:
         self.assert_unchanged_failure(replace(STATISTICS, inter_arrival_sum_seconds=1e308))
         self.assert_unchanged_failure(replace(STATISTICS, packet_count=10 ** 400 + 1,

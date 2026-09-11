@@ -203,6 +203,19 @@ class DirectionalInterArrivalFeaturesTests(unittest.TestCase):
                 with self.assertRaises(TypeError):
                     extract_directional_inter_arrival_features(value)
 
+    def test_accumulated_roundoff_is_bounded_independently_by_direction(self) -> None:
+        for forward, reverse in ((0.1, 0.3), (0.3, 0.000001)):
+            with self.subTest(forward=forward, reverse=reverse):
+                statistics = statistics_for((forward,) * 500, (reverse,) * 500)
+                result = extract_directional_inter_arrival_features(statistics)
+                for direction, interval in (("forward", forward), ("reverse", reverse)):
+                    self.assertAlmostEqual(getattr(result, direction + "_mean_inter_arrival_seconds") / interval, 1.0)
+                    variance = getattr(result, direction + "_variance_inter_arrival_seconds")
+                    self.assertAlmostEqual(variance / interval ** 2, 0.0)
+                    self.assertGreaterEqual(variance, 0.0)
+                    name = direction + "_inter_arrival_sum_seconds_squared"
+                    self.assert_unchanged_failure(replace(statistics, **{name: getattr(statistics, name) * 0.9}))
+
     def test_malformed_raw_counts_aggregates_and_outputs_are_rejected(self) -> None:
         valid = statistics_for((1.0, 2.0), (3.0,))
         malformed_cases = (

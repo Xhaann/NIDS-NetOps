@@ -99,6 +99,35 @@ class PcapScenarioTests(unittest.TestCase):
                     self.assertTrue(all(a.ipv4_checksum_valid and a.tcp_checksum_valid for a in analyses))
                 self.assertIs(result.report.result.flow_evaluations[0].finding, findings[0])
 
+    def test_long_periodic_flows_complete_with_global_and_directional_features(self):
+        for ipv6 in (False, True):
+            for protocol in (6, 17):
+                with self.subTest(ipv6=ipv6, protocol=protocol):
+                    packets = tuple((1000000 + index * 50000,
+                        frame(protocol, transport(protocol, ipv6=ipv6, reverse=bool(index % 2)),
+                              ipv6, bool(index % 2))) for index in range(1002))
+                    flows = (self.flow_truth(self.configuration.flow_volume_configuration,
+                        protocol, ipv6, packets[0][0], packets[-1][0], True),)
+                    if protocol == 6:
+                        flows += (self.flow_truth(self.configuration.tcp_control_configuration,
+                            protocol, ipv6, packets[0][0], packets[-1][0], True),)
+                    truth = GroundTruth(self.packet_truth(packets), flows)
+                    path, source = self.source('periodic', packets)
+                    result = self.execute(source, truth)
+                    self.assertEqual(result, self.execute(PcapPacketSource(path, source=SOURCE), truth))
+                    self.assertEqual(result.report.metrics.packet_metrics, DetectionMetrics(0, 0, 0, 1002))
+                    self.assertEqual(result.report.metrics.flow_metrics, DetectionMetrics(len(flows), 0, 0, 0))
+                    snapshot = result.pipeline_result.flow_findings[0].raw_evidence.snapshot
+                    self.assertEqual(snapshot.feature_contract, FeatureContractVersion('flow-feature-snapshot', '1'))
+                    self.assertEqual(snapshot.flow_volume_features.packet_count, 1002)
+                    self.assertEqual(snapshot.flow_duration_features.duration_seconds, 50.05)
+                    self.assertAlmostEqual(snapshot.inter_arrival_features.mean_inter_arrival_seconds, 0.05)
+                    for direction in ('forward', 'reverse'):
+                        features = snapshot.directional_inter_arrival_features
+                        self.assertAlmostEqual(getattr(features, direction + '_mean_inter_arrival_seconds'), 0.1)
+                        self.assertEqual(getattr(features, direction + '_variance_inter_arrival_seconds'), 0.0)
+                        self.assertEqual(getattr(snapshot.flow_volume_features, direction + '_packet_count'), 501)
+
     def test_udp_exchange_preserves_repeated_request_direction_and_checksum(self):
         for ipv6 in (False, True):
             with self.subTest(ipv6=ipv6):
