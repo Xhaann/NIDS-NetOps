@@ -145,7 +145,7 @@ Matching is one-to-one and multiplicity-sensitive. For each channel, expectation
 
 Public constructors reject wrong types, mutable collections, invalid identity metadata, inconsistent audit entries, and mixed channels using `TypeError` or `ValueError`. Evaluation is synchronous and deterministic; exceptions propagate without retries or partial returned results. All working assignments are local to one call. The evaluator retains references to supplied immutable evidence but never reads raw packet bytes or creates execution state.
 
-No precision, recall, F1, accuracy, benchmarking, dataset ingestion, experiment tracking, ML, persistence, correlation, alerting, or CLI evaluation mode is introduced. Those remain separate future work.
+Evaluation does not calculate metrics. The separate [metrics boundary](#detection-evaluation-metrics) consumes its completed classifications. Benchmarking, dataset ingestion, experiment tracking, ML, persistence, correlation, alerting, and a CLI evaluation mode remain unimplemented.
 
 
 ## Explicit ground truth
@@ -167,3 +167,27 @@ A collection permits exactly one truth record per target. Repeated same-polarity
 Collections must be exact tuples of exact `GroundTruthRecord` values. Lists, dictionaries, missing targets, invalid polarity types, and unsupported record types raise `TypeError`; wrong-domain records raise `ValueError`. Records, targets, and configurations are retained by reference without copying or mutation. Input order is preserved without sorting or deduplication. Validation uses only local temporary state and performs no capture, packet access, parsing, feature extraction, detector execution, evaluation, filesystem/network access, or CLI invocation.
 
 Ground truth describes what is externally asserted to be true. `DetectionPipelineResult` describes what the detectors produced. Evaluation compares results with explicit expectations. A future explicit adapter may translate truth into those expectations; this commit adds no conversion, automatic discovery, evaluator overload, pipeline wiring, or CLI/JSON changes. Metrics, datasets, annotation formats, loaders, benchmarking, experiment tracking, ML, storage, correlation, and alerting remain outside this contract.
+
+
+## Detection evaluation metrics
+
+[detection_metrics.py](detection_metrics.py) exposes `calculate_detection_metrics(result)`, accepting exactly an existing `DetectionEvaluationResult`. It returns a frozen `DetectionEvaluationMetrics` with separate `packet_metrics` and `flow_metrics`, each a frozen `DetectionMetrics`. The channels are never pooled or matched again.
+
+Each channel exposes exact nonnegative integer `true_positives`, `false_positives`, `false_negatives`, `true_negatives`, and `unclassified_count`. Every supplied classification entry contributes once, including duplicates. `classification=None` contributes only to `unclassified_count`. That count describes unclassified entries, not a particular detector decision or a count of NOT_EVALUABLE cases.
+
+The existing evaluation classification is authoritative. An FN remains FN even when the associated finding is NOT_EVALUABLE. Metrics never inspect findings or expectations to reinterpret that classification. The evaluation result has no independent unevaluable count, so metrics expose none. Unclassified entries are excluded from every binary denominator; classified entries retain their established contribution. No evaluation field or matching behavior changes.
+
+The numeric properties use standard Python floating-point division without rounding or smoothing:
+
+| Property | Definition | Undefined (`None`) when |
+| --- | --- | --- |
+| `precision` | TP / (TP + FP) | TP + FP = 0 |
+| `recall` | TP / (TP + FN) | TP + FN = 0 |
+| `f1` | 2 × precision × recall / (precision + recall) | Either input is undefined, or their sum is zero |
+| `accuracy` | (TP + TN) / (TP + FP + FN + TN) | No binary classifications exist |
+
+A defined `0.0` remains distinct from `None`. In particular, TP=0 with FP>0 and FN>0 yields zero precision and recall but undefined F1 under the stated harmonic-mean definition. TP=8, FP=2, FN=4, TN=86 yields precision 8/10, recall 8/12, F1 from those two ratios, and accuracy 94/100. Counts stay integers regardless of size; metric values are numbers, not formatted strings.
+
+`DetectionMetrics` accepts four required counts and an optional `unclassified_count` defaulting to zero. Count types must be exactly `int`, excluding booleans; wrong types raise `TypeError`, and negative counts raise `ValueError`. `DetectionEvaluationMetrics` requires exact `DetectionMetrics` values for both channels. Aggregation relies on the existing evaluation result's validated immutable entries.
+
+Calculation uses only local aggregation state and does not mutate inputs, reorder entries, infer truth, construct ground truth, rerun evaluation, or execute any capture, analysis, features, detectors, pipeline, or CLI. Ground truth remains external truth; evaluation compares actual results with explicit expectations; metrics aggregate the completed classifications. Ground-truth adaptation, reporting, benchmarking, datasets, and experiment tracking remain separate future work. No CLI JSON change is introduced.

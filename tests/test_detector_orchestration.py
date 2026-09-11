@@ -87,10 +87,10 @@ class DetectorOrchestrationTests(unittest.TestCase):
         self.assertIs(application.run_closed_flow_detectors, detector_orchestration.run_closed_flow_detectors)
         self.assertEqual(
             application.__all__,
-            ["DetectionClassification", "DetectionEvaluationEntry", "DetectionEvaluationResult",
-             "DetectionPipelineResult", "DetectionSession", "ExpectedDetection", "ExpectedDetectionResult",
+            ["DetectionClassification", "DetectionEvaluationEntry", "DetectionEvaluationMetrics", "DetectionEvaluationResult",
+             "DetectionMetrics", "DetectionPipelineResult", "DetectionSession", "ExpectedDetection", "ExpectedDetectionResult",
              "FlowDetectionIdentity", "GroundTruth", "GroundTruthPolarity", "GroundTruthRecord",
-             "PacketDetectionIdentity", "detection_identity", "evaluate_detection_result",
+             "PacketDetectionIdentity", "calculate_detection_metrics", "detection_identity", "evaluate_detection_result",
              "run_capture_execution", "run_closed_flow_detectors", "run_detection_pipeline",
              "run_flow_observation_session", "run_packet_detectors"],
         )

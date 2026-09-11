@@ -266,6 +266,14 @@ Targets reuse the existing packet and flow detection identities. Packet-position
 
 Ground truth describes externally asserted truth; detection results describe produced decisions; evaluation compares results with explicit expectations. [The ground-truth contract](../src/application/README.md#explicit-ground-truth) defines validation and identity scope. Conversion into evaluation expectations remains future explicit work: no current evaluator, pipeline, or CLI consumes truth automatically. Construction executes no acquisition, analysis, features, detectors, or evaluation and reads no packets or files. No datasets, metrics, benchmarks, experiment framework, ML, persistence, or alerting are introduced.
 
+## Deterministic evaluation metrics
+
+The application [metrics boundary](../src/application/detection_metrics.py) consumes only the existing `DetectionEvaluationResult`. `calculate_detection_metrics()` aggregates entry classifications into separate immutable packet and flow `DetectionMetrics`, grouped in `DetectionEvaluationMetrics`. Counts preserve multiplicity and exact integer values; precision, recall, F1, and accuracy follow the [documented formulas and undefined-value rules](../src/application/README.md#detection-evaluation-metrics) without rounding or smoothing.
+
+Classification is authoritative: an existing FN associated with NOT_EVALUABLE remains an FN. Metrics do not inspect findings, evidence, expectations, detector decisions, or ground truth. Entries with `classification=None` contribute only to `unclassified_count` and are excluded from binary denominators. This does not identify unevaluable cases; the existing result exposes no independent unevaluable count. Neither the evaluation contract nor its semantics changes.
+
+Ground truth supplies external truth, evaluation compares actual results with explicit expectations, and metrics aggregate already-produced classifications. Calculation performs no upstream execution, file access, hidden caching, ground-truth adaptation, or input mutation. Packet and flow channels remain independent. Reporting, benchmarking, datasets, experiment tracking, and CLI metrics output are not introduced.
+
 ## Cross-cutting requirements for later tasks
 
 - Preserve sensor/source identity, capture time, processing time where needed, and provenance across transformations. Specify identifier and schema evolution rules before persisting records.

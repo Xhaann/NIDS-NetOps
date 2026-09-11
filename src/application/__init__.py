@@ -10,6 +10,7 @@ from application.detection_evaluation import (
     detection_identity,
     evaluate_detection_result,
 )
+from application.detection_metrics import DetectionEvaluationMetrics, DetectionMetrics, calculate_detection_metrics
 from application.detection_pipeline import DetectionPipelineResult, run_detection_pipeline
 from application.detection_session import DetectionSession
 from application.detector_orchestration import (
@@ -22,7 +23,9 @@ from application.ground_truth import GroundTruth, GroundTruthPolarity, GroundTru
 __all__ = [
     "DetectionClassification",
     "DetectionEvaluationEntry",
+    "DetectionEvaluationMetrics",
     "DetectionEvaluationResult",
+    "DetectionMetrics",
     "DetectionPipelineResult",
     "DetectionSession",
     "ExpectedDetection",
@@ -32,6 +35,7 @@ __all__ = [
     "GroundTruthPolarity",
     "GroundTruthRecord",
     "PacketDetectionIdentity",
+    "calculate_detection_metrics",
     "detection_identity",
     "evaluate_detection_result",
     "run_capture_execution",
