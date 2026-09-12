@@ -36,7 +36,7 @@ PYTHONPATH=src python3 -B -m unittest discover -s tests
 PYTHONPATH=src python3 -B -m application --help
 ```
 
-The 1663 tests use synthetic fixtures, temporary PCAP files, and controlled clocks rather than machine-speed thresholds.
+The 1669 tests use synthetic fixtures, temporary PCAP files, and controlled clocks rather than machine-speed thresholds.
 
 Replace `input.pcap` with your local classic PCAP file:
 
