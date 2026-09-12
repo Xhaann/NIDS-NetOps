@@ -1,6 +1,6 @@
 # Research examples and datasets
 
-`research` exports `ResearchExample(projection, ground_truth=None)` from [research_example.py](research_example.py). It associates an existing [MLFeatureProjection](../ml/README.md) with explicitly supplied research truth. This package owns experimental data representation; it implements no detector, evaluation, or learning operation.
+`research` exports `ResearchExample(projection, ground_truth=None, observation_window=None)` from [research_example.py](research_example.py). It associates an existing [MLFeatureProjection](../ml/README.md) with optional research truth and closed-window context. This package owns experimental data representation; it implements no detector, evaluation, or learning operation.
 
 ## Contract
 
@@ -8,6 +8,7 @@
 | --- | --- |
 | `projection` | Exactly an existing `MLFeatureProjection`, retained by reference. Its feature contract, ordered names, and values remain authoritative. |
 | `ground_truth` | An optional exact built-in nonblank string supplied by the caller. `None` means truth was not supplied. |
+| `observation_window` | An optional exact closed `FlowObservationWindow`, retained by reference. `None` means no observation association was supplied. |
 
 Truth is opaque text with caller-defined meaning, not a built-in binary label or attack vocabulary. Case, Unicode, and surrounding whitespace are preserved; entirely blank strings are rejected. No category encoding or conversion is performed. Booleans, numeric targets, collections, string subclasses, detector decisions, and evaluation truth records are not accepted as truth. There is no implicit conversion of these values to strings. Richer or numerical research targets would require a separate explicit contract decision.
 
@@ -15,11 +16,31 @@ The existing [GroundTruthRecord](../application/ground_truth.py) describes a det
 
 ## Features, ownership, and identity
 
-Construction accepts only an already-created projection. It does not read a snapshot, extract features, inspect packet/flow state, or copy feature definitions. Projection construction owns feature-version compatibility; the example introduces no second supported-version list, feature ordering, or version scheme. Access names, values, and the canonical contract through `example.projection`. Unavailable `None` values and observed zeros remain exactly as supplied.
+Construction accepts only an already-created projection. It does not read a snapshot, extract features, or copy feature definitions. Optional window validation checks its type and closure state only. Projection construction owns feature-version compatibility; the example introduces no second supported-version list, feature ordering, or version scheme. Access names, values, and the canonical contract through `example.projection`. Unavailable `None` values and observed zeros remain exactly as supplied.
 
-The example is a frozen dataclass containing only immutable values. It retains the exact projection and truth objects, with no caller-owned mutable container. Changing truth requires constructing another example; the original example and its projection are unchanged.
+The example is a frozen dataclass containing only immutable values. It retains the exact projection, truth, and optional window objects, with no caller-owned mutable container. Changing truth requires constructing another example; the original example and its projection are unchanged.
 
-There is no generated identity, timestamp, row number, or source reference. The caller explicitly associates truth with the supplied projection during construction. The projection intentionally omits observation identity, so this contract cannot verify that the caller selected the correct observation or observation horizon. Dataset ordering is defined separately below; constructing examples does not sort, shuffle, sample, or deduplicate them. Equal examples compare equal without implying that repeated observations should be removed.
+There is no generated identity, timestamp, or row number. Equality includes projection, truth, and the full optional window value. Existing calls with no context keep their projection/truth equality; different window values distinguish examples even when projections and truth are equal. Equal examples and repeated references remain representable. Construction never sorts, samples, or deduplicates.
+
+## Observation association
+
+Keep the window from the same snapshot when associating an observation:
+
+```python
+example = ResearchExample(
+    project_flow_features(snapshot),
+    ground_truth=research_truth,
+    observation_window=snapshot.observation_window,
+)
+```
+
+The immutable window retains its session/window key, canonical flow identity, first/last admitted timestamps, closure reason, and coordinated state. No fields are copied into the 49-value projection. Feature names, values, version, `None`, and zero semantics stay unchanged; no feature is recalculated.
+
+Wrong context types, including subclasses, raise `TypeError`; active windows raise `ValueError`. Validation checks projection, truth, then context. It never closes a window or changes flow state. All existing closed-window reasons are accepted, including explicit segmentation. The recommended inactivity/successful-session-end population remains a study choice, not a filtering policy in this contract.
+
+This is a caller-declared association, not proof that the projection came from the window. Construction cannot recover origin from equal values and does not re-extract or compare features to infer it. Supply projection and context from the same snapshot. Calls that omit context still accept existing projections, including those derived from active snapshots; they do not claim a finalized observation association.
+
+Window keys are scoped to caller-declared replay/session context, not globally unique or authenticated. A retained window does not identify the source recording, certify outcome-based admission or successful replay, or record the processing event when closure became available. Keep recording/procedure and annotation context separately. Grouping, leakage checks, retrospective-horizon selection, and one-row-per-selected-window discipline remain study responsibilities; neither the example nor dataset enforces them.
 
 ## Ordered research datasets
 

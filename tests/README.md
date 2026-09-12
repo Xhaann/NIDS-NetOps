@@ -1,6 +1,6 @@
 # Automated testing strategy
 
-The current suite contains 1650 standard-library `unittest` tests. It covers capture/source contracts and classic PCAP input; Ethernet, IPv4/IPv6 and transport analysis; flow identity, lifecycle, statistics and features; detector configurations, predicates and findings; evaluation, truth, metrics and reporting; datasets, experiments, version references, end-to-end composition, performance methodology, diagnostics, and the CLI.
+The current suite contains 1658 standard-library `unittest` tests. It covers capture/source contracts and classic PCAP input; Ethernet, IPv4/IPv6 and transport analysis; flow identity, lifecycle, statistics and features; detector configurations, predicates and findings; evaluation, truth, metrics and reporting; datasets, experiments, version references, end-to-end composition, performance methodology, diagnostics, and the CLI.
 
 The verified interpreter is Python 3.9.6. Run from the repository root:
 
@@ -26,7 +26,7 @@ No installation, third-party dependencies, network services, live-capture privil
 | Dataset and execution methodology | [datasets](test_detection_dataset.py), [experiments](test_detection_experiment.py), [case benchmarks](test_detection_benchmark.py), [performance benchmarks](test_performance_benchmark.py). |
 | Operational boundaries | [diagnostics](test_operational_diagnostics.py), [CLI](test_cli.py). |
 | ML input boundary | [Feature projection](test_ml_feature_projection.py): canonical values and ordering, direct scalar preservation, availability, version rejection, immutable factory-only construction, label/detector exclusion, future-state isolation, pipeline independence, and hash-seed/timezone equivalence. |
-| Research example boundary | [Research examples](test_research_example.py): exact projection retention, optional explicit truth text, immutable ownership, invalid inputs, detector/evaluation exclusion, and complete-output equivalence across hash seeds/timezones with detector/application imports blocked. |
+| Research example boundary | [Research examples](test_research_example.py) and [observation association](test_research_observation.py): projection/truth retention, optional closed-window context, immutable ownership, validation, equality/repeats, outcome-based PCAP regression, and complete-output equivalence across hash seeds/timezones with detector/application imports blocked. |
 | Research dataset boundary | [Research datasets](test_research_dataset.py): exact ordered membership, preserved repeats, empty datasets, value equality, caller-list isolation, invalid collections/members, no feature/truth inspection, and detector-independent construction across hash seeds/timezones. |
 
 Tests verify implemented predicates and composition, not production attack-detection coverage. There are no CPU/memory profiling or throughput acceptance guarantees. Future tests for storage, enrichment, alerting, deployment, or resource exhaustion require those capabilities to be implemented first. Do not manufacture tests to meet a count or weaken failures to match documentation.
