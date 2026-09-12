@@ -16,7 +16,7 @@ The existing [GroundTruthRecord](../application/ground_truth.py) describes a det
 
 ## Features, ownership, and identity
 
-Construction accepts only an already-created projection. It does not read a snapshot, extract features, or copy feature definitions. Optional window validation checks its type and closure state only. Projection construction owns feature-version compatibility; the example introduces no second supported-version list, feature ordering, or version scheme. Access names, values, and the canonical contract through `example.projection`. Unavailable `None` values and observed zeros remain exactly as supplied.
+Construction accepts only an already-created projection. It does not read a snapshot, extract features, or copy feature definitions. Optional window validation checks its type, closure state, and retained timestamps. Projection construction owns feature-version compatibility; the example introduces no second supported-version list, feature ordering, or version scheme. Access names, values, and the canonical contract through `example.projection`. Unavailable `None` values and observed zeros remain exactly as supplied.
 
 The example is a frozen dataclass containing only immutable values. It retains the exact projection, truth, and optional window objects, with no caller-owned mutable container. Changing truth requires constructing another example; the original example and its projection are unchanged.
 
@@ -37,6 +37,8 @@ example = ResearchExample(
 The immutable window retains its session/window key, canonical flow identity, first/last admitted timestamps, closure reason, and coordinated state. No fields are copied into the 49-value projection. Feature names, values, version, `None`, and zero semantics stay unchanged; no feature is recalculated.
 
 Wrong context types, including subclasses, raise `TypeError`; active windows raise `ValueError`. Validation checks projection, truth, then context. It never closes a window or changes flow state. All existing closed-window reasons are accepted, including explicit segmentation. The recommended inactivity/successful-session-end population remains a study choice, not a filtering policy in this contract.
+
+After the closure check, retained timestamps must follow `PacketObservation`: exact built-in `datetime`, exact built-in `datetime.timezone`, and zero UTC offset. This covers first/last timestamps in flow statistics, flow inter-arrival statistics, and directional inter-arrival statistics, plus both directional last-packet timestamps when present. Datetime subclasses raise `TypeError`; missing, custom, or nonzero-offset timezones raise `ValueError`. Named fixed UTC timezones and absent optional directional timestamps remain valid. Validation neither copies nor normalizes timestamps.
 
 This is a caller-declared association, not proof that the projection came from the window. Construction cannot recover origin from equal values and does not re-extract or compare features to infer it. Supply projection and context from the same snapshot. Calls that omit context still accept existing projections, including those derived from active snapshots; they do not claim a finalized observation association.
 
