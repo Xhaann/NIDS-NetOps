@@ -10,7 +10,7 @@ from analysis.ipv4_checksum import validate_ipv4_checksum
 from analysis.ipv6 import IPv6Packet, decode_ipv6
 from analysis.ipv6_extension_headers import IPv6ExtensionHeaderChain, validate_ipv6_extension_headers
 from analysis.ipv6_fragmentation import IPv6Fragmentation, analyze_ipv6_fragmentation
-from analysis.tcp import TCPPacket, decode_tcp
+from analysis.tcp import TCPPacket, _validate_tcp_options, decode_tcp
 from analysis.tcp_checksum import validate_tcp_checksum
 from analysis.udp import UDPPacket, decode_udp
 from analysis.udp_checksum import validate_udp_checksum
@@ -124,6 +124,7 @@ def analyze_packet(observation: PacketObservation) -> PacketAnalysis:
             if not any(header.is_non_first_fragment for header in transport_context.headers):
                 if extensions.terminating_next_header == 6:
                     tcp = decode_tcp(transport_context)
+                    _validate_tcp_options(tcp)
                 else:
                     udp = decode_udp(transport_context)
         if extensions.terminating_next_header == 58 and (
@@ -151,6 +152,7 @@ def analyze_packet(observation: PacketObservation) -> PacketAnalysis:
     icmp_checksum_valid = None
     if ipv4.protocol == 6:
         tcp = decode_tcp(ipv4)
+        _validate_tcp_options(tcp)
         if ipv4.fragment_offset == 0:
             tcp_checksum_valid = validate_tcp_checksum(ipv4, tcp)
     elif ipv4.protocol == 17:

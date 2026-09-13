@@ -407,8 +407,8 @@ class IPv6TransportFragmentTests(unittest.TestCase):
             self.assertIsNone(outcome.analysis)
             self.assertEqual(outcome.failure_description, "TCP header length exceeds available IPv6 payload")
             self.assertIs(outcome.failure_classification, PacketAnalysisFailureClassification.INCOMPLETE)
-        result = analyze_packet(observation_for(6, header + b"\x00\xff\x01\x80local", prefix, 44))
-        self.assertEqual(result.ipv6_tcp.options, b"\x00\xff\x01\x80")
+        result = analyze_packet(observation_for(6, header + b"\x9e\x04\x01\x80local", prefix, 44))
+        self.assertEqual(result.ipv6_tcp.options, b"\x9e\x04\x01\x80")
         self.assertEqual(result.ipv6_tcp.payload, b"local")
         self.assertTrue(result.ipv6_fragmentation.headers[0].more_fragments)
 

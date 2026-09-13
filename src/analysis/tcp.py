@@ -3,6 +3,7 @@ from typing import Union
 
 from analysis.ipv4 import IPv4Packet
 from analysis.ipv6_fragmentation import IPv6Fragmentation
+from analysis.option_envelope import _validate_option_envelope
 
 
 class TCPDecodeError(ValueError):
@@ -71,6 +72,10 @@ class TCPPacket:
     @property
     def header_length(self) -> int:
         return self.data_offset * 4
+
+
+def _validate_tcp_options(segment: TCPPacket) -> None:
+    _validate_option_envelope(segment.options, "TCP", TCPDecodeError)
 
 
 def decode_tcp(packet: Union[IPv4Packet, IPv6Fragmentation]) -> TCPPacket:

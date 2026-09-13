@@ -153,6 +153,10 @@ _IPV6_STRUCTURAL_MESSAGES = (
 )
 
 _TCP_STRUCTURAL_MESSAGES = (
+    "TCP option padding must be zero",
+    "TCP option length field exceeds option area",
+    "TCP option length must be at least 2 bytes",
+    "TCP option length exceeds option area",
     "TCP data offset must be at least 5",
 )
 
