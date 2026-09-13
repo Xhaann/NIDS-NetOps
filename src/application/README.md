@@ -197,6 +197,8 @@ Properties use Python floating-point division, with no rounding or smoothing:
 
 `0.0` differs from `None`: TP=0, FP>0, FN>0 gives zero precision/recall but undefined F1. Counts remain integers of any size; metrics are numbers, not formatted strings.
 
+F1 preserves those undefined-result rules and the ordinary floating-point formula. When its intermediate numerator is below the minimum normal float, it instead divides `2 * TP` by `2 * TP + FP + FN` using the original integer counts. This avoids intermediate-product underflow and subnormal precision loss without changing classification or matching. The final ratio remains a float and can itself underflow.
+
 `DetectionMetrics` requires four counts; `unclassified_count` defaults to zero. Counts must be exact `int` (not bool): wrong types raise `TypeError`, negatives `ValueError`. `DetectionEvaluationMetrics` requires exact `DetectionMetrics` for both channels. Calculation aggregates validated entries locally, without mutation, reordering, truth inference, reevaluation, or upstream execution. Reporting and performance measurement are separate; CLI JSON is unchanged.
 
 ## Detection dataset representation

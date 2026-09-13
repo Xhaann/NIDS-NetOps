@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from sys import float_info
 from typing import Optional
 
 from application.detection_evaluation import DetectionClassification, DetectionEvaluationEntry, DetectionEvaluationResult
@@ -35,7 +36,11 @@ class DetectionMetrics:
         precision, recall = self.precision, self.recall
         if precision is None or recall is None or precision + recall == 0.0:
             return None
-        return 2 * precision * recall / (precision + recall)
+        numerator = 2 * precision * recall
+        if numerator < float_info.min:
+            doubled_positives = 2 * self.true_positives
+            return doubled_positives / (doubled_positives + self.false_positives + self.false_negatives)
+        return numerator / (precision + recall)
 
     @property
     def accuracy(self) -> Optional[float]:
