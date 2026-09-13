@@ -305,7 +305,7 @@ class ICMPv6PacketAnalysisTests(unittest.TestCase):
         payload = bytes.fromhex("2c000008000000013a0000000000000280001234")
         result = analyze_packet(ipv6_observation(ipv6_header(next_header=44, payload_length=20) + payload))
         self.assertIsNone(result.ipv6_icmpv6)
-        self.assertEqual(len(result.ipv6_fragmentation.headers), 2)
+        self.assertEqual(len(result.ipv6_fragmentation.headers), 1)
 
     def test_no_next_header_and_other_selectors_do_not_scan_payload(self) -> None:
         for next_header in (6, 17, 50, 51, 59, 253, 255):

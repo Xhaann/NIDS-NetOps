@@ -294,7 +294,7 @@ class IPv6ExtensionHeaderValidationTests(unittest.TestCase):
     def test_mixed_lengths_and_next_header_links_define_exact_packet_offsets(self) -> None:
         hop_by_hop = bytes.fromhex("2b01000102030405060708090a0b0c0d")
         routing = bytes.fromhex("2c02000102030405060708090a0b0c0d0e0f101112131415")
-        fragment = bytes.fromhex("3cffeeddccbbaa99")
+        fragment = bytes.fromhex("3cff0001ccbbaa99")
         destination = bytes.fromhex("0600010203040506")
         payload = hop_by_hop + routing + fragment + destination + b"\x00\xff"
         packet = decode_ipv6(ipv6_frame(ipv6_header(next_header=0, payload_length=58) + payload))
@@ -389,7 +389,8 @@ class IPv6ExtensionHeaderValidationTests(unittest.TestCase):
     def test_repeated_headers_keep_observed_order_without_restriction_or_deduplication(self) -> None:
         header_types = (60, 0, 43, 43, 44, 44, 60, 0)
         next_headers = (0, 43, 43, 44, 44, 60, 0, 59)
-        raw_headers = tuple(bytes((next_header, 0)) + bytes((index,)) * 6 for index, next_header in enumerate(next_headers))
+        raw_headers = tuple(bytes((next_header, 0)) + bytes(2) + bytes((index,)) * 4
+                            for index, next_header in enumerate(next_headers))
         packet = decode_ipv6(ipv6_frame(ipv6_header(next_header=60, payload_length=64) + b"".join(raw_headers)))
         chain = validate_ipv6_extension_headers(packet)
         self.assertEqual(tuple(header.header_type for header in chain.headers), header_types)

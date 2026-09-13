@@ -296,9 +296,8 @@ class IPv6ExtensionHeaderPacketAnalysisTests(unittest.TestCase):
                 IPv6ExtensionHeader(0, 40, 16, hop_by_hop, 43),
                 IPv6ExtensionHeader(43, 56, 8, routing, 44),
                 IPv6ExtensionHeader(44, 64, 8, fragment, 60),
-                IPv6ExtensionHeader(60, 72, 8, destination, 6),
             ))
-            self.assertEqual(chain.terminating_next_header, 6)
+            self.assertEqual(chain.terminating_next_header, 60)
             for name in ("ipv4", "tcp", "udp", "icmp", "ipv4_checksum_valid", "tcp_checksum_valid", "udp_checksum_valid", "icmp_checksum_valid"):
                 self.assertIsNone(getattr(value, name))
 

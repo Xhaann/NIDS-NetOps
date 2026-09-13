@@ -81,6 +81,10 @@ def validate_ipv6_extension_headers(packet: IPv6Packet) -> IPv6ExtensionHeaderCh
             raw_bytes=packet.payload[payload_offset:end],
             next_header=next_header,
         ))
+        if header_type == 44 and int.from_bytes(
+            packet.payload[payload_offset + 2:payload_offset + 4], byteorder="big"
+        ) >> 3:
+            break
         payload_offset = end
         header_type = next_header
     return IPv6ExtensionHeaderChain(packet, tuple(headers))

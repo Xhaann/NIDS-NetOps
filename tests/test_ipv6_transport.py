@@ -378,7 +378,7 @@ class IPv6TransportFragmentTests(unittest.TestCase):
             prefix = fragment_header(44, 1) + fragment_header(protocol)
             result = analyze_packet(observation_for(protocol, raw, prefix, 44))
             self.assertIsNone(getattr(result, name))
-            self.assertEqual(len(result.ipv6_fragmentation.headers), 2)
+            self.assertEqual(len(result.ipv6_fragmentation.headers), 1)
 
     def test_incomplete_first_fragments_are_not_reassembled_or_correlated(self):
         for protocol, name, raw, _, _ in PROTOCOLS:

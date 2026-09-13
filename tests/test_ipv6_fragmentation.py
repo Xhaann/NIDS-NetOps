@@ -184,7 +184,7 @@ class IPv6FragmentationTests(unittest.TestCase):
                 self.assertEqual(result.headers[0].fragment_offset, 1)
                 self.assertEqual(result.headers[0].identification, 16909060)
 
-    def test_fragment_followed_by_supported_extension_uses_existing_traversal(self) -> None:
+    def test_non_initial_fragment_stops_before_supported_extension_selector(self) -> None:
         for following_type in (0, 43, 60):
             with self.subTest(following_type=following_type):
                 fragment = bytes((following_type,)) + bytes.fromhex("a5000901020304")
@@ -192,9 +192,9 @@ class IPv6FragmentationTests(unittest.TestCase):
                 chain = fragment_chain(fragment + following)
                 result = analyze_ipv6_fragmentation(chain)
                 self.assertIs(result.extension_headers, chain)
-                self.assertEqual(tuple(header.header_type for header in chain.headers), (44, following_type))
+                self.assertEqual(tuple(header.header_type for header in chain.headers), (44,))
                 self.assertEqual(result.headers[0].next_header, following_type)
-                self.assertEqual(chain.terminating_next_header, 59)
+                self.assertEqual(chain.terminating_next_header, following_type)
 
     def test_repeated_fragment_headers_remain_separate_in_observed_order(self) -> None:
         raw_bytes = bytes.fromhex("2c000001000000013c000008000000013b00000000000000")
@@ -206,8 +206,8 @@ class IPv6FragmentationTests(unittest.TestCase):
         self.assertEqual(tuple(header.identification for header in result.headers), (1, 1))
         self.assertIs(result.headers[0].extension_header, chain.headers[0])
         self.assertIs(result.headers[1].extension_header, chain.headers[1])
-        self.assertEqual(chain.headers[2].header_type, 60)
-        self.assertEqual(chain.terminating_next_header, 59)
+        self.assertEqual(len(chain.headers), 2)
+        self.assertEqual(chain.terminating_next_header, 60)
 
     def test_empty_fragment_collection_preserves_non_fragmented_packet(self) -> None:
         for base_next_header, payload in ((6, b""), (59, bytes(8)), (253, bytes(8)), (0, bytes.fromhex("3b00000000000000"))):
@@ -271,7 +271,7 @@ class IPv6FragmentationTests(unittest.TestCase):
         self.assertIs(chain.headers, chain_before.headers)
 
     def test_maximum_repeated_chain_is_validated_once_for_semantic_analysis(self) -> None:
-        chain = fragment_chain(bytes.fromhex("2c00000901020304") * 8190 + bytes.fromhex("3b00000801020304"))
+        chain = fragment_chain(bytes.fromhex("2c00000101020304") * 8190 + bytes.fromhex("3b00000801020304"))
         with patch.object(ipv6_fragmentation, "validate_ipv6_extension_headers", wraps=validate_ipv6_extension_headers) as validate:
             result = analyze_ipv6_fragmentation(chain)
         validate.assert_called_once_with(chain.packet)
