@@ -5,7 +5,7 @@ from analysis.ethernet import EthernetFrame, decode_ethernet
 from analysis.icmp import ICMPMessage, decode_icmp
 from analysis.icmp_checksum import validate_icmp_checksum
 from analysis.icmpv6 import ICMPv6Packet, decode_icmpv6
-from analysis.ipv4 import IPv4Packet, decode_ipv4
+from analysis.ipv4 import IPv4Packet, _validate_ipv4_options, decode_ipv4
 from analysis.ipv4_checksum import validate_ipv4_checksum
 from analysis.ipv6 import IPv6Packet, decode_ipv6
 from analysis.ipv6_extension_headers import IPv6ExtensionHeaderChain, validate_ipv6_extension_headers
@@ -141,6 +141,7 @@ def analyze_packet(observation: PacketObservation) -> PacketAnalysis:
     if ethernet.ether_type != 0x0800:
         raise PacketAnalysisError("Packet analysis requires IPv4 EtherType 0x0800 or IPv6 EtherType 0x86DD")
     ipv4 = decode_ipv4(ethernet)
+    _validate_ipv4_options(ipv4)
     ipv4_checksum_valid = validate_ipv4_checksum(ipv4)
     tcp = None
     udp = None

@@ -139,6 +139,10 @@ _ICMP_INCOMPLETE_MESSAGES = (
 )
 
 _IPV4_STRUCTURAL_MESSAGES = (
+    "IPv4 option padding must be zero",
+    "IPv4 option length field exceeds option area",
+    "IPv4 option length must be at least 2 bytes",
+    "IPv4 option length exceeds option area",
     "IPv4 version must be 4",
     "IPv4 IHL must be at least 5",
     "IPv4 total length is smaller than header length",

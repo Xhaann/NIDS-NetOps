@@ -67,6 +67,28 @@ class IPv4Packet:
         return self.ihl * 4
 
 
+def _validate_ipv4_options(packet: IPv4Packet) -> None:
+    options = packet.options
+    offset = 0
+    while offset < len(options):
+        kind = options[offset]
+        if kind == 0:
+            if any(options[offset + 1:]):
+                raise IPv4DecodeError("IPv4 option padding must be zero")
+            return
+        if kind == 1:
+            offset += 1
+            continue
+        if offset + 1 >= len(options):
+            raise IPv4DecodeError("IPv4 option length field exceeds option area")
+        length = options[offset + 1]
+        if length < 2:
+            raise IPv4DecodeError("IPv4 option length must be at least 2 bytes")
+        if offset + length > len(options):
+            raise IPv4DecodeError("IPv4 option length exceeds option area")
+        offset += length
+
+
 def decode_ipv4(frame: EthernetFrame) -> IPv4Packet:
     if not isinstance(frame, EthernetFrame):
         raise TypeError("frame must be an EthernetFrame")
