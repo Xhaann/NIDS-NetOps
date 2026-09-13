@@ -123,6 +123,11 @@ class FlowStateCoordinator:
         return self._state
 
     def record(self, analysis: PacketAnalysis) -> CoordinatedFlowState:
+        candidate = self._prepare_record(analysis)
+        self._commit_record(candidate)
+        return candidate
+
+    def _prepare_record(self, analysis: PacketAnalysis) -> CoordinatedFlowState:
         if type(analysis) is not PacketAnalysis:
             raise TypeError("analysis must be exactly a PacketAnalysis")
         derived_identity = flow_identity_from_packet(analysis)
@@ -130,7 +135,7 @@ class FlowStateCoordinator:
         if current is not None and current.identity != derived_identity:
             raise FlowCoordinationError("analysis must belong to the coordinator's flow")
         identity = derived_identity if current is None else current.identity
-        candidate = CoordinatedFlowState(
+        return CoordinatedFlowState(
             flow_statistics=update_flow_statistics(
                 None if current is None else current.flow_statistics, analysis, identity,
             ),
@@ -150,5 +155,6 @@ class FlowStateCoordinator:
                 None if current is None else current.tcp_control_statistics, analysis, identity,
             ) if identity.protocol == 6 else None,
         )
-        self._state = candidate
-        return candidate
+
+    def _commit_record(self, state: CoordinatedFlowState) -> None:
+        self._state = state

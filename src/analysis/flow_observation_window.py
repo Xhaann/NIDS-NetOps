@@ -140,9 +140,10 @@ class FlowObservationWindowManager:
                 FlowObservationWindowClosureReason.INACTIVITY,
             )
             return self._record_new(identity, analysis, (closed,))
-        updated_state = coordinator.record(analysis)
+        updated_state = coordinator._prepare_record(analysis)
         active = FlowObservationWindow(key, updated_state, None)
         update = FlowObservationWindowUpdate(active, ())
+        coordinator._commit_record(updated_state)
         self._latest_accepted_capture_time = captured_at
         return update
 
