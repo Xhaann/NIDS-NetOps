@@ -72,13 +72,16 @@ def extract_packet_size_features(statistics: FlowPacketSizeStatistics) -> Packet
             if not all(isfinite(value) for value in (mean, second_moment, mean_squared)):
                 raise PacketSizeFeaturesError("packet-size moments must be finite")
             variance = second_moment - mean_squared
-            if variance < 0.0:
-                mean_error = ulp(mean)
-                roundoff_bound = (ulp(second_moment) + ulp(mean_squared)
-                                  + mean_error * (2 * abs(mean) + mean_error))
-                if -variance > roundoff_bound:
+            mean_error = ulp(mean)
+            roundoff_bound = (ulp(second_moment) + ulp(mean_squared)
+                              + mean_error * (2 * abs(mean) + mean_error))
+            if abs(variance) <= roundoff_bound:
+                numerator = count * squares - total * total
+                if numerator < 0:
                     raise PacketSizeFeaturesError(f"{prefix}{kind} population variance is materially negative")
-                variance = 0.0
+                variance = numerator / (count * count)
+            if variance < 0.0:
+                raise PacketSizeFeaturesError(f"{prefix}{kind} population variance is materially negative")
         derived[f"{prefix}mean_{kind}_length"] = mean
         derived[f"{prefix}variance_{kind}_length"] = variance
         if not prefix:
