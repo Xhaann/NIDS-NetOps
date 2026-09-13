@@ -277,6 +277,8 @@ Duration is computed directly as `(statistics.last_captured_at - statistics.firs
 
 For zero duration, all-zero numerators produce exactly `0.0` for all three rates; any positive numerator makes extraction undefined and raises `FlowRateFeaturesError(ValueError)` for the entire operation. No infinity, NaN, or partial result is returned. Under the current `FlowStatistics` invariant `packet_count >= 1`, every normally constructed zero-duration input is therefore rejected; the all-zero policy remains explicit without weakening that model. Negative or non-finite duration and overflowing/non-finite rates are also rejected without clamping.
 
+If converting an integer numerator for ordinary division overflows, extraction retries using the duration float's exact integer ratio. A finite quotient remains available even when the numerator alone exceeds float range; an unrepresentable quotient still raises `FlowRateFeaturesError`. Ordinary successful divisions retain their existing results.
+
 Direct construction requires three exact finite nonnegative floats, rejecting integers, booleans, and other types with `TypeError`, and invalid numerical values with `FlowRateFeaturesError`. Zero floats are valid. Extraction is deterministic, leaves its source unchanged, and retains no input or duration object, identity, timestamps, packets, raw bytes, or metadata. This family contains only the three global rates and performs no detection or machine learning.
 
 ## Flow inter-arrival statistics

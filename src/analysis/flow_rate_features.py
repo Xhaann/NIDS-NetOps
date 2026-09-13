@@ -26,6 +26,14 @@ class FlowRateFeatures:
                 raise FlowRateFeaturesError(f"{name} must be finite and nonnegative")
 
 
+def _divide_rate(numerator: int, duration_seconds: float) -> float:
+    try:
+        return numerator / duration_seconds
+    except OverflowError:
+        duration_numerator, duration_denominator = duration_seconds.as_integer_ratio()
+        return (numerator * duration_denominator) / duration_numerator
+
+
 def extract_flow_rate_features(statistics: FlowStatistics) -> FlowRateFeatures:
     if type(statistics) is not FlowStatistics:
         raise TypeError("statistics must be exactly a FlowStatistics")
@@ -38,9 +46,9 @@ def extract_flow_rate_features(statistics: FlowStatistics) -> FlowRateFeatures:
         raise FlowRateFeaturesError("zero duration requires all rate numerators to be zero")
     try:
         return FlowRateFeatures(
-            packets_per_second=statistics.packet_count / duration_seconds,
-            captured_bytes_per_second=statistics.captured_bytes / duration_seconds,
-            original_bytes_per_second=statistics.original_bytes / duration_seconds,
+            packets_per_second=_divide_rate(statistics.packet_count, duration_seconds),
+            captured_bytes_per_second=_divide_rate(statistics.captured_bytes, duration_seconds),
+            original_bytes_per_second=_divide_rate(statistics.original_bytes, duration_seconds),
         )
     except OverflowError as error:
         raise FlowRateFeaturesError("flow rates exceed finite float range") from error
