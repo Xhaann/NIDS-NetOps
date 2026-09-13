@@ -34,7 +34,7 @@ class IterablePacketSource:
         except OSError as error:
             self._failed = True
             raise CaptureError("packet source could not start") from error
-        except Exception:
+        except BaseException:
             self._failed = True
             raise
         finally:
@@ -65,20 +65,26 @@ class IterablePacketSource:
         except OSError as error:
             self._failed = True
             raise CaptureError("packet acquisition failed") from error
-        except Exception:
+        except BaseException:
             self._failed = True
             raise
-        if not isinstance(raw_bytes, bytes):
+        try:
+            if not isinstance(raw_bytes, bytes):
+                raise TypeError("raw_bytes must be immutable bytes")
+            return PacketObservation(
+                captured_at=datetime.now(timezone.utc),
+                link_type=self._link_type,
+                captured_length=len(raw_bytes),
+                original_length=len(raw_bytes),
+                raw_bytes=raw_bytes,
+                source=self._source,
+            )
+        except StopIteration as error:
             self._failed = True
-            raise TypeError("raw_bytes must be immutable bytes")
-        return PacketObservation(
-            captured_at=datetime.now(timezone.utc),
-            link_type=self._link_type,
-            captured_length=len(raw_bytes),
-            original_length=len(raw_bytes),
-            raw_bytes=raw_bytes,
-            source=self._source,
-        )
+            raise CaptureError("packet observation construction signaled exhaustion") from error
+        except BaseException:
+            self._failed = True
+            raise
 
     def stop(self) -> None:
         self._stopped = True
