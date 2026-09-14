@@ -6,6 +6,9 @@ from analysis.flow_direction import FlowDirection
 from analysis.flow_identity import FlowIdentity
 from analysis.ldap import LDAPMessageObservation, LDAPMessageStatus, LDAPOperation
 from analysis.ldap_stream_framing import LDAPStreamState, LDAPStreamStatus
+from analysis.ldap_request_summary import (
+    LDAPRequestSummary, LDAPRequestSummaryStatus, _start_request_summary, _summary_response, _summary_status,
+)
 
 
 LDAP_MAX_PENDING_REQUESTS = 128
@@ -46,6 +49,7 @@ class LDAPCorrelationObservation:
     message: LDAPMessageObservation
     status: LDAPCorrelationStatus
     request: Optional[LDAPMessageObservation]
+    request_summary: Optional[LDAPRequestSummary]
 
     def __init__(self) -> None:
         raise TypeError("use update_ldap_correlation_state(current, framing)")
@@ -79,10 +83,10 @@ class LDAPCorrelationState:
         return self.framing.identity
 
 
-def _observation(identity, direction, message, status, request=None):
+def _observation(identity, direction, message, status, request=None, request_summary=None):
     result = object.__new__(LDAPCorrelationObservation)
     for name, value in dict(identity=identity, direction=direction, message=message,
-                            status=status, request=request).items():
+                            status=status, request=request, request_summary=request_summary).items():
         object.__setattr__(result, name, value)
     return result
 
@@ -98,7 +102,8 @@ def _unresolved(request):
     if request.status is not LDAPCorrelationStatus.PENDING:
         return request
     return _observation(request.identity, request.direction, request.message,
-                        LDAPCorrelationStatus.UNRESOLVED, request.request)
+                        LDAPCorrelationStatus.UNRESOLVED, request.request,
+                        _summary_status(request.request_summary, LDAPRequestSummaryStatus.UNRESOLVED))
 
 
 def update_ldap_correlation_state(
@@ -139,6 +144,7 @@ def update_ldap_correlation_state(
             response_key = (opposite, message.message_id)
             operation = message.operation
             candidate = None
+            summary = None
             if message.status is not LDAPMessageStatus.COMPLETE or message.message_id == 0 or (
                 operation not in _REQUEST_OPERATIONS and operation not in _RESPONSE_REQUESTS
             ):
@@ -147,22 +153,27 @@ def update_ldap_correlation_state(
                 if values["unavailable_reason"] is None and key in pending and message.status is LDAPMessageStatus.UNSUPPORTED:
                     previous = pending[key]
                     pending[key] = _observation(framing.identity, direction, previous.message,
-                                                LDAPCorrelationStatus.AMBIGUOUS, previous.request)
+                                                LDAPCorrelationStatus.AMBIGUOUS, previous.request,
+                                                _summary_status(previous.request_summary, LDAPRequestSummaryStatus.AMBIGUOUS))
             elif operation in _REQUEST_OPERATIONS:
                 candidate = message
                 if values["unavailable_reason"] is not None:
                     status = LDAPCorrelationStatus.UNRESOLVED
+                    summary = _start_request_summary(framing.identity, direction, message, LDAPRequestSummaryStatus.UNRESOLVED)
                 elif key in pending:
                     status = LDAPCorrelationStatus.AMBIGUOUS
                     previous = pending[key]
                     candidate = previous.message
-                    pending[key] = _observation(framing.identity, direction, previous.message, status, candidate)
+                    summary = _summary_status(previous.request_summary, LDAPRequestSummaryStatus.AMBIGUOUS)
+                    pending[key] = _observation(framing.identity, direction, previous.message, status, candidate, summary)
                 elif len(pending) == LDAP_MAX_PENDING_REQUESTS:
                     values["unavailable_reason"] = LDAPCorrelationUnavailableReason.LIMIT_EXCEEDED
                     status = LDAPCorrelationStatus.UNRESOLVED
+                    summary = _start_request_summary(framing.identity, direction, message, LDAPRequestSummaryStatus.UNRESOLVED)
                 else:
                     status = LDAPCorrelationStatus.PENDING
-                    pending[key] = _observation(framing.identity, direction, message, status, message)
+                    summary = _start_request_summary(framing.identity, direction, message)
+                    pending[key] = _observation(framing.identity, direction, message, status, message, summary)
             else:
                 previous = pending.get(response_key)
                 status = LDAPCorrelationStatus.UNMATCHED
@@ -172,15 +183,21 @@ def update_ldap_correlation_state(
                     elif previous.message.operation is _RESPONSE_REQUESTS[operation]:
                         status = LDAPCorrelationStatus.MATCHED
                         candidate = previous.message
-                        if operation not in _SEARCH_CONTINUATIONS:
+                        terminal = operation not in _SEARCH_CONTINUATIONS
+                        summary = _summary_response(previous.request_summary, message, terminal)
+                        if terminal:
                             del pending[response_key]
+                        else:
+                            pending[response_key] = _observation(framing.identity, opposite, previous.message,
+                                                                  previous.status, previous.request, summary)
+                            summary = None
                 if status is LDAPCorrelationStatus.MATCHED:
                     values["matched_response_count"] += 1
                 elif status is LDAPCorrelationStatus.UNMATCHED:
                     values["unmatched_response_count"] += 1
             if status is LDAPCorrelationStatus.AMBIGUOUS:
                 values["ambiguous_observation_count"] += 1
-            observations.append(_observation(framing.identity, direction, message, status, candidate))
+            observations.append(_observation(framing.identity, direction, message, status, candidate, summary))
     if values["unavailable_reason"] is None and any(d.status in (
         LDAPStreamStatus.MALFORMED, LDAPStreamStatus.UNSUPPORTED, LDAPStreamStatus.UNAVAILABLE,
     ) for d in directions):

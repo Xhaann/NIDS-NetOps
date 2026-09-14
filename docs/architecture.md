@@ -141,6 +141,8 @@ Each direction retains at most 64 KiB with no segment history, reordering queue,
 
 Correlation uses the existing prepare/commit boundary. The closed window's `ldap_correlation_state` property exposes a finalized immutable projection with pending requests unresolved, preserving the original admitted state and completed/unmatched observations. Message IDs have no cross-flow or cross-window scope. No LDAP body decoding, payload buffer, attack finding, numerical feature, or detector/evaluation change is introduced.
 
+[Request termination summaries](../src/analysis/README.md#bounded-ldap-request-termination-summaries) extend existing correlation records with an immutable request reference, response count, termination status, and optional terminal-response reference. The existing pending dictionary carries counts across batches; its match/retirement decisions update summaries without another ID map or history scan. Non-terminal Search responses leave the request pending, terminal events emit completed summaries, and finalization preserves unresolved or ambiguous state. The existing pending-key and event-batch bounds remain authoritative; no response list, payload copy, feature projection, or security interpretation is added.
+
 ## Ground truth and evaluation
 
 `GroundTruthRecord(target, polarity)` labels an existing `PacketDetectionIdentity` or `FlowDetectionIdentity` with explicit `POSITIVE` or `NEGATIVE` truth. `GroundTruth` holds separate ordered packet/flow record tuples and rejects duplicate or contradictory targets. Missing truth is unlabeled, never negative. Labels must be supplied independently of actual detector decisions.
