@@ -675,6 +675,8 @@ Unmatched responses, incomplete/malformed messages, and non-correlatable operati
 
 Storage remains bounded by the existing 128 outstanding correlation keys and latest framing/event batch. Each summary stores one request reference, an exact counter, and at most one terminal-response reference; it retains neither a response list nor predecessor summaries. Non-terminal response order remains available in the existing ordered correlation events. Completed summaries leave active storage with that event batch; consumers needing them later must consume each update. There is no completed-request archive or new response-reference limit to truncate counts.
 
+The [offline summary export adapter](../integrations/README.md#offline-ldap-summary-export) consumes established summaries lazily as deterministic UTF-8 JSON Lines records. It preserves supplied order and metadata without changing analysis state or retaining an event history.
+
 Updates occur at existing correlation decisions in constant work per associated response, without rescanning past events. The existing atomic coordinator publication includes the new summary; failed updates preserve previous counts and references. Closed-window correlation projection converts pending request summaries to unresolved, while completed and ambiguous summaries remain unchanged. Published summaries never mutate, and capture closure/failure cannot fabricate a terminal response.
 
 Summaries are observational only. `FlowFeatureSnapshot`, numerical projections, `DetectionFinding`, evaluation, and research contracts are unchanged. No timing, LDAP body semantics, authentication analysis, credential storage, security interpretation, network communication, or attack detection is added.
