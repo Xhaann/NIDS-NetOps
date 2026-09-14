@@ -84,6 +84,10 @@ Protocol analysis and flow admission have different domains. A failed analysis o
 
 `FlowObservationWindowManager` separates repeated windows using an explicit capture-session ID and sequence number. Admitted timestamps must be nondecreasing. Inactivity is checked when another observation for the same flow arrives: a gap greater than or equal to the configured timeout closes the prior window before creating the next. It is not a wall-clock timer or global expiration sweep. End-of-capture closes remaining windows in creation-sequence order. TCP FIN/RST flags do not close windows. The standalone `run_flow_observation_session()` emits closed windows without detection and retains its direct `analyze_packet()` exception behavior.
 
+The manager's positive integer `max_active_windows` defaults to 1,024. New identities at capacity close the least recently observed window for `CAPACITY`, using creation sequence to break capture-timestamp ties. The old state and actual packet timestamps pass through normal closure, LDAP finalization, feature extraction, and detection; the incoming identity starts a new window. Preparation or table-allocation failure preserves the prior active table, timestamp frontier, and sequence number. Capacity selection and candidate table replacement use `O(L)` work/temporary references for limit `L`; there is no second lifecycle or growing eviction history. Active state holds at most `L` windows with existing per-flow buffer bounds. Retained findings and caller-held windows remain outside this bound.
+
+This closes the gap between bounded per-flow protocol state and previously unlimited distinct active identities. Same-flow inactivity checks cannot reclaim flows that never return, making a flow-count bound necessary for captures containing scans or many short conversations. Bounding the shared owner benefits every current and future flow observer without extending protocol parsing. Capacity can shorten observation horizons and change window-based threshold results; its reason remains explicit in existing evidence, and end-to-end reports retain the configured limit. Numerical feature definitions and detector predicates remain unchanged. A capacity closure is a resource boundary, not evidence of an attack or a completed transport connection.
+
 `extract_flow_feature_snapshot()` composes existing numerical extractors without re-parsing bytes. `FlowFeatureSnapshot` stores these fields in their existing order:
 
 1. `observation_window`
@@ -180,7 +184,7 @@ Targets preserve detector configuration/version and packet or flow provenance. T
 | Contract | Meaning |
 | --- | --- |
 | `PacketIntegrityConfiguration`, `FlowVolumeThresholdConfiguration`, `TCPControlThresholdConfiguration` | Detector ID/version plus detector-owned metric/threshold settings where applicable. |
-| `DetectionConfiguration` | Existing packet/volume configurations, optional TCP-control configuration, and positive inactivity timeout. No generated configuration ID; capture-session ID remains a separate execution input. |
+| `DetectionConfiguration` | Existing packet/volume configurations, optional TCP-control configuration, positive inactivity timeout, and positive active-window limit (default 1,024). No generated configuration ID; capture-session ID remains a separate execution input. |
 | `DetectorVersion` | Exact nonblank detector ID and version strings; read-only `version_reference` projections on detector configurations/findings preserve their stored values. |
 | `FeatureContractVersion` | Exact nonblank feature-contract ID/version, distinct from detector implementation identity. |
 | Detection benchmark inputs | Explicit dataset and callable. There is no separate `DetectionBenchmarkConfiguration` class. |

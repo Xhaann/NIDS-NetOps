@@ -9,6 +9,9 @@ from analysis.packet_analysis import PacketAnalysis
 from analysis.ldap_correlation import LDAPCorrelationState, finalize_ldap_correlation_state
 
 
+DEFAULT_MAX_ACTIVE_WINDOWS = 1024
+
+
 class FlowObservationWindowError(ValueError):
     pass
 
@@ -33,6 +36,7 @@ class FlowObservationWindowClosureReason(Enum):
     INACTIVITY = "inactivity"
     CAPTURE_SESSION_END = "capture_session_end"
     EXPLICIT_SEGMENTATION = "explicit_segmentation"
+    CAPACITY = "capacity"
 
 
 @dataclass(frozen=True)
@@ -101,7 +105,10 @@ class FlowObservationWindowUpdate:
 
 
 class FlowObservationWindowManager:
-    def __init__(self, capture_session_id: str, inactivity_timeout: timedelta) -> None:
+    def __init__(
+        self, capture_session_id: str, inactivity_timeout: timedelta,
+        *, max_active_windows: int = DEFAULT_MAX_ACTIVE_WINDOWS,
+    ) -> None:
         if type(capture_session_id) is not str:
             raise TypeError("capture_session_id must be exactly a string")
         if not capture_session_id.strip():
@@ -110,8 +117,13 @@ class FlowObservationWindowManager:
             raise TypeError("inactivity_timeout must be exactly a timedelta")
         if inactivity_timeout <= timedelta(0):
             raise FlowObservationWindowError("inactivity_timeout must be positive")
+        if type(max_active_windows) is not int:
+            raise TypeError("max_active_windows must be exactly an integer")
+        if max_active_windows < 1:
+            raise FlowObservationWindowError("max_active_windows must be positive")
         self._capture_session_id = capture_session_id
         self._inactivity_timeout = inactivity_timeout
+        self._max_active_windows = max_active_windows
         self._next_sequence_number = 0
         self._active: dict[
             FlowIdentity, tuple[FlowObservationWindowKey, FlowStateCoordinator]
@@ -135,6 +147,19 @@ class FlowObservationWindowManager:
             )
         existing = self._active.get(identity)
         if existing is None:
+            if len(self._active) == self._max_active_windows:
+                key, coordinator = min(
+                    self._active.values(),
+                    key=lambda value: (
+                        self._coordinated_state(value[1]).flow_statistics.last_captured_at,
+                        value[0].sequence_number,
+                    ),
+                )
+                closed = FlowObservationWindow(
+                    key, self._coordinated_state(coordinator),
+                    FlowObservationWindowClosureReason.CAPACITY,
+                )
+                return self._record_new(identity, analysis, (closed,))
             return self._record_new(identity, analysis, ())
         key, coordinator = existing
         state = coordinator.state
@@ -214,8 +239,15 @@ class FlowObservationWindowManager:
         )
         active_window = FlowObservationWindow(key, state, None)
         update = FlowObservationWindowUpdate(active_window, closed_windows)
-        self._active[identity] = (key, coordinator)
-        self._next_sequence_number += 1
+        next_sequence_number = self._next_sequence_number + 1
+        if closed_windows and closed_windows[0].closure_reason is FlowObservationWindowClosureReason.CAPACITY:
+            active = self._active.copy()
+            del active[closed_windows[0].identity]
+            active[identity] = (key, coordinator)
+            self._active = active
+        else:
+            self._active[identity] = (key, coordinator)
+        self._next_sequence_number = next_sequence_number
         self._latest_accepted_capture_time = analysis.observation.captured_at
         return update
 

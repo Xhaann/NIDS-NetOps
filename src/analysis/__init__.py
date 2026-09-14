@@ -31,6 +31,7 @@ from analysis.flow_inter_arrival_statistics import (
     update_flow_inter_arrival_statistics,
 )
 from analysis.flow_observation_window import (
+    DEFAULT_MAX_ACTIVE_WINDOWS,
     FlowObservationWindow,
     FlowObservationWindowClosureReason,
     FlowObservationWindowError,
@@ -172,6 +173,7 @@ __all__ = [
     "FlowIdentityError",
     "FlowInterArrivalStatistics",
     "FlowInterArrivalStatisticsError",
+    "DEFAULT_MAX_ACTIVE_WINDOWS",
     "FlowObservationWindow",
     "FlowObservationWindowClosureReason",
     "FlowObservationWindowError",

@@ -47,7 +47,7 @@ class DetectionPipelineTests(unittest.TestCase):
         self.assertIs(application.DetectionPipelineResult, detection_pipeline.DetectionPipelineResult)
         self.assertNotIn("_run_flow_observation_session", application.__all__)
         self.assertEqual(tuple(inspect.signature(run_detection_pipeline).parameters),
-                         ("source", "detection_session", "capture_session_id", "inactivity_timeout"))
+                         ("source", "detection_session", "capture_session_id", "inactivity_timeout", "max_active_windows"))
         with patch.object(DetectionSession, "run_packets") as packets, patch.object(DetectionSession, "run_closed_flows") as flows:
             result = DetectionPipelineResult((), ())
             self.assertEqual((result.packet_findings, result.flow_findings), ((), ()))
@@ -86,8 +86,8 @@ class DetectionPipelineTests(unittest.TestCase):
             outcomes.append(outcome)
             return outcome
 
-        def create_manager(*args):
-            manager = FlowObservationWindowManager(*args)
+        def create_manager(*args, **kwargs):
+            manager = FlowObservationWindowManager(*args, **kwargs)
             managers.append(manager)
             return manager
 

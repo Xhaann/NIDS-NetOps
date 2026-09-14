@@ -242,7 +242,8 @@ class FeatureContractVersionTests(unittest.TestCase):
         value.feature_contract
         self.assertEqual(config, before)
         self.assertEqual(tuple(f.name for f in fields(config)),
-                         ('packet_configuration', 'flow_volume_configuration', 'inactivity_timeout', 'tcp_control_configuration'))
+                         ('packet_configuration', 'flow_volume_configuration', 'inactivity_timeout', 'tcp_control_configuration',
+                          'max_active_windows'))
 
     def test_volume_finding_retains_snapshot_provenance_without_new_fields(self):
         value = snapshot()

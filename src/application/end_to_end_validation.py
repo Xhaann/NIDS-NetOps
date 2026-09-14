@@ -56,6 +56,7 @@ def run_end_to_end_validation(
     pipeline_result = run_detection_pipeline(
         source, detection_session=session, capture_session_id=capture_session_id,
         inactivity_timeout=configuration.inactivity_timeout,
+        max_active_windows=configuration.max_active_windows,
     )
     evaluation = evaluate_detection_result(pipeline_result, expectations)
     metrics = calculate_detection_metrics(evaluation)

@@ -229,18 +229,19 @@ class FlowObservationWindowModelTests(unittest.TestCase):
                 FlowObservationWindowClosureReason.INACTIVITY,
                 FlowObservationWindowClosureReason.CAPTURE_SESSION_END,
                 FlowObservationWindowClosureReason.EXPLICIT_SEGMENTATION,
+                FlowObservationWindowClosureReason.CAPACITY,
             ),
         )
         self.assertEqual(
             tuple(reason.value for reason in FlowObservationWindowClosureReason),
-            ("inactivity", "capture_session_end", "explicit_segmentation"),
+            ("inactivity", "capture_session_end", "explicit_segmentation", "capacity"),
         )
 
 
 class FlowObservationWindowManagerTests(unittest.TestCase):
     def test_admission_and_explicit_closure_do_not_copy_active_flow_entries(self) -> None:
         for count in (128, 512, 2048):
-            manager = FlowObservationWindowManager("capture", timedelta(seconds=5))
+            manager = FlowObservationWindowManager("capture", timedelta(seconds=5), max_active_windows=count)
             packets = tuple(packet_at(0, source_port=10000 + i, protocol=6 if i % 2 else 17)
                             for i in range(count))
             copied_sizes = []

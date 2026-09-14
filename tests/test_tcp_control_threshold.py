@@ -126,7 +126,7 @@ def closed_window(
     ),
     capture_session_id: str = "tcp-control-detector-session",
 ) -> FlowObservationWindow:
-    manager = FlowObservationWindowManager(capture_session_id, timedelta(seconds=5))
+    manager = FlowObservationWindowManager(capture_session_id, timedelta(seconds=5), max_active_windows=1)
     active = None
     for packet in packets:
         active = manager.record(packet).active_window
@@ -137,6 +137,8 @@ def closed_window(
     if closure_reason is FlowObservationWindowClosureReason.EXPLICIT_SEGMENTATION:
         return manager.close(active.identity)
     seconds = (packets[-1].observation.captured_at - TIMESTAMP).total_seconds() + 5
+    if closure_reason is FlowObservationWindowClosureReason.CAPACITY:
+        return manager.record(udp_packet(seconds)).closed_windows[0]
     return manager.record(tcp_packet(seconds)).closed_windows[0]
 
 

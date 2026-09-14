@@ -5,6 +5,8 @@ import json
 import sys
 from typing import Optional, Sequence
 
+from analysis.flow_observation_window import DEFAULT_MAX_ACTIVE_WINDOWS
+
 from application import DetectionPipelineResult, DetectionSession, diagnose_error, run_detection_pipeline
 from capture import CaptureError, PcapPacketSource
 from detection import (
@@ -44,7 +46,8 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="nids-netops", allow_abbrev=False,
                                      formatter_class=partial(argparse.HelpFormatter, width=100),
                                      description="Execute the NIDS detection pipeline on a local classic PCAP file.",
-                                     epilog="Each setting must occur once. Output: finding JSON on stdout. "
+                                     epilog="Required settings must occur once; optional settings at most once. "
+                                            "Output: finding JSON on stdout. "
                                             "Exit 0: completed; 1: capture failure; 2: argument/configuration error. "
                                             "Other execution errors propagate. No live capture or evaluation mode.")
     parser.add_argument("pcap", type=_pcap_path, help="local regular classic PCAP 2.4 input file")
@@ -52,6 +55,9 @@ def _parser() -> argparse.ArgumentParser:
                         help="explicit nonblank observation-window session identity")
     parser.add_argument("--inactivity-timeout-microseconds", required=True, type=_integer, action=_StoreOnce,
                         help="positive inactivity interval in integer microseconds")
+    parser.add_argument("--max-active-windows", type=_integer, action=_StoreOnce,
+                        help=f"positive active-flow limit (default: {DEFAULT_MAX_ACTIVE_WINDOWS}); "
+                             "close the least recently observed window at capacity")
     for prefix in ("packet", "volume", "tcp"):
         parser.add_argument(f"--{prefix}-detector-id", required=True, action=_StoreOnce,
                             help="explicit nonblank detector identity")
@@ -135,6 +141,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if args.inactivity_timeout_microseconds <= 0:
             raise ValueError("inactivity timeout must be positive")
         timeout = timedelta(microseconds=args.inactivity_timeout_microseconds)
+        max_active_windows = DEFAULT_MAX_ACTIVE_WINDOWS if args.max_active_windows is None else args.max_active_windows
+        if max_active_windows < 1:
+            raise ValueError("max_active_windows must be positive")
         metric = FlowVolumeMetric(args.volume_metric)
         rate_metrics = (FlowVolumeMetric.PACKETS_PER_SECOND, FlowVolumeMetric.CAPTURED_BYTES_PER_SECOND,
                         FlowVolumeMetric.ORIGINAL_BYTES_PER_SECOND)
@@ -153,7 +162,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     source = PcapPacketSource(args.pcap)
     try:
         result = run_detection_pipeline(source, detection_session=session,
-                                        capture_session_id=args.capture_session_id, inactivity_timeout=timeout)
+                                        capture_session_id=args.capture_session_id, inactivity_timeout=timeout,
+                                        max_active_windows=max_active_windows)
     except CaptureError as error:
         diagnostic = diagnose_error(error, operation_id="detection-pipeline", message="capture_error")
         sys.stderr.write(json.dumps({"error": diagnostic.message}, separators=(",", ":")) + "\n")

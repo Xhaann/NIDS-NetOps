@@ -121,7 +121,7 @@ def snapshot(
         packet(protocol, 2, reverse=True, captured_length=80, original_length=120),
         packet(protocol, 4, captured_length=100, original_length=140),
     )
-    manager = FlowObservationWindowManager(capture_session_id, timedelta(seconds=5))
+    manager = FlowObservationWindowManager(capture_session_id, timedelta(seconds=5), max_active_windows=1)
     active = None
     for observation in observations:
         active = manager.record(observation).active_window
@@ -133,7 +133,7 @@ def snapshot(
         window = manager.close(active.identity)
     else:
         boundary = packet(
-            protocol,
+            (6 if protocol == 17 else 17) if close_reason is FlowObservationWindowClosureReason.CAPACITY else protocol,
             (observations[-1].observation.captured_at - TIMESTAMP).total_seconds() + 5,
         )
         window = manager.record(boundary).closed_windows[0]

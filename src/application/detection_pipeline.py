@@ -3,7 +3,7 @@ from datetime import timedelta
 from typing import Callable, Optional
 
 from analysis.flow_feature_snapshot import extract_flow_feature_snapshot
-from analysis.flow_observation_window import FlowObservationWindow
+from analysis.flow_observation_window import DEFAULT_MAX_ACTIVE_WINDOWS, FlowObservationWindow
 from analysis.packet_analysis import PacketAnalysis
 from analysis.packet_analysis_outcome import PacketAnalysisOutcome
 from application.capture_execution import run_capture_execution
@@ -32,6 +32,7 @@ def run_detection_pipeline(
     detection_session: DetectionSession,
     capture_session_id: str,
     inactivity_timeout: timedelta,
+    max_active_windows: int = DEFAULT_MAX_ACTIVE_WINDOWS,
 ) -> DetectionPipelineResult:
     if type(detection_session) is not DetectionSession:
         raise TypeError("detection_session must be exactly a DetectionSession")
@@ -66,5 +67,6 @@ def run_detection_pipeline(
         inactivity_timeout=inactivity_timeout,
         closed_window_consumer=detect_closed_window,
         execute_analysis=execute_analysis,
+        max_active_windows=max_active_windows,
     )
     return DetectionPipelineResult(tuple(packet_findings), tuple(flow_findings))

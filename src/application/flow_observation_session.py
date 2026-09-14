@@ -3,6 +3,7 @@ from functools import partial
 from typing import Callable, Optional
 
 from analysis.flow_observation_window import (
+    DEFAULT_MAX_ACTIVE_WINDOWS,
     FlowObservationWindow,
     FlowObservationWindowManager,
 )
@@ -17,6 +18,7 @@ def run_flow_observation_session(
     capture_session_id: str,
     inactivity_timeout: timedelta,
     closed_window_consumer: Callable[[FlowObservationWindow], None],
+    max_active_windows: int = DEFAULT_MAX_ACTIVE_WINDOWS,
 ) -> None:
     _run_flow_observation_session(
         source,
@@ -24,6 +26,7 @@ def run_flow_observation_session(
         inactivity_timeout=inactivity_timeout,
         closed_window_consumer=closed_window_consumer,
         execute_analysis=partial(_execute_capture, analyze_observation=analyze_packet),
+        max_active_windows=max_active_windows,
     )
 
 
@@ -34,10 +37,12 @@ def _run_flow_observation_session(
     inactivity_timeout: timedelta,
     closed_window_consumer: Callable[[FlowObservationWindow], None],
     execute_analysis: Callable[[PacketSource, Callable[[Optional[PacketAnalysis]], None]], None],
+    max_active_windows: int = DEFAULT_MAX_ACTIVE_WINDOWS,
 ) -> None:
     manager = FlowObservationWindowManager(
         capture_session_id,
         inactivity_timeout,
+        max_active_windows=max_active_windows,
     )
     downstream_delivery_failed = False
 

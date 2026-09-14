@@ -162,6 +162,7 @@ class FlowObservationSessionTests(unittest.TestCase):
                 "capture_session_id",
                 "inactivity_timeout",
                 "closed_window_consumer",
+                "max_active_windows",
             ),
         )
         self.assertEqual(signature.return_annotation, None)

@@ -25,6 +25,32 @@ from tests.test_tcp_control_threshold import configuration as control_configurat
 
 
 class CLITests(unittest.TestCase):
+    def test_active_window_limit_default_and_override_reach_pipeline(self):
+        for limit in (None, 1, 4096):
+            arguments = self.arguments() if limit is None else self.arguments(**{'max-active-windows': limit})
+            with patch.object(cli, 'run_detection_pipeline', return_value=DetectionPipelineResult((), ())) as execute:
+                self.assertEqual(self.invoke(arguments)[0], 0)
+            self.assertEqual(execute.call_args.kwargs['max_active_windows'], 1024 if limit is None else limit)
+
+    def test_invalid_or_repeated_active_window_limit_fails_before_acquisition(self):
+        for values in (['0'], ['-1'], ['1.5'], ['invalid'], ['1', '2']):
+            arguments = self.arguments() + [part for value in values for part in ('--max-active-windows', value)]
+            with patch.object(cli, 'PcapPacketSource') as source:
+                self.argument_failure(arguments)
+            source.assert_not_called()
+
+    def test_capacity_closure_is_visible_in_cli_json(self):
+        from tests.test_flow_capacity import capacity_packet
+
+        packets = tuple(capacity_packet(i, i, ipv6=bool(i % 2)) for i in range(3))
+        self.packets(packets, seconds=(0, 1, 2))
+        status, stdout, stderr = self.invoke(self.arguments(**{'max-active-windows': 1}))
+        self.assertEqual((status, stderr), (0, ''))
+        findings = json.loads(stdout)['flow_findings']
+        self.assertEqual([f['raw_evidence']['closure_reason'] for f in findings],
+                         ['capacity', 'capacity', 'capture_session_end'])
+        self.assertEqual([f['raw_evidence']['sequence_number'] for f in findings], [0, 1, 2])
+
     def setUp(self):
         self.directory = TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
@@ -433,7 +459,7 @@ class CLITests(unittest.TestCase):
     def test_help_explains_units_domains_and_exit_contract(self):
         status, stdout, stderr = self.process(["--help"])
         self.assertEqual((status, stderr), (0, ""))
-        for phrase in ("integer microseconds", "nonnegative integer", "UDP-only input", "Each setting must occur once",
+        for phrase in ("integer microseconds", "nonnegative integer", "UDP-only input", "Required settings must occur once",
                        "Exit 0:", "capture failure", "argument/configuration error", "No live capture"):
             self.assertIn(phrase, stdout)
         for option in self.arguments()[1::2]:

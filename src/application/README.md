@@ -10,7 +10,7 @@ The value contracts below are immutable and retain accepted nested objects by re
 
 ### Arguments
 
-Every setting is required exactly once, including TCP settings for UDP-only input. Equal repeated values are still errors. Both `--option value` and `--option=value` work; abbreviations do not. Help/usage use a fixed 100-column width and list metric enum values.
+The settings below are required exactly once, including TCP settings for UDP-only input. Optional settings may occur at most once. Equal repeated values are still errors. Both `--option value` and `--option=value` work; abbreviations do not. Help/usage use a fixed 100-column width and list metric enum values.
 
 | Required settings | Validation |
 | --- | --- |
@@ -21,6 +21,8 @@ Every setting is required exactly once, including TCP settings for UDP-only inpu
 | `--tcp-detector-id`, `--tcp-detector-version`, `--tcp-metric`, `--tcp-threshold` | Integer thresholds; applicability remains pipeline-owned |
 
 Detector configurations validate identities, ranges, and metrics; there are no canonical defaults. PCAP provenance keeps the `local-pcap` default, with no path-derived identity.
+
+Optional `--max-active-windows` accepts a positive integer and defaults to 1,024. It is validated before source construction and passed to the existing pipeline manager. At capacity, new identities close the least recently observed window, with creation sequence breaking timestamp ties. Existing flow finding JSON exposes `"closure_reason":"capacity"`; no finding field is added.
 
 Blank/NUL paths and invalid numeric arguments fail before acquisition. Other path strings pass unchanged: the CLI does not open, stat, repair, or copy files. Capture owns missing/unreadable paths, directories, unsupported formats, and corrupt records, all reported through `CaptureError`. An empty valid PCAP succeeds; a zero-byte file fails for lack of a header.
 
@@ -97,7 +99,7 @@ Iteration/orchestration failures propagate before the next input, with no retry 
 
 ## Explicit detection pipeline
 
-[detection_pipeline.py](detection_pipeline.py) exports `run_detection_pipeline(source, *, detection_session, capture_session_id, inactivity_timeout) -> DetectionPipelineResult`. It accepts a `PacketSource` and exact `DetectionSession`, reusing its configuration. Construction of sources or sessions never triggers detection.
+[detection_pipeline.py](detection_pipeline.py) exports `run_detection_pipeline(source, *, detection_session, capture_session_id, inactivity_timeout, max_active_windows=1024) -> DetectionPipelineResult`. It accepts a `PacketSource` and exact `DetectionSession`, reusing its configuration. The positive integer active-window limit passes to the shared lifecycle manager and is validated before acquisition. Construction of sources or sessions never triggers detection.
 
 A private lifecycle runner shared with `run_flow_observation_session()` owns the window manager, admission, and finalization. The standalone session keeps `analyze_packet()`; the pipeline calls `run_capture_execution()` once. Each outcome reaches `DetectionSession.run_packets()` before its analysis enters flow admission. Detection neither receives raw bytes nor repeats analysis.
 
@@ -117,9 +119,9 @@ Earlier local findings are not rolled back or published on failure. The pipeline
 
 ## Flow observation sessions
 
-[flow_observation_session.py](flow_observation_session.py) exports `run_flow_observation_session(source, *, capture_session_id, inactivity_timeout, closed_window_consumer) -> None`. Each call creates one `FlowObservationWindowManager`, runs the source once through the capture primitive/`consume()`, analyzes each `PacketObservation` with `analyze_packet()`, and passes the `PacketAnalysis` unchanged to the manager. Capture-session IDs pass unchanged; uniqueness outside the call is caller-defined, never generated.
+[flow_observation_session.py](flow_observation_session.py) exports `run_flow_observation_session(source, *, capture_session_id, inactivity_timeout, closed_window_consumer, max_active_windows=1024) -> None`. Each call creates one `FlowObservationWindowManager` with the positive integer limit, runs the source once through the capture primitive/`consume()`, analyzes each `PacketObservation` with `analyze_packet()`, and passes the `PacketAnalysis` unchanged to the manager. Capture-session IDs pass unchanged; uniqueness outside the call is caller-defined, never generated.
 
-Inactivity-closed windows are delivered in `record()` order before requesting another observation. After `source.stop()` is attempted, `end_capture_session()` closes and delivers remaining windows in manager order. Active windows are not delivered; empty sessions emit none.
+Inactivity and capacity closures are delivered in `record()` order before requesting another observation. After `source.stop()` is attempted, `end_capture_session()` closes and delivers remaining windows in manager order. Active windows are not delivered; empty sessions emit none. Capacity closures follow the same feature/detector path as other closures, preserving TCP volume-then-control and UDP volume-only ordering.
 
 Delivery is synchronous and at most once, providing backpressure. A failed consumer is never called again, attempted windows are not re-emitted, and remaining active windows are still finalized. No closed-window history or output queue is retained.
 
@@ -246,11 +248,11 @@ An experiment describes a dataset and operation, not a run or result. It contain
 
 ## Deterministic configuration representation
 
-`DetectionConfiguration(packet_configuration, flow_volume_configuration, inactivity_timeout, tcp_control_configuration=None)` groups a run's detector settings and window timeout. It requires exact `PacketIntegrityConfiguration`, `FlowVolumeThresholdConfiguration`, optional `TCPControlThresholdConfiguration`, and positive `timedelta` values. Wrong types raise `TypeError`; nonpositive duration raises `ValueError`. The timeout controls closure/detector inputs and has no default or rounding.
+`DetectionConfiguration(packet_configuration, flow_volume_configuration, inactivity_timeout, tcp_control_configuration=None, max_active_windows=1024)` groups a run's detector settings, window timeout, and active-window limit. It requires exact `PacketIntegrityConfiguration`, `FlowVolumeThresholdConfiguration`, optional `TCPControlThresholdConfiguration`, positive `timedelta`, and exact positive integer limit values. Wrong types raise `TypeError`; nonpositive duration or limit raises `ValueError`. The timeout controls closure/detector inputs and has no default or rounding. End-to-end validation passes the limit to the pipeline, and the report retains it as part of the supplied configuration.
 
 It retains the supplied immutable values. Detector configurations still validate IDs, versions, metrics, and thresholds; formulas, applicability, and order are not duplicated. TCP configuration may be absent for non-TCP workloads, but remains required when evaluating a closed TCP flow.
 
-Equality covers all four settings. Capture path/source and session identity remain per-run inputs, not reusable settings. There is no separate configuration ID/version, runtime state, session/window construction, or execution method. Pass its fields to session/pipeline APIs explicitly; datasets, experiments, and benchmarks are not automatically connected.
+Equality covers all five settings. Capture path/source and session identity remain per-run inputs, not reusable settings. There is no separate configuration ID/version, runtime state, session/window construction, or execution method. Pass its fields to session/pipeline APIs explicitly; datasets, experiments, and benchmarks are not automatically connected.
 
 Configuration management means representation and validation only: no file/environment loading, discovery, merging, registries, or persistence. The CLI parses settings; `EvaluationReport` can retain them. Detector configurations expose an [explicit detector version reference](../detection/README.md#explicit-detector-version-references) through `version_reference`, keeping stored strings/equality unchanged. The [feature contract reference](../analysis/README.md#explicit-feature-contract-version) remains separate, static snapshot provenance; configuration introduces no version discovery or feature version.
 

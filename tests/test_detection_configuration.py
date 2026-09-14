@@ -262,7 +262,8 @@ class DetectionConfigurationTests(unittest.TestCase):
     def test_configuration_exposes_only_semantic_settings(self):
         value = configuration()
         self.assertEqual(tuple(field.name for field in fields(value)),
-                         ('packet_configuration', 'flow_volume_configuration', 'inactivity_timeout', 'tcp_control_configuration'))
+                         ('packet_configuration', 'flow_volume_configuration', 'inactivity_timeout', 'tcp_control_configuration',
+                          'max_active_windows'))
         self.assertFalse(callable(value))
 
     def test_construction_and_inspection_do_not_execute_or_access_external_state(self):
