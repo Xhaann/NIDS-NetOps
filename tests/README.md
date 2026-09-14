@@ -20,6 +20,7 @@ No installation, third-party dependencies, network services, live-capture privil
 | --- | --- |
 | Capture and lifecycle | [PCAP source](test_pcap_packet_source.py), [capture execution](test_capture_execution.py). |
 | Protocol and fragment boundaries | [packet outcomes](test_packet_analysis_outcome.py), [IPv6 transport](test_ipv6_transport.py), [fragmentation](test_ipv6_fragmentation.py), [ICMPv6](test_icmpv6.py). |
+| Directional TCP stream observation | [Sequence contract](test_tcp_stream_observation.py) and [flow/LDAP integration](test_tcp_stream_integration.py): exact bytes/ranges, wraparound, gaps, overlaps, controls, resource limits, directional isolation, publication failures, PCAP parity, and structural determinism. |
 | LDAP protocol foundation | [Envelope parsing](test_ldap.py) and [flow integration](test_ldap_flow_statistics.py): operation tags, truncation, BER bounds, controls, resource limits, coalesced and split observations, IPv4/IPv6, immutable publication, PCAP/detection parity, and hash-seed/timezone determinism. |
 | Flow and feature semantics | [observation windows](test_flow_observation_window.py), [snapshots](test_flow_feature_snapshot.py), [IPv6 features](test_ipv6_features.py). |
 | Detection and application composition | [orchestration](test_detector_orchestration.py), [pipeline](test_detection_pipeline.py), [end-to-end validation](test_end_to_end_validation.py). |

@@ -12,6 +12,7 @@ from analysis.flow_packet_size_statistics import FlowPacketSizeStatistics, updat
 from analysis.flow_statistics import FlowStatistics, update_flow_statistics
 from analysis.ldap_flow_statistics import LDAPFlowStatistics, update_ldap_flow_statistics
 from analysis.packet_analysis import PacketAnalysis
+from analysis.tcp_stream_observation import TCPStreamState, update_tcp_stream_state
 from analysis.tcp_control_statistics import TCPControlStatistics, update_tcp_control_statistics
 
 
@@ -28,6 +29,7 @@ class CoordinatedFlowState:
     directional_inter_arrival_statistics: DirectionalInterArrivalStatistics
     tcp_control_statistics: Optional[TCPControlStatistics]
     ldap_statistics: Optional[LDAPFlowStatistics] = None
+    tcp_stream_state: Optional[TCPStreamState] = None
 
     def __post_init__(self) -> None:
         for name, value, expected in (
@@ -40,6 +42,12 @@ class CoordinatedFlowState:
         ):
             if type(value) is not expected:
                 raise TypeError(f"{name} must be exactly a {expected.__name__}")
+        streams = self.tcp_stream_state
+        if streams is not None:
+            if type(streams) is not TCPStreamState:
+                raise TypeError("tcp_stream_state must be exactly a TCPStreamState or None")
+            if streams.identity != self.identity:
+                raise FlowCoordinationError("TCP stream identity must match")
         ldap = self.ldap_statistics
         if ldap is not None:
             if type(ldap) is not LDAPFlowStatistics:
@@ -164,6 +172,9 @@ class FlowStateCoordinator:
             ) if identity.protocol == 6 else None,
             ldap_statistics=update_ldap_flow_statistics(
                 None if current is None else current.ldap_statistics, analysis, identity,
+            ) if identity.protocol == 6 else None,
+            tcp_stream_state=update_tcp_stream_state(
+                None if current is None else current.tcp_stream_state, analysis, identity,
             ) if identity.protocol == 6 else None,
         )
 

@@ -34,7 +34,7 @@ example = ResearchExample(
 )
 ```
 
-The immutable window retains its session/window key, canonical flow identity, first/last admitted timestamps, closure reason, and coordinated state. No fields are copied into the 49-value projection. Feature names, values, version, `None`, and zero semantics stay unchanged; no feature is recalculated.
+The immutable window retains its session/window key, canonical flow identity, first/last admitted timestamps, closure reason, and coordinated state, including optional bounded TCP payload prefixes. Retaining window context therefore retains those application bytes. No fields are copied into the 49-value projection. Feature names, values, version, `None`, and zero semantics stay unchanged; no feature is recalculated.
 
 Wrong context types, including subclasses, raise `TypeError`; active windows raise `ValueError`. Validation checks projection, truth, then context. It never closes a window or changes flow state. All existing closed-window reasons are accepted, including explicit segmentation. The recommended inactivity/successful-session-end population remains a study choice, not a filtering policy in this contract.
 

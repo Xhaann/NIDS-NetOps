@@ -69,7 +69,7 @@ Explicit GroundTruth -> expectations -> evaluate_detection_result
 | IPv4 | Header/declared-length validation, TCP/UDP/ICMPv4 structural decoding, IPv4 and supported transport checksum validation. Unknown IP protocols retain network-layer analysis without a transport model. |
 | IPv6 | Fixed 40-byte header and declared payload bounds; packed 16-byte addresses. Zero Payload Length is literal; jumbogram interpretation is absent. |
 | IPv6 extension headers | Bounded traversal of Hop-by-Hop Options (0), Routing (43), Destination Options (60), and Fragment (44), retaining order, bytes, offsets, and Next Header links. Option bodies/routing semantics are not interpreted. AH/ESP are not parsed; No Next Header (59) terminates traversal. |
-| IPv6 TCP/UDP | Existing transport models decode at the validated terminal boundary, without IPv6 checksum validation. No application semantics or stream reconstruction; separate LDAP envelope observation uses the decoded TCP payload. |
+| IPv6 TCP/UDP | Existing transport models decode at the validated terminal boundary, without IPv6 checksum validation. No application semantics or general reassembly; separate LDAP and bounded directional stream observation use decoded TCP payloads. |
 | IPv6 fragments | Packet-local offset, M flag, identification, and reserved fields are retained. No buffering, reassembly, cross-packet correlation, or fragmentation-attack detection. |
 | ICMPv6 | Common four-byte Type/Code/Checksum header and opaque body, only for unfragmented or whole-datagram fragment context. No checksum validation, subtype/embedded-packet parsing, or Neighbor Discovery. |
 | Flow admission | Decoded IPv4/IPv6 TCP and UDP only. ICMPv4/ICMPv6 and unsupported upper-layer analyses are not flow inputs. |
@@ -127,7 +127,13 @@ Failures propagate without retries or a partial returned pipeline result. Source
 
 The [LDAP foundation](../src/analysis/README.md#ldap-protocol-observations) observes bounded BER message envelopes through `PacketAnalysis.ldap` and accumulates optional immutable `LDAPFlowStatistics` in `CoordinatedFlowState`. `FlowFeatureSnapshot.ldap_statistics` exposes that same aggregate without changing numerical features, detector predicates, or research projections. Existing TCP parsing, flow admission, and publication ownership remain authoritative for both IP families.
 
-Automatic candidate selection uses TCP port 389 plus a leading SEQUENCE tag, excluding port 636. Multiple envelopes in one payload are separated by declared BER lengths. Split messages remain incomplete; no TCP sequence continuity, reassembly, or unique-message counting is claimed. Malformed/unsupported observations do not become packet-analysis failures or security findings. Operation and control contents, encrypted LDAP, and LDAP-specific attack detection remain outside scope.
+Automatic candidate selection uses TCP port 389 plus a leading SEQUENCE tag, excluding port 636. Multiple envelopes in one payload are separated by declared BER lengths. Packet-local split observations remain incomplete. Explicit consumers can pass the bounded contiguous prefix described below to the same parser; packet-local counts remain observation counts. Malformed/unsupported observations do not become packet-analysis failures or security findings. Operation and control contents, encrypted LDAP, and LDAP-specific attack detection remain outside scope.
+
+## Directional TCP payload continuity
+
+The [bounded stream contract](../src/analysis/README.md#bounded-directional-tcp-stream-observation) is an analysis component published atomically in `CoordinatedFlowState.tcp_stream_state`. It reuses canonical flow identity/direction and decoded TCP payload/sequence values. Independent forward/reverse prefixes append only contiguous bytes, suppress identical contained retransmissions, and stop on gaps, unresolved overlaps, ambiguous ordering, incomplete fragments, capacity limits, or observed control boundaries. It creates no parallel flow owner or lifecycle.
+
+Each direction retains at most 64 KiB with no segment history, reordering queue, or gap repair. Unavailable continuation is explicit and never silently resumes within the window. Existing finalization and publication-failure guarantees apply to the bytes and sequence frontier together. Numerical features and detection remain unchanged; retained windows, including those associated with research examples, now also retain bounded application bytes. The prefix can supply the existing LDAP parser without adding a stream-aware LDAP counter or detector.
 
 ## Ground truth and evaluation
 

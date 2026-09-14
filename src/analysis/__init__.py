@@ -84,6 +84,14 @@ from analysis.packet_analysis_outcome import (
 )
 from analysis.packet_size_features import PacketSizeFeatures, PacketSizeFeaturesError, extract_packet_size_features
 from analysis.tcp import TCPDecodeError, TCPPacket, decode_tcp
+from analysis.tcp_stream_observation import (
+    TCP_STREAM_MAX_BYTES,
+    TCPPayloadRelation,
+    TCPStreamObservation,
+    TCPStreamState,
+    TCPStreamStatus,
+    update_tcp_stream_state,
+)
 from analysis.tcp_checksum import TCPChecksumValidationError, validate_tcp_checksum
 from analysis.tcp_control_statistics import (
     TCPControlStatistics,
@@ -94,6 +102,12 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "TCP_STREAM_MAX_BYTES",
+    "TCPPayloadRelation",
+    "TCPStreamObservation",
+    "TCPStreamState",
+    "TCPStreamStatus",
+    "update_tcp_stream_state",
     "LDAP_MAX_MESSAGES",
     "LDAP_MAX_PAYLOAD_BYTES",
     "LDAPMessageObservation",

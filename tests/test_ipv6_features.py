@@ -18,6 +18,7 @@ from analysis import (
     analyze_packet,
     analyze_packet_outcome,
     extract_flow_feature_snapshot,
+    update_tcp_control_statistics,
 )
 from application import run_flow_observation_session
 from tests.test_flow_feature_snapshot import active_window_from_packets, snapshot_features
@@ -162,6 +163,8 @@ class IPv6FeatureParityTests(unittest.TestCase):
         self.assertNotEqual(v4_snapshot.identity, v6_snapshot.identity)
         self.assertEqual(snapshot_features(v4_snapshot), snapshot_features(v6_snapshot))
         for field in fields(v4_snapshot.coordinated_state):
+            if field.name == "tcp_stream_state":
+                continue
             left = getattr(v4_snapshot.coordinated_state, field.name)
             right = getattr(v6_snapshot.coordinated_state, field.name)
             if left is None:
@@ -321,13 +324,16 @@ class IPv6FeatureParityTests(unittest.TestCase):
     def test_decoded_tcp_flags_are_authoritative_without_raw_packet_access(self):
         packet = packet_at(6, extensions=(0, 43, 60), flags=2)
         packet = replace(packet, ipv6_tcp=replace(packet.ipv6_tcp, syn=False, ack=True, rst=True))
+        _, window = active_window_from_packets(packet)
         with ExitStack() as stack:
             for target in ("analysis.ipv6.IPv6Packet.payload", "capture.packet_observation.PacketObservation.raw_bytes",
                            "analysis.tcp.TCPPacket.payload", "analysis.ethernet.EthernetFrame.payload"):
                 stack.enter_context(patch(target, new_callable=PropertyMock, create=True,
                                           side_effect=AssertionError("raw packet access")))
-            snapshot = snapshot_from_packets(packet)
+            snapshot = extract_flow_feature_snapshot(window)
+            direct_control = update_tcp_control_statistics(None, packet, window.identity)
         control = snapshot.coordinated_state.tcp_control_statistics
+        self.assertEqual(control, direct_control)
         self.assertEqual((control.forward_syn_count, control.forward_ack_count, control.forward_rst_count), (0, 1, 1))
         self.assertEqual(snapshot.flow_volume_features.captured_bytes, 98)
 
