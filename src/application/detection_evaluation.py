@@ -211,12 +211,7 @@ def _indexable_identity(identity: _Identity) -> bool:
     )
 
 
-def _evaluate_channel(findings: tuple, expectations: tuple, packet: bool) -> tuple[DetectionEvaluationEntry, ...]:
-    identities = []
-    for index, finding in enumerate(findings):
-        if (type(finding.raw_evidence) is PacketIntegrityEvidence) != packet:
-            raise ValueError("pipeline finding belongs to the other finding channel")
-        identities.append(detection_identity(finding, packet_index=index if packet else None))
+def _match_findings(findings, expectations, identities, used=()):
     finding_indices = None
     if all(_indexable_identity(identity) for identity in identities) and all(
         _indexable_identity(expectation.identity) for expectation in expectations
@@ -226,7 +221,7 @@ def _evaluate_channel(findings: tuple, expectations: tuple, packet: bool) -> tup
             key = (identity, findings[actual_index].decision.value)
             finding_indices.setdefault(key, deque()).append(actual_index)
     assignments = {}
-    used = set()
+    used = set(used)
     for phase in ("required", "opposite", "not_evaluable"):
         for expected_index, expectation in enumerate(expectations):
             if expected_index in used:
@@ -247,6 +242,16 @@ def _evaluate_channel(findings: tuple, expectations: tuple, packet: bool) -> tup
                     actual_index = candidates.popleft()
                     assignments[actual_index] = expected_index
                     used.add(expected_index)
+    return assignments, used
+
+
+def _evaluate_channel(findings: tuple, expectations: tuple, packet: bool) -> tuple[DetectionEvaluationEntry, ...]:
+    identities = []
+    for index, finding in enumerate(findings):
+        if (type(finding.raw_evidence) is PacketIntegrityEvidence) != packet:
+            raise ValueError("pipeline finding belongs to the other finding channel")
+        identities.append(detection_identity(finding, packet_index=index if packet else None))
+    assignments, used = _match_findings(findings, expectations, identities)
     entries = []
     for actual_index, finding in enumerate(findings):
         expected_index = assignments.get(actual_index)

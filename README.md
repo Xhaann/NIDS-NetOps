@@ -12,6 +12,8 @@ For incremental processing of large captures, [`run_detection_stream()`](src/app
 
 `evaluate_detection_result()` compares findings with ground-truth expectations; `calculate_detection_metrics()` aggregates classifications. `EvaluationReport` holds computed results and metrics. `run_end_to_end_validation()` connects these steps through report construction.
 
+[`IncrementalDetectionEvaluator`](src/application/README.md#incremental-detection-evaluation) evaluates the same finding objects downstream of the detection stream, using explicit existing expectations. It delivers settled entries without collecting a complete detection result. Exact historical matching can defer a flow suffix until explicit finalization, so memory is proportional to expectations plus that suffix, not necessarily constant. Metrics and reporting remain separate collecting boundaries.
+
 Supporting contracts:
 
 - `DetectionDataset`: ordered evaluation cases; `run_detection_benchmark()` calls an operation once per case.

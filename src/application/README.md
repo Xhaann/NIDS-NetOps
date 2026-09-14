@@ -214,6 +214,65 @@ Matching is one-to-one and multiplicity-sensitive. Within each channel, expectat
 
 Constructors reject wrong types, mutable collections, invalid metadata, inconsistent entries, and mixed channels with `TypeError`/`ValueError`. Assignments remain local; exceptions propagate with no retry or partial result. Evaluation reads no packet bytes and calculates no metrics; the [metrics boundary](#detection-evaluation-metrics) consumes completed classifications. Dataset ingestion, experiment tracking, persistence, ML, correlation, alerting, and CLI evaluation are unimplemented.
 
+## Incremental detection evaluation
+
+`IncrementalDetectionEvaluator(expected, *, packet_evaluation_consumer, flow_evaluation_consumer)` consumes the existing exact `ExpectedDetectionResult`. Both consumers are required synchronous callables receiving existing immutable `DetectionEvaluationEntry` objects. `record_packet(finding)` and `record_flow(finding)` accept the exact `DetectionFinding` objects supplied by `run_detection_stream()`, return `None`, and maintain separate zero-based actual indices. The evaluator owns no capture, detector, protocol parser, flow state, metric calculation, or serialization. It preserves references to findings and expectations without copying payloads or creating labels. The collecting `evaluate_detection_result()` keeps its public signature, validation order, result construction, and exception behavior; both paths share the extracted three-phase assignment routine and classification function.
+
+Matching remains expected-decision first, opposite binary decision second, then `NOT_EVALUABLE`, in expectation order within each phase. Duplicate expectations require distinct findings; existing expectation validation is unchanged. Extra `MATCH` findings are false positives, while extra `NO_MATCH`/`NOT_EVALUABLE` findings are unclassified. A positive expectation paired with `NOT_EVALUABLE` remains a false negative; a negative one remains unclassified. Missing positives become false negatives; missing negatives remain unclassified. These historical semantics are unchanged.
+
+`ExpectedDetectionResult` historically checks contradictory expectations using dictionary keys. Custom address subclasses that compare equal but supply different hashes can bypass that check. This existing validation limitation is not corrected here; accepted inputs preserve the same equality-fallback matching behavior.
+
+Packet identities include their actual-result position, so a later packet finding cannot compete for the same target: packet entries can be delivered immediately, including opposite and unavailable decisions. A flow entry is settled when it matches the required decision or has no remaining expectation to match. Such entries are delivered immediately until an ambiguous entry is encountered. A matching opposite or unavailable flow finding can be displaced by a later preferred finding with the same identity. That entry and the subsequent flow suffix are therefore deferred until `finish()`, even when some later entries are individually settled. For example, with one positive expectation and flow decisions `NO_MATCH, MATCH`, the first finding must remain unmatched and the second must satisfy the expectation. Assigning the expectation to the first arrival would change the established result.
+
+Per-channel delivery preserves actual finding order, followed by unmatched expectations in their original order. Packet evaluation continues while a flow suffix is deferred. `finish()` emits missing packet expectations, then evaluates/delivers the deferred flow suffix and missing flow expectations. There is no new cross-channel timestamp sort or combined evaluation result order. Collecting the two consumer channels into `DetectionEvaluationResult` after successful finalization produces the same entries, indices, classifications, and references as the collecting evaluator on the same channel sequences and expectations.
+
+`finished` is a read-only boolean, true only after all final deliveries succeed. `pending_flow_count` reports the number of deferred findings still awaiting delivery. Successful `finish()` returns `None`; repeating it emits nothing. Recording after completion and aborting a completed evaluator raise `ValueError`. Reentrant record/finalize/abort calls from a consumer are rejected. Callback return values are ignored.
+
+Invalid constructor inputs raise `TypeError` before evaluation. Invalid findings, wrong channels, identity validation, matching, entry construction, and consumer failures propagate unchanged. A failure during recording or finalization makes the evaluator terminal, clears deferred finding/identity references, and leaves `finished` false. Subsequent record/finalize calls raise `ValueError`; there is no retry or rollback of earlier consumer effects. In particular, finalization failure can leave a delivered prefix and never certifies a completed evaluation. Caller-retained exceptions can still retain local references through tracebacks.
+
+Only call `finish()` after successful detection-stream completion. The evaluator cannot infer whether an external source completed or failed. `abort()` discards deferred state without emitting missing expectations and prevents subsequent finalization; it is idempotent after abort/failure. On an upstream capture/detector/publication error, the caller aborts and propagates that error. Findings delivered during the detection stream's normal failure cleanup remain partial observations. A fresh evaluator/source can replay them, potentially repeating previously delivered effects.
+
+Resource ownership is explicit. For `E` supplied expectations and a deferred flow suffix of length `B`, retained evaluation state is `O(E + B)`: ordered expectation references, an index of ordinary identities, used expectation indices, channel counters, and the deferred original findings with derived matching identities. Packet findings and settled flow prefixes are not retained after delivery. Ordinary expectation lookup is indexed; custom address subclasses reuse the established equality fallback without hashing those addresses. Ordinary pre-deferral matching is amortized constant work per finding after `O(E)` index construction. Deferred final matching is `O(E + B)` for ordinary identities; the historical fallback can require `O(E * B)` work, or `O(E)` for an immediate finding. No repeated matching of an accumulated suffix occurs before finalization.
+
+`B` has no fixed cap and may be the entire remaining flow stream: exact preference matching and output order can require waiting for a preferred finding at the end. This removes mandatory full-result accumulation, not the information dependency inherent in historical matching. Deferred findings retain their existing evidence graphs, including any bounded TCP bytes. No extra payload copies or history beyond that suffix are introduced. Caller-owned input, output collections, and exceptions remain outside the resource guarantee. Callers can observe `pending_flow_count` and abort if their own resource budget is exceeded; the evaluator never silently drops findings or changes classifications to meet a budget.
+
+Ground truth stays external. As in `run_end_to_end_validation()`, callers adapt ordered `GroundTruth` records into existing expectations without deriving polarity from findings:
+
+```python
+from application import (
+    ExpectedDetection, ExpectedDetectionResult, GroundTruthPolarity,
+    IncrementalDetectionEvaluator, run_detection_stream,
+)
+
+expected = ExpectedDetectionResult(
+    tuple(ExpectedDetection(record.target, record.polarity is GroundTruthPolarity.POSITIVE)
+          for record in truth.packet_records),
+    tuple(ExpectedDetection(record.target, record.polarity is GroundTruthPolarity.POSITIVE)
+          for record in truth.flow_records),
+)
+evaluator = IncrementalDetectionEvaluator(
+    expected,
+    packet_evaluation_consumer=consume_packet_entry,
+    flow_evaluation_consumer=consume_flow_entry,
+)
+try:
+    run_detection_stream(
+        source, detection_session=session, capture_session_id=session_id,
+        inactivity_timeout=timeout,
+        packet_finding_consumer=evaluator.record_packet,
+        flow_finding_consumer=evaluator.record_flow,
+    )
+except BaseException:
+    evaluator.abort()
+    raise
+else:
+    evaluator.finish()
+```
+
+The example assumes caller-supplied truth, consumers, source, and detection configuration. `GroundTruth` still rejects duplicate targets, while `ExpectedDetectionResult` retains its existing same-polarity multiplicity. Passing `GroundTruth` directly in place of expectations is rejected. Neither representation is inferred or redesigned.
+
+Metrics remain separate: `calculate_detection_metrics()` still accepts a completed `DetectionEvaluationResult`, and its definitions are unchanged. Consumers may explicitly collect entries into that result for existing metrics/reporting, accepting the associated retention cost. CLI output, `EvaluationReport`, and `run_end_to_end_validation()` remain collecting paths. Incremental evaluation creates no persistent archive, export format, research projection, or ML dependency.
+
 ## Explicit ground truth
 
 [ground_truth.py](ground_truth.py) exports:
