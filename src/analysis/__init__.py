@@ -75,6 +75,12 @@ from analysis.ldap import (
     analyze_ldap_payload,
 )
 from analysis.ldap_flow_statistics import LDAPFlowStatistics, update_ldap_flow_statistics
+from analysis.ldap_stream_framing import (
+    LDAPStreamObservation,
+    LDAPStreamState,
+    LDAPStreamStatus,
+    update_ldap_stream_state,
+)
 from analysis.packet_analysis import PacketAnalysis, PacketAnalysisError, analyze_packet
 from analysis.packet_analysis_outcome import (
     PacketAnalysisFailureClassification,
@@ -91,6 +97,7 @@ from analysis.tcp_stream_observation import (
     TCPStreamState,
     TCPStreamStatus,
     update_tcp_stream_state,
+    consume_tcp_stream,
 )
 from analysis.tcp_checksum import TCPChecksumValidationError, validate_tcp_checksum
 from analysis.tcp_control_statistics import (
@@ -102,6 +109,11 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "LDAPStreamObservation",
+    "LDAPStreamState",
+    "LDAPStreamStatus",
+    "update_ldap_stream_state",
+    "consume_tcp_stream",
     "TCP_STREAM_MAX_BYTES",
     "TCPPayloadRelation",
     "TCPStreamObservation",

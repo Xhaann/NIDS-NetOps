@@ -110,8 +110,8 @@ def _envelope(payload: bytes, position: int, available: int,
     return tag, start, start + length
 
 
-def _message(payload: bytes, offset: int, available: int) -> LDAPMessageObservation:
-    values = dict(offset=offset, status=LDAPMessageStatus.COMPLETE, reason=None,
+def _message(payload: bytes, offset: int, available: int, base_offset: int = 0) -> LDAPMessageObservation:
+    values = dict(offset=base_offset + offset, status=LDAPMessageStatus.COMPLETE, reason=None,
                   message_length=None, envelope_complete=False, message_id=None,
                   operation_tag=None, operation=None, operation_length=None,
                   controls_present=None, controls_length=None)

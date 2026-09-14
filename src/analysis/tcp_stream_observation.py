@@ -52,6 +52,8 @@ class TCPStreamObservation:
     last_payload_sequence: int
     last_payload_length: int
     last_sequence_delta: Optional[int]
+    buffer_offset: int
+    consumed_length: int
 
     def __init__(self) -> None:
         raise TypeError("use update_tcp_stream_state(current, analysis, identity)")
@@ -61,6 +63,16 @@ class TCPStreamObservation:
         if self.status in (TCPStreamStatus.OPEN, TCPStreamStatus.FIN, TCPStreamStatus.RESET):
             return self.payload
         return None
+
+    @property
+    def consumed_offset(self) -> int:
+        return self.buffer_offset + self.consumed_length
+
+    @property
+    def unconsumed_payload(self) -> Optional[bytes]:
+        if self.contiguous_payload is None:
+            return None
+        return self.payload[self.consumed_length:]
 
     @property
     def payload_length(self) -> int:
@@ -132,6 +144,12 @@ def _observe_payload(values: dict, tcp: TCPPacket) -> None:
     values["last_relation"] = (
         TCPPayloadRelation.FIRST if values["start_sequence"] is None else TCPPayloadRelation.CONTIGUOUS
     )
+    if len(values["payload"]) + len(tcp.payload) > TCP_STREAM_MAX_BYTES and values["consumed_length"]:
+        consumed = values["consumed_length"]
+        values["payload"] = values["payload"][consumed:]
+        values["start_sequence"] = (values["start_sequence"] + consumed) % _SEQUENCE_MODULUS
+        values["buffer_offset"] += consumed
+        values["consumed_length"] = 0
     if len(values["payload"]) + len(tcp.payload) > TCP_STREAM_MAX_BYTES:
         values["status"] = TCPStreamStatus.LIMIT_EXCEEDED
         return
@@ -146,7 +164,8 @@ def _observe_segment(
     direction: FlowDirection, fragmented: bool,
 ) -> TCPStreamObservation:
     values = dict(identity=identity, direction=direction, payload=b"", start_sequence=None,
-                  next_sequence=None, syn_sequence=None, status=TCPStreamStatus.OPEN)
+                  next_sequence=None, syn_sequence=None, status=TCPStreamStatus.OPEN,
+                  buffer_offset=0, consumed_length=0)
     if current is not None:
         values.update(vars(current))
     sequence = (tcp.sequence_number + int(tcp.syn)) % _SEQUENCE_MODULUS
@@ -215,3 +234,20 @@ def update_tcp_stream_state(
     else:
         reverse = _observe_segment(reverse, tcp, identity, direction, fragmented)
     return TCPStreamState(identity, forward, reverse)
+
+
+def consume_tcp_stream(stream: TCPStreamObservation, byte_count: int) -> TCPStreamObservation:
+    if type(stream) is not TCPStreamObservation:
+        raise TypeError("stream must be exactly a TCPStreamObservation")
+    if type(byte_count) is not int:
+        raise TypeError("byte_count must be exactly an integer")
+    if stream.contiguous_payload is None:
+        raise ValueError("cannot consume an unavailable stream")
+    if not 0 <= byte_count <= len(stream.payload) - stream.consumed_length:
+        raise ValueError("byte_count must fit the unconsumed payload")
+    if byte_count == 0:
+        return stream
+    result = object.__new__(TCPStreamObservation)
+    for name, value in vars(stream).items():
+        object.__setattr__(result, name, value + byte_count if name == "consumed_length" else value)
+    return result

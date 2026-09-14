@@ -11,6 +11,7 @@ from analysis.flow_inter_arrival_statistics import FlowInterArrivalStatistics, u
 from analysis.flow_packet_size_statistics import FlowPacketSizeStatistics, update_flow_packet_size_statistics
 from analysis.flow_statistics import FlowStatistics, update_flow_statistics
 from analysis.ldap_flow_statistics import LDAPFlowStatistics, update_ldap_flow_statistics
+from analysis.ldap_stream_framing import LDAPStreamState, update_ldap_stream_state
 from analysis.packet_analysis import PacketAnalysis
 from analysis.tcp_stream_observation import TCPStreamState, update_tcp_stream_state
 from analysis.tcp_control_statistics import TCPControlStatistics, update_tcp_control_statistics
@@ -30,6 +31,7 @@ class CoordinatedFlowState:
     tcp_control_statistics: Optional[TCPControlStatistics]
     ldap_statistics: Optional[LDAPFlowStatistics] = None
     tcp_stream_state: Optional[TCPStreamState] = None
+    ldap_stream_state: Optional[LDAPStreamState] = None
 
     def __post_init__(self) -> None:
         for name, value, expected in (
@@ -42,6 +44,12 @@ class CoordinatedFlowState:
         ):
             if type(value) is not expected:
                 raise TypeError(f"{name} must be exactly a {expected.__name__}")
+        framing = self.ldap_stream_state
+        if framing is not None:
+            if type(framing) is not LDAPStreamState:
+                raise TypeError("ldap_stream_state must be exactly an LDAPStreamState or None")
+            if framing.tcp_stream_state is not self.tcp_stream_state:
+                raise FlowCoordinationError("LDAP framing must retain the exact TCP stream state")
         streams = self.tcp_stream_state
         if streams is not None:
             if type(streams) is not TCPStreamState:
@@ -151,7 +159,7 @@ class FlowStateCoordinator:
         if current is not None and current.identity != derived_identity:
             raise FlowCoordinationError("analysis must belong to the coordinator's flow")
         identity = derived_identity if current is None else current.identity
-        return CoordinatedFlowState(
+        values = dict(
             flow_statistics=update_flow_statistics(
                 None if current is None else current.flow_statistics, analysis, identity,
             ),
@@ -177,6 +185,14 @@ class FlowStateCoordinator:
                 None if current is None else current.tcp_stream_state, analysis, identity,
             ) if identity.protocol == 6 else None,
         )
+
+        streams = values["tcp_stream_state"]
+        framing = None if streams is None else update_ldap_stream_state(
+            None if current is None else current.ldap_stream_state, streams,
+        )
+        if framing is not None:
+            values["tcp_stream_state"] = framing.tcp_stream_state
+        return CoordinatedFlowState(**values, ldap_stream_state=framing)
 
     def _commit_record(self, state: CoordinatedFlowState) -> None:
         self._state = state

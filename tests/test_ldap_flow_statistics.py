@@ -182,7 +182,7 @@ class LDAPFlowTests(unittest.TestCase):
         for args in ((object(), packet, state.identity), (None, object(), state.identity), (None, packet, object())):
             with self.assertRaises(TypeError):
                 update_ldap_flow_statistics(*args)
-        legacy = type(state)(*(getattr(state, field.name) for field in fields(state) if field.name not in ('ldap_statistics', 'tcp_stream_state')))
+        legacy = type(state)(*(getattr(state, field.name) for field in fields(state) if field.name not in ('ldap_statistics', 'tcp_stream_state', 'ldap_stream_state')))
         self.assertIsNone(legacy.ldap_statistics)
 
     def test_detection_evaluation_and_pcap_do_not_classify_ldap_parse_failures(self):
