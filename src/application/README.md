@@ -99,7 +99,7 @@ Iteration/orchestration failures propagate before the next input, with no retry 
 
 ## Explicit detection pipeline
 
-[detection_pipeline.py](detection_pipeline.py) exports `run_detection_pipeline(source, *, detection_session, capture_session_id, inactivity_timeout, max_active_windows=1024) -> DetectionPipelineResult`. It accepts a `PacketSource` and exact `DetectionSession`, reusing its configuration. The positive integer active-window limit passes to the shared lifecycle manager and is validated before acquisition. Construction of sources or sessions never triggers detection.
+[detection_pipeline.py](detection_pipeline.py) exports `run_detection_pipeline(source, *, detection_session, capture_session_id, inactivity_timeout, max_active_windows=1024) -> DetectionPipelineResult`. It collects findings from `run_detection_stream()` into the established result, preserving the exact finding objects. It accepts a `PacketSource` and exact `DetectionSession`, reusing its configuration. The positive integer active-window limit passes to the shared lifecycle manager and is validated before acquisition. Construction of sources or sessions never triggers detection.
 
 A private lifecycle runner shared with `run_flow_observation_session()` owns the window manager, admission, and finalization. The standalone session keeps `analyze_packet()`; the pipeline calls `run_capture_execution()` once. Each outcome reaches `DetectionSession.run_packets()` before its analysis enters flow admission. Detection neither receives raw bytes nor repeats analysis.
 
@@ -116,6 +116,56 @@ Failures propagate with no translation, retry, or partial result:
 - `source.stop()` failures may supersede earlier failures; final-delivery failures may supersede source failures, retaining Python exception context.
 
 Earlier local findings are not rolled back or published on failure. The pipeline composes its owners; it adds no parser, feature formula, detector, tracker, hidden state, or persistence.
+
+## Incremental detection finding delivery
+
+`run_detection_stream(source, *, detection_session, capture_session_id, inactivity_timeout, packet_finding_consumer, flow_finding_consumer, max_active_windows=1024) -> None` is exported by `application`. It runs the same detection and flow lifecycle as the collecting pipeline, with no result accumulator. Both consumers are required synchronous callables accepting one existing immutable `DetectionFinding`. Noncallable consumers raise `TypeError` before source acquisition, including for empty input. Session and manager configuration retain their existing validation. Callback return values are ignored; they are not cancellation, acknowledgement, or retry instructions. Empty input starts/stops the source, calls neither consumer, and returns `None`.
+
+Each packet's detector batch completes before its findings are delivered in detector order to the packet consumer. Delivery precedes admission of that packet's successful analysis. A failed analysis still produces its existing packet finding and is not admitted. Any capacity/inactivity closure caused by the incoming packet follows that packet's finding delivery, before another observation is requested. Closed windows pass through existing snapshot extraction and `DetectionSession.run_closed_flows()`: UDP produces volume findings; TCP produces volume then control findings. The entire single-window detector batch completes before its first callback, so a TCP-control detector failure does not publish that window's already-computed volume finding. Consumer failure during delivery can leave a partially delivered batch.
+
+Source cleanup is attempted before capture-end closures. Remaining windows are finalized and delivered in creation-sequence order. These rules define the interleaving of the two consumer channels; there is no timestamp merge, hash-order traversal, identifier generation, deduplication, or parallel delivery. Synchronous callbacks provide backpressure, and a callback finishes before acquisition or delivery proceeds. The same callable may serve both channels. Use the existing closed-window session when windows without detection are wanted; this function does not introduce another window consumer or LDAP lifecycle.
+
+| Failure boundary | Behavior |
+| --- | --- |
+| Packet detection or packet consumer | Propagates; rejects admission of that packet, stops acquisition, attempts cleanup/finalization, and suppresses subsequent feature/detector execution and delivery. |
+| Snapshot extraction, flow detection, or flow consumer | Propagates; stops further downstream delivery without retry. Previously committed flow admission is not rolled back. Source cleanup and manager finalization still occur. |
+| Capture, unexpected analysis, or flow admission | Propagates after existing cleanup/finalization attempts; previously admitted windows can still produce findings. Packet findings delivered before failed admission remain delivered. |
+| Manager window/update publication | Preserves the existing active state, sequence number, and timestamp frontier. No new flow finding is fabricated; finalization uses previously admitted state. It cannot undo an earlier packet callback. |
+| Manager finalization publication | Retains the manager's existing atomicity and direct retry behavior; the stream function propagates and supplies no resume handle or automatic retry. |
+| Cleanup/final-delivery errors | Preserve Python exception precedence/context: stop errors may supersede earlier failures, and finalization or final-consumer errors may supersede capture errors. |
+
+Each callback is attempted at most once per finding within a run. An exception, including interruption, is not swallowed or translated. A callback may perform an effect and then fail; the boundary cannot determine whether an external destination accepted it. Earlier deliveries are valid partial output, not a successful-run certificate. There is no rollback, acknowledgement record, durable-delivery guarantee, resume offset, or automatic replay. Replaying a fresh source can repeat a previously delivered prefix; callers own that decision and any effects. Repeated direct manager finalization retains its existing empty result after successful closure and does not re-invoke consumers.
+
+Resource ownership is separate at each boundary:
+
+- **Active analysis:** the existing manager retains at most `max_active_windows` flow states with their established TCP/LDAP bounds. Capture-end finalization temporarily holds at most that many closed windows.
+- **Output delivery:** the stream retains only the current packet/window detector batch and synchronous call frames, with no growing finding list, history, queue, or output cache. Current batches contain one packet finding, one UDP flow finding, or two TCP flow findings. Previously delivered objects can be released once current processing returns, provided no caller retains them. Per-delivery work is proportional to the current batch plus consumer work; capacity selection retains its existing bounded scan.
+- **Caller retention:** consumer buffers, caller-owned input collections, and retained exceptions/tracebacks remain outside this bound. Findings preserve rich existing evidence: packet evidence references its observation/analysis, and flow evidence references its window/snapshot with bounded TCP bytes. Retaining findings can therefore retain payloads. The boundary neither copies payloads nor redacts these existing contracts. `run_detection_pipeline()`, CLI JSON generation, evaluation, and reporting deliberately continue to collect their full results and can grow with input.
+- **Persistent archival:** the stream opens no destination, serializes nothing, and performs no logging, network delivery, or persistence. It is independent of the bounded LDAP summary exporter, which remains an optional caller-invoked metadata adapter over existing summaries. Delivery is not archival.
+
+For example, a caller can keep only aggregate decision counts:
+
+```python
+from collections import Counter
+from application import run_detection_stream
+
+counts = Counter()
+
+def count_finding(finding):
+    counts[finding.decision.value] += 1
+
+run_detection_stream(
+    source,
+    detection_session=session,
+    capture_session_id="offline-review",
+    inactivity_timeout=timeout,
+    max_active_windows=1024,
+    packet_finding_consumer=count_finding,
+    flow_finding_consumer=count_finding,
+)
+```
+
+Here `source`, `session`, and `timeout` are caller-supplied existing contracts. This counter illustrates consumer ownership; it is not ground-truth evaluation or a detection metric definition. No async iterator, background thread, timer, or separate capture lifecycle is introduced.
 
 ## Flow observation sessions
 

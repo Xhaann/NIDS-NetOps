@@ -8,6 +8,8 @@ Capture → packet analysis → flow/features → detection → evaluation again
 
 Capture supplies immutable `PacketObservation` values. Analysis returns `PacketAnalysisOutcome`, including recognized failures. `run_detection_pipeline()` uses `DetectionSession` to produce ordered packet and closed-flow findings in `DetectionPipelineResult`.
 
+For incremental processing of large captures, [`run_detection_stream()`](src/application/README.md#incremental-detection-finding-delivery) delivers those findings to synchronous packet and flow consumers without accumulating a result history. The collecting pipeline uses this same lifecycle. Active analysis remains bounded by the window limit; consumer-retained findings can still retain packet/window evidence. Delivery adds no persistent archival, output queue, or serialization. The CLI and evaluation/reporting path continue to collect complete results.
+
 `evaluate_detection_result()` compares findings with ground-truth expectations; `calculate_detection_metrics()` aggregates classifications. `EvaluationReport` holds computed results and metrics. `run_end_to_end_validation()` connects these steps through report construction.
 
 Supporting contracts:

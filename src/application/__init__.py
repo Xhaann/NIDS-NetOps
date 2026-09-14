@@ -15,7 +15,7 @@ from application.detection_evaluation import (
 )
 from application.detection_experiment import DetectionExperiment
 from application.detection_metrics import DetectionEvaluationMetrics, DetectionMetrics, calculate_detection_metrics
-from application.detection_pipeline import DetectionPipelineResult, run_detection_pipeline
+from application.detection_pipeline import DetectionPipelineResult, run_detection_pipeline, run_detection_stream
 from application.detection_session import DetectionSession
 from application.detector_orchestration import (
     run_closed_flow_detectors,
@@ -64,6 +64,7 @@ __all__ = [
     "run_closed_flow_detectors",
     "run_detection_benchmark",
     "run_detection_pipeline",
+    "run_detection_stream",
     "run_end_to_end_validation",
     "run_flow_observation_session",
     "run_packet_detectors",

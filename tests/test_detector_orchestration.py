@@ -91,7 +91,7 @@ class DetectorOrchestrationTests(unittest.TestCase):
              "DetectionExperiment", "DetectionMetrics", "DetectionPipelineResult", "DetectionSession", "EndToEndValidationResult", "EvaluationReport", "ExpectedDetection", "ExpectedDetectionResult",
              "FlowDetectionIdentity", "GroundTruth", "GroundTruthPolarity", "GroundTruthRecord",
              "OperationalDiagnostic", "OperationalErrorCategory", "PacketDetectionIdentity", "PerformanceBenchmarkConfiguration", "PerformanceBenchmarkResult", "calculate_detection_metrics", "detection_identity", "diagnose_error", "evaluate_detection_result",
-             "run_capture_execution", "run_closed_flow_detectors", "run_detection_benchmark", "run_detection_pipeline",
+             "run_capture_execution", "run_closed_flow_detectors", "run_detection_benchmark", "run_detection_pipeline", "run_detection_stream",
              "run_end_to_end_validation", "run_flow_observation_session", "run_packet_detectors", "run_performance_benchmark"],
         )
 
