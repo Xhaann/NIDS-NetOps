@@ -75,6 +75,15 @@ from analysis.ldap import (
     analyze_ldap_payload,
 )
 from analysis.ldap_flow_statistics import LDAPFlowStatistics, update_ldap_flow_statistics
+from analysis.ldap_correlation import (
+    LDAP_MAX_PENDING_REQUESTS,
+    LDAPCorrelationObservation,
+    LDAPCorrelationState,
+    LDAPCorrelationStatus,
+    LDAPCorrelationUnavailableReason,
+    finalize_ldap_correlation_state,
+    update_ldap_correlation_state,
+)
 from analysis.ldap_stream_framing import (
     LDAPStreamObservation,
     LDAPStreamState,
@@ -109,6 +118,13 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "LDAP_MAX_PENDING_REQUESTS",
+    "LDAPCorrelationObservation",
+    "LDAPCorrelationState",
+    "LDAPCorrelationStatus",
+    "LDAPCorrelationUnavailableReason",
+    "finalize_ldap_correlation_state",
+    "update_ldap_correlation_state",
     "LDAPStreamObservation",
     "LDAPStreamState",
     "LDAPStreamStatus",

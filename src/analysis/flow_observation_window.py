@@ -6,6 +6,7 @@ from typing import Optional
 from analysis.flow_identity import FlowIdentity, flow_identity_from_packet
 from analysis.flow_state_coordinator import CoordinatedFlowState, FlowStateCoordinator
 from analysis.packet_analysis import PacketAnalysis
+from analysis.ldap_correlation import LDAPCorrelationState, finalize_ldap_correlation_state
 
 
 class FlowObservationWindowError(ValueError):
@@ -59,6 +60,13 @@ class FlowObservationWindow:
     @property
     def identity(self) -> FlowIdentity:
         return self.coordinated_state.identity
+
+    @property
+    def ldap_correlation_state(self) -> Optional[LDAPCorrelationState]:
+        state = self.coordinated_state.ldap_correlation_state
+        if state is None or self.closure_reason is None:
+            return state
+        return finalize_ldap_correlation_state(state)
 
     @property
     def first_captured_at(self) -> datetime:

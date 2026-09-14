@@ -211,7 +211,7 @@ class LDAPStreamLifecycleTests(unittest.TestCase):
             previous_stream = old_window.coordinated_state.tcp_stream_state.forward
             self.assertEqual({k: v for k, v in vars(current_stream).items() if k != 'consumed_length'},
                              {k: v for k, v in vars(previous_stream).items() if k != 'consumed_length'})
-            stripped = replace(window, coordinated_state=replace(window.coordinated_state, ldap_stream_state=None,
+            stripped = replace(window, coordinated_state=replace(window.coordinated_state, ldap_stream_state=None, ldap_correlation_state=None,
                                                                  tcp_stream_state=old_window.coordinated_state.tcp_stream_state))
             evidence = replace(evidence, **({'snapshot': extract_flow_feature_snapshot(stripped)} if hasattr(evidence, 'snapshot')
                                            else {'observation_window': stripped}))
@@ -226,7 +226,7 @@ class LDAPStreamLifecycleTests(unittest.TestCase):
             replace(state, tcp_stream_state=replace(state.tcp_stream_state))
         with self.assertRaises(FlowCoordinationError):
             replace(state, tcp_stream_state=TCPStreamState(state.identity))
-        previous_arguments = tuple(getattr(state, field.name) for field in fields(state) if field.name != 'ldap_stream_state')
+        previous_arguments = tuple(getattr(state, field.name) for field in fields(state) if field.name not in ('ldap_stream_state', 'ldap_correlation_state'))
         self.assertIsNone(type(state)(*previous_arguments).ldap_stream_state)
 
     def test_hash_seed_timezone_and_repeated_structural_determinism(self):
