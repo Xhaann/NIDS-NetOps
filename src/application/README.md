@@ -271,7 +271,7 @@ else:
 
 The example assumes caller-supplied truth, consumers, source, and detection configuration. `GroundTruth` still rejects duplicate targets, while `ExpectedDetectionResult` retains its existing same-polarity multiplicity. Passing `GroundTruth` directly in place of expectations is rejected. Neither representation is inferred or redesigned.
 
-Metrics remain separate: `calculate_detection_metrics()` still accepts a completed `DetectionEvaluationResult`, and its definitions are unchanged. Consumers may explicitly collect entries into that result for existing metrics/reporting, accepting the associated retention cost. CLI output, `EvaluationReport`, and `run_end_to_end_validation()` remain collecting paths. Incremental evaluation creates no persistent archive, export format, research projection, or ML dependency.
+Metrics remain separate: `IncrementalDetectionMetrics` can consume the entries directly, while `calculate_detection_metrics()` still accepts a completed `DetectionEvaluationResult`. Both preserve the same definitions. Consumers may explicitly collect entries for existing reporting, accepting the associated retention cost. CLI output, `EvaluationReport`, and `run_end_to_end_validation()` remain collecting paths. Incremental evaluation creates no persistent archive, export format, research projection, or ML dependency.
 
 ## Explicit ground truth
 
@@ -311,6 +311,47 @@ Properties use Python floating-point division, with no rounding or smoothing:
 F1 preserves those undefined-result rules and the ordinary floating-point formula. When its intermediate numerator is below the minimum normal float, it instead divides `2 * TP` by `2 * TP + FP + FN` using the original integer counts. This avoids intermediate-product underflow and subnormal precision loss without changing classification or matching. The final ratio remains a float and can itself underflow.
 
 `DetectionMetrics` requires four counts; `unclassified_count` defaults to zero. Counts must be exact `int` (not bool): wrong types raise `TypeError`, negatives `ValueError`. `DetectionEvaluationMetrics` requires exact `DetectionMetrics` for both channels. Calculation aggregates validated entries locally, without mutation, reordering, truth inference, reevaluation, or upstream execution. Reporting and performance measurement are separate; CLI JSON is unchanged.
+
+## Incremental detection metrics
+
+[`IncrementalDetectionMetrics()`](incremental_detection_metrics.py) removes mandatory evaluation-result collection when only final metrics are needed. `record_packet(entry)` and `record_flow(entry)` accept exact existing `DetectionEvaluationEntry` objects and return `None`. They validate the channel using expectation identity and finding evidence types, then count only the supplied classification. They do not recompute classification, match expectations, inspect decisions or payload contents, or execute detection. Duplicate entries count separately; actual/expectation indices are neither retained nor required to be unique, contiguous, or ordered. Packet and flow counts are independent.
+
+`finish() -> DetectionEvaluationMetrics` publishes the existing immutable result only after both channel metrics and the combined result construct successfully. Its counts and precision/recall/F1/accuracy properties are exactly those described above. Counts stay integers throughout accumulation; no ratios are calculated or rounded during recording or finalization. The ordinary F1 formula, integer-count fallback near underflow, and historical undefined-result rules are unchanged.
+
+`finished` is read-only and becomes true only on success. Repeated successful `finish()` returns the same object without reaggregation. Recording or aborting after completion raises `ValueError`. There is no partial-result accessor, reset, count-seeding, merge, or replay API.
+
+Invalid entry types raise `TypeError`; wrong channels raise `ValueError`. Recording/finalization exceptions propagate unchanged and leave a terminal unfinished consumer. No result is published on failure, including failure after one channel's immutable metrics have been constructed. Subsequent record/finish calls are rejected, with no retry or rollback. `abort()` prevents unfinished counts from being finalized and is idempotent after abort/failure. Reentrant operations are rejected. No input or exception references are stored; caller-retained exceptions can still keep local inputs reachable through tracebacks.
+
+The caller must complete evaluation before finalizing metrics. A source, detector, publication, or evaluator failure means the counts are partial: abort the metrics consumer and propagate the error. Neither consumer owns capture or can infer external success. For existing caller-supplied expectations and stream configuration:
+
+```python
+from application import IncrementalDetectionEvaluator, IncrementalDetectionMetrics, run_detection_stream
+
+metrics = IncrementalDetectionMetrics()
+evaluator = IncrementalDetectionEvaluator(
+    expected,
+    packet_evaluation_consumer=metrics.record_packet,
+    flow_evaluation_consumer=metrics.record_flow,
+)
+try:
+    run_detection_stream(
+        source, detection_session=session, capture_session_id=session_id,
+        inactivity_timeout=timeout,
+        packet_finding_consumer=evaluator.record_packet,
+        flow_finding_consumer=evaluator.record_flow,
+    )
+    evaluator.finish()
+    completed_metrics = metrics.finish()
+except BaseException:
+    metrics.abort()
+    if not evaluator.finished:
+        evaluator.abort()
+    raise
+```
+
+Metrics retain only ten exact integer counters, fixed channel/lifecycle state, and the completed immutable result after success. The number of counters is independent of entry count; exact integer bit storage is `O(log(N + 1))` for `N` entries. Each arrival performs a fixed number of counter operations, with integer arithmetic cost depending on count width. No evaluation entries, findings, expectations, payload graphs, or complete evaluation results are retained. Upstream active analysis, incremental evaluation's `O(E + B)` state, caller-owned collections, and exception tracebacks have separate ownership and limits.
+
+The collecting function shares the private counting primitive but retains its signature, exact result-type check, packet-before-flow calculation order, and classification-only access contract. It does not acquire the new consumer's channel-inspection step because its result input has already validated channels. No metric definitions or existing value dataclasses change. `EvaluationReport`, the CLI, and `run_end_to_end_validation()` remain collecting APIs. There is no new persistence, archival, report format, streaming JSON, research/ML integration, or network delivery.
 
 ## Detection dataset representation
 

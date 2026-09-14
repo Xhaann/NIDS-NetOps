@@ -58,21 +58,32 @@ class DetectionEvaluationMetrics:
             raise TypeError("packet_metrics and flow_metrics must be exactly DetectionMetrics values")
 
 
-def _aggregate(entries: tuple[DetectionEvaluationEntry, ...]) -> DetectionMetrics:
-    counts = {classification: 0 for classification in DetectionClassification}
-    unclassified = 0
-    for entry in entries:
+class _MetricCounts:
+    def __init__(self) -> None:
+        self.counts = {classification: 0 for classification in DetectionClassification}
+        self.unclassified = 0
+
+    def record(self, entry: DetectionEvaluationEntry) -> None:
         if entry.classification is None:
-            unclassified += 1
+            self.unclassified += 1
         else:
-            counts[entry.classification] += 1
-    return DetectionMetrics(
-        counts[DetectionClassification.TRUE_POSITIVE],
-        counts[DetectionClassification.FALSE_POSITIVE],
-        counts[DetectionClassification.FALSE_NEGATIVE],
-        counts[DetectionClassification.TRUE_NEGATIVE],
-        unclassified,
-    )
+            self.counts[entry.classification] += 1
+
+    def finish(self) -> DetectionMetrics:
+        return DetectionMetrics(
+            self.counts[DetectionClassification.TRUE_POSITIVE],
+            self.counts[DetectionClassification.FALSE_POSITIVE],
+            self.counts[DetectionClassification.FALSE_NEGATIVE],
+            self.counts[DetectionClassification.TRUE_NEGATIVE],
+            self.unclassified,
+        )
+
+
+def _aggregate(entries: tuple[DetectionEvaluationEntry, ...]) -> DetectionMetrics:
+    counts = _MetricCounts()
+    for entry in entries:
+        counts.record(entry)
+    return counts.finish()
 
 
 def calculate_detection_metrics(result: DetectionEvaluationResult) -> DetectionEvaluationMetrics:
