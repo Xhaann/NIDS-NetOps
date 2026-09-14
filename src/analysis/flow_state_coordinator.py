@@ -10,6 +10,7 @@ from analysis.flow_identity import FlowIdentity, flow_identity_from_packet
 from analysis.flow_inter_arrival_statistics import FlowInterArrivalStatistics, update_flow_inter_arrival_statistics
 from analysis.flow_packet_size_statistics import FlowPacketSizeStatistics, update_flow_packet_size_statistics
 from analysis.flow_statistics import FlowStatistics, update_flow_statistics
+from analysis.ldap_flow_statistics import LDAPFlowStatistics, update_ldap_flow_statistics
 from analysis.packet_analysis import PacketAnalysis
 from analysis.tcp_control_statistics import TCPControlStatistics, update_tcp_control_statistics
 
@@ -26,6 +27,7 @@ class CoordinatedFlowState:
     flow_inter_arrival_statistics: FlowInterArrivalStatistics
     directional_inter_arrival_statistics: DirectionalInterArrivalStatistics
     tcp_control_statistics: Optional[TCPControlStatistics]
+    ldap_statistics: Optional[LDAPFlowStatistics] = None
 
     def __post_init__(self) -> None:
         for name, value, expected in (
@@ -38,6 +40,12 @@ class CoordinatedFlowState:
         ):
             if type(value) is not expected:
                 raise TypeError(f"{name} must be exactly a {expected.__name__}")
+        ldap = self.ldap_statistics
+        if ldap is not None:
+            if type(ldap) is not LDAPFlowStatistics:
+                raise TypeError("ldap_statistics must be exactly an LDAPFlowStatistics or None")
+            if ldap.identity != self.identity:
+                raise FlowCoordinationError("LDAP statistics identity must match")
         tcp_control = self.tcp_control_statistics
         if tcp_control is not None and type(tcp_control) is not TCPControlStatistics:
             raise TypeError("tcp_control_statistics must be exactly a TCPControlStatistics or None")
@@ -153,6 +161,9 @@ class FlowStateCoordinator:
             ),
             tcp_control_statistics=update_tcp_control_statistics(
                 None if current is None else current.tcp_control_statistics, analysis, identity,
+            ) if identity.protocol == 6 else None,
+            ldap_statistics=update_ldap_flow_statistics(
+                None if current is None else current.ldap_statistics, analysis, identity,
             ) if identity.protocol == 6 else None,
         )
 

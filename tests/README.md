@@ -1,6 +1,6 @@
 # Automated testing strategy
 
-The current suite contains 1669 standard-library `unittest` tests. It covers capture/source contracts and classic PCAP input; Ethernet, IPv4/IPv6 and transport analysis; flow identity, lifecycle, statistics and features; detector configurations, predicates and findings; evaluation, truth, metrics and reporting; datasets, experiments, version references, end-to-end composition, performance methodology, diagnostics, and the CLI.
+The suite uses standard-library `unittest` tests. It covers capture/source contracts and classic PCAP input; Ethernet, IPv4/IPv6 and transport analysis; flow identity, lifecycle, statistics and features; detector configurations, predicates and findings; evaluation, truth, metrics and reporting; datasets, experiments, version references, end-to-end composition, performance methodology, diagnostics, and the CLI.
 
 The verified interpreter is Python 3.9.6. Run from the repository root:
 
@@ -20,6 +20,7 @@ No installation, third-party dependencies, network services, live-capture privil
 | --- | --- |
 | Capture and lifecycle | [PCAP source](test_pcap_packet_source.py), [capture execution](test_capture_execution.py). |
 | Protocol and fragment boundaries | [packet outcomes](test_packet_analysis_outcome.py), [IPv6 transport](test_ipv6_transport.py), [fragmentation](test_ipv6_fragmentation.py), [ICMPv6](test_icmpv6.py). |
+| LDAP protocol foundation | [Envelope parsing](test_ldap.py) and [flow integration](test_ldap_flow_statistics.py): operation tags, truncation, BER bounds, controls, resource limits, coalesced and split observations, IPv4/IPv6, immutable publication, PCAP/detection parity, and hash-seed/timezone determinism. |
 | Flow and feature semantics | [observation windows](test_flow_observation_window.py), [snapshots](test_flow_feature_snapshot.py), [IPv6 features](test_ipv6_features.py). |
 | Detection and application composition | [orchestration](test_detector_orchestration.py), [pipeline](test_detection_pipeline.py), [end-to-end validation](test_end_to_end_validation.py). |
 | Evaluation and presentation-neutral results | [evaluation](test_detection_evaluation.py), [metrics](test_detection_metrics.py), [reporting](test_evaluation_report.py). |
@@ -59,7 +60,7 @@ The matrix records coverage inspected at `7f27d98` and the selected additions in
 
 These eight additional test methods use subtests for related protocol cases; subtests are not counted as separate tests. Assertions use production outcomes, findings, flow snapshots and reports. Failure scenarios also check source cleanup and relevant execution counts. Existing packet/PCAP helpers construct the wire data; the shared transport helper additionally supports TCP option bytes.
 
-This review is not an exhaustive protocol matrix. IPv4 option combinations, repeated extension headers, and ICMPv6 partial-fragment combinations retain unit coverage without new dedicated PCAP scenarios here. Reassembly, IPv6 checksum validation, AH/ESP decoding, ICMP subtype semantics, VLAN decoding and application protocols remain unimplemented; tests do not invent them.
+This review is not an exhaustive protocol matrix. IPv4 option combinations, repeated extension headers, and ICMPv6 partial-fragment combinations retain unit coverage without new dedicated PCAP scenarios here. Reassembly, IPv6 checksum validation, AH/ESP decoding, ICMP subtype semantics, VLAN decoding and application semantics beyond LDAP envelopes remain unimplemented; tests do not invent them.
 
 ## File-acquisition reliability regressions
 

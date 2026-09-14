@@ -65,6 +65,16 @@ from analysis.ipv6_extension_headers import (
     validate_ipv6_extension_headers,
 )
 from analysis.ipv6_fragmentation import IPv6FragmentHeader, IPv6Fragmentation, analyze_ipv6_fragmentation
+from analysis.ldap import (
+    LDAP_MAX_MESSAGES,
+    LDAP_MAX_PAYLOAD_BYTES,
+    LDAPMessageObservation,
+    LDAPMessageStatus,
+    LDAPOperation,
+    LDAPPayloadObservation,
+    analyze_ldap_payload,
+)
+from analysis.ldap_flow_statistics import LDAPFlowStatistics, update_ldap_flow_statistics
 from analysis.packet_analysis import PacketAnalysis, PacketAnalysisError, analyze_packet
 from analysis.packet_analysis_outcome import (
     PacketAnalysisFailureClassification,
@@ -84,6 +94,15 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "LDAP_MAX_MESSAGES",
+    "LDAP_MAX_PAYLOAD_BYTES",
+    "LDAPMessageObservation",
+    "LDAPMessageStatus",
+    "LDAPOperation",
+    "LDAPPayloadObservation",
+    "LDAPFlowStatistics",
+    "analyze_ldap_payload",
+    "update_ldap_flow_statistics",
     "CoordinatedFlowState",
     "FlowCoordinationError",
     "FlowStateCoordinator",

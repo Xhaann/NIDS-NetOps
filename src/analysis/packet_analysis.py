@@ -10,6 +10,7 @@ from analysis.ipv4_checksum import validate_ipv4_checksum
 from analysis.ipv6 import IPv6Packet, decode_ipv6
 from analysis.ipv6_extension_headers import IPv6ExtensionHeaderChain, validate_ipv6_extension_headers
 from analysis.ipv6_fragmentation import IPv6Fragmentation, analyze_ipv6_fragmentation
+from analysis.ldap import LDAPPayloadObservation, analyze_ldap_payload
 from analysis.tcp import TCPPacket, _validate_tcp_options, decode_tcp
 from analysis.tcp_checksum import validate_tcp_checksum
 from analysis.udp import UDPPacket, decode_udp
@@ -100,6 +101,17 @@ class PacketAnalysis:
             raise PacketAnalysisError(
                 "IPv6 base-header analysis cannot include IPv4, transport, or checksum results"
             )
+
+    @property
+    def ldap(self) -> Optional[LDAPPayloadObservation]:
+        tcp = self.tcp if self.tcp is not None else self.ipv6_tcp
+        if tcp is None or 389 not in (tcp.source_port, tcp.destination_port):
+            return None
+        if 636 in (tcp.source_port, tcp.destination_port):
+            return None
+        if not tcp.payload or tcp.payload[0] != 0x30:
+            return None
+        return analyze_ldap_payload(tcp.payload)
 
 
 def analyze_packet(observation: PacketObservation) -> PacketAnalysis:

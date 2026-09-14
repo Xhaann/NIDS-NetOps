@@ -69,7 +69,7 @@ Explicit GroundTruth -> expectations -> evaluate_detection_result
 | IPv4 | Header/declared-length validation, TCP/UDP/ICMPv4 structural decoding, IPv4 and supported transport checksum validation. Unknown IP protocols retain network-layer analysis without a transport model. |
 | IPv6 | Fixed 40-byte header and declared payload bounds; packed 16-byte addresses. Zero Payload Length is literal; jumbogram interpretation is absent. |
 | IPv6 extension headers | Bounded traversal of Hop-by-Hop Options (0), Routing (43), Destination Options (60), and Fragment (44), retaining order, bytes, offsets, and Next Header links. Option bodies/routing semantics are not interpreted. AH/ESP are not parsed; No Next Header (59) terminates traversal. |
-| IPv6 TCP/UDP | Existing transport models decode at the validated terminal boundary, without IPv6 checksum validation. No application parsing or stream reconstruction. |
+| IPv6 TCP/UDP | Existing transport models decode at the validated terminal boundary, without IPv6 checksum validation. No application semantics or stream reconstruction; separate LDAP envelope observation uses the decoded TCP payload. |
 | IPv6 fragments | Packet-local offset, M flag, identification, and reserved fields are retained. No buffering, reassembly, cross-packet correlation, or fragmentation-attack detection. |
 | ICMPv6 | Common four-byte Type/Code/Checksum header and opaque body, only for unfragmented or whole-datagram fragment context. No checksum validation, subtype/embedded-packet parsing, or Neighbor Discovery. |
 | Flow admission | Decoded IPv4/IPv6 TCP and UDP only. ICMPv4/ICMPv6 and unsupported upper-layer analyses are not flow inputs. |
@@ -121,6 +121,13 @@ The projection retains no snapshot/window graph, raw TCP-control state, identity
 The common frozen `DetectionFinding` has exactly five stored fields: `detector_id`, `detector_version`, `decision`, `raw_evidence`, and `security_interpretation`. The family-specific decision, interpretation, evidence, and configuration remain attached; normalization does not introduce security scores or finding IDs. `DetectionPipelineResult` retains separate packet and flow finding tuples, preserving observation order and window-closure/detector order respectively. There is no combined chronological sort, deduplication, alert state, incident lifecycle, or response action.
 
 Failures propagate without retries or a partial returned pipeline result. Source cleanup and flow finalization retain their existing guarantees and Python exception precedence; finalization may deliver previously admitted windows after a source failure. A packet-detector failure suppresses subsequent feature/detector work during finalization, and a failed downstream window consumer is not called again. Previously executed effects are not rolled back. Results are retained in memory and can grow with input size.
+
+
+## LDAP observation boundary
+
+The [LDAP foundation](../src/analysis/README.md#ldap-protocol-observations) observes bounded BER message envelopes through `PacketAnalysis.ldap` and accumulates optional immutable `LDAPFlowStatistics` in `CoordinatedFlowState`. `FlowFeatureSnapshot.ldap_statistics` exposes that same aggregate without changing numerical features, detector predicates, or research projections. Existing TCP parsing, flow admission, and publication ownership remain authoritative for both IP families.
+
+Automatic candidate selection uses TCP port 389 plus a leading SEQUENCE tag, excluding port 636. Multiple envelopes in one payload are separated by declared BER lengths. Split messages remain incomplete; no TCP sequence continuity, reassembly, or unique-message counting is claimed. Malformed/unsupported observations do not become packet-analysis failures or security findings. Operation and control contents, encrypted LDAP, and LDAP-specific attack detection remain outside scope.
 
 ## Ground truth and evaluation
 
@@ -231,7 +238,7 @@ Reproducibility requires equivalent explicit observations, configuration, extern
 
 ## Intentional limits and future work
 
-There is no live interface capture, PCAPNG, reassembly, complete protocol stack, application parsing, TCP connection state, signature catalog, behavioral baseline, autonomous response, blocking, firewall integration, SIEM integration, threat intelligence, credential protection, endpoint response, or remediation. Findings do not implement severity, confidence, risk, correlation, alerting, or production SOC functionality.
+There is no live interface capture, PCAPNG, reassembly, complete protocol stack, general application semantics, TCP connection state, signature catalog, behavioral baseline, autonomous response, blocking, firewall integration, SIEM integration, threat intelligence, credential protection, endpoint response, or remediation. Findings do not implement severity, confidence, risk, correlation, alerting, or production SOC functionality.
 
 The research branch provides explicit feature projection, examples, and immutable ordered datasets only: no dataset loading, splitting, preprocessing, training, inference, model registry, feature store, drift detection, model serving, or experiment tracking infrastructure is implemented. Future research must use stable feature/evaluation contracts and separate empirical claims from deterministic predicate behavior. No future capability is implied by the current version objects.
 

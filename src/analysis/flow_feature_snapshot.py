@@ -14,6 +14,7 @@ from analysis.flow_rate_features import FlowRateFeatures, extract_flow_rate_feat
 from analysis.flow_state_coordinator import CoordinatedFlowState
 from analysis.flow_volume_features import FlowVolumeFeatures, extract_flow_volume_features
 from analysis.inter_arrival_features import InterArrivalFeatures, extract_inter_arrival_features
+from analysis.ldap_flow_statistics import LDAPFlowStatistics
 from analysis.packet_size_features import PacketSizeFeatures, extract_packet_size_features
 
 
@@ -37,6 +38,10 @@ class FlowFeatureSnapshot:
     @property
     def coordinated_state(self) -> CoordinatedFlowState:
         return self.observation_window.coordinated_state
+
+    @property
+    def ldap_statistics(self) -> Optional[LDAPFlowStatistics]:
+        return self.coordinated_state.ldap_statistics
 
     @property
     def identity(self) -> FlowIdentity:

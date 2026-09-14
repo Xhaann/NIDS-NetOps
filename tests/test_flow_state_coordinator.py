@@ -417,13 +417,14 @@ class FlowStateCoordinatorTests(unittest.TestCase):
         with self.assertRaises(AttributeError):
             del coordinator.state
 
-    def test_frozen_state_retains_six_sources_and_validates_types_and_identities(self) -> None:
+    def test_frozen_state_retains_sources_and_validates_types_and_identities(self) -> None:
         state = FlowStateCoordinator().record(TCP_ANALYSIS)
         names = ("flow_statistics", "directional_flow_statistics", "flow_packet_size_statistics",
                  "flow_inter_arrival_statistics", "directional_inter_arrival_statistics",
                  "tcp_control_statistics")
-        self.assertEqual(tuple(field.name for field in fields(state)), names)
-        self.assertEqual(tuple(vars(state)), names)
+        self.assertEqual(tuple(field.name for field in fields(state)), names + ("ldap_statistics",))
+        self.assertEqual(tuple(vars(state)), names + ("ldap_statistics",))
+        self.assertIsNone(state.ldap_statistics)
         other = replace(state.identity, source_port=12346)
         for name in names:
             value = getattr(state, name)

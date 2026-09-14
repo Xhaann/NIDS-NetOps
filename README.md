@@ -25,6 +25,7 @@ See the [architecture reference](docs/architecture.md) for ownership and limits,
 
 - **Packets:** Ethernet II with IPv4/IPv6. IPv4 supports TCP, UDP, and ICMPv4 decoding and checksum validation. IPv6 supports its fixed header, bounded Hop-by-Hop/Routing/Destination Options/Fragment traversal, packet-local fragmentation information, TCP/UDP headers, and the common four-byte ICMPv6 header.
 - **Flows:** canonical bidirectional IPv4/IPv6 TCP/UDP, with directional statistics, packet sizes, inter-arrival measurements, TCP-control counters, and observation-driven inactivity closure. TCP runs volume then TCP-control detection; UDP runs volume detection only.
+- **LDAP:** bounded plaintext LDAP message framing, operation identification, and immutable flow observation counters for TCP port 389. Incomplete and malformed candidates remain observations, with no LDAP attack detector or stream reassembly. See [LDAP scope](src/analysis/README.md#ldap-protocol-observations).
 - **Limits:** no IPv6 transport/ICMPv6 checksum validation, ICMPv6 subtype interpretation, or Neighbor Discovery. ICMP and opaque upper-layer analysis do not qualify for flow admission; the pipeline propagates admission errors. See [protocol and fragment limits](docs/architecture.md#protocol-coverage-and-admission).
 
 ## Run and verify
@@ -36,7 +37,7 @@ PYTHONPATH=src python3 -B -m unittest discover -s tests
 PYTHONPATH=src python3 -B -m application --help
 ```
 
-The 1669 tests use synthetic fixtures, temporary PCAP files, and controlled clocks rather than machine-speed thresholds.
+The tests use synthetic fixtures, temporary PCAP files, and controlled clocks rather than machine-speed thresholds.
 
 Replace `input.pcap` with your local classic PCAP file:
 
@@ -71,7 +72,7 @@ See the [CLI contract](src/application/README.md#command-line-adapter) for evide
 
 - **Replay:** equivalent observations, configuration, ground truth, and caller operations retain defined order and value semantics. Versions are explicit strings, not discovered from Git or packages. PCAP retains recorded timestamps; `IterablePacketSource` timestamps acquisition. Repeatable replay therefore needs explicit observations or PCAP.
 - **Timing:** benchmarks use configured warmups/repetitions with no hidden executions or retries. Elapsed measurements depend on the environment; they are not bit-for-bit reproducible, CPU/memory measurements, or function-level profiles. Benchmarking neither optimizes algorithms nor stores results.
-- **Runtime scope:** no live capture, PCAPNG, fragment/stream reassembly, application-protocol parsing, TCP connection state machine, autonomous response, blocking, firewall/SIEM integration, threat intelligence, correlation, alert management, or persistence. In-memory results grow with input; deployment and operational resource hardening are not established.
+- **Runtime scope:** no live capture, PCAPNG, fragment/stream reassembly, general application-protocol semantics, TCP connection state machine, autonomous response, blocking, firewall/SIEM integration, threat intelligence, correlation, alert management, or persistence. In-memory results grow with input; deployment and operational resource hardening are not established.
 - **Research inputs:** the [ML feature projection](src/ml/README.md) contains 49 ordered canonical numerical inputs with explicit version and availability semantics. Labels and detector outcomes stay outside the representation; projection stays separate from the deterministic detection path. Research datasets provide in-memory membership only. Models, preprocessing, dataset loading, splitting, training, inference, feature stores, model registries, drift detection, serving, and experiment tracking infrastructure are unimplemented.
 
 ## Repository guide
