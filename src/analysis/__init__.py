@@ -1,3 +1,17 @@
+from analysis.dns import (
+    DNS_MAX_MESSAGE_BYTES,
+    DNS_MAX_ENTRIES,
+    DNS_MAX_POINTER_HOPS,
+    DNS_MAX_LABEL_BYTES,
+    DNS_MAX_NAME_BYTES,
+    DNSMessageStatus,
+    DNSHeader,
+    DNSName,
+    DNSQuestion,
+    DNSResourceRecord,
+    DNSMessageObservation,
+    analyze_dns_message,
+)
 from analysis.directional_flow_statistics import (
     DirectionalFlowStatistics,
     DirectionalFlowStatisticsError,
@@ -120,6 +134,19 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "DNS_MAX_MESSAGE_BYTES",
+    "DNS_MAX_ENTRIES",
+    "DNS_MAX_POINTER_HOPS",
+    "DNS_MAX_LABEL_BYTES",
+    "DNS_MAX_NAME_BYTES",
+    "DNSMessageStatus",
+    "DNSHeader",
+    "DNSName",
+    "DNSQuestion",
+    "DNSResourceRecord",
+    "DNSMessageObservation",
+    "analyze_dns_message",
+
     "LDAPRequestSummary",
     "LDAPRequestSummaryStatus",
     "LDAP_MAX_PENDING_REQUESTS",

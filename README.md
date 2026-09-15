@@ -6,6 +6,8 @@ NIDS-NetOps is a deterministic network intrusion detection research implementati
 
 Capture → packet analysis → flow/features → detection → evaluation against ground truth → metrics/reporting.
 
+[DNS protocol observation](src/analysis/README.md#dns-message-observation) provides bounded header, name/compression and record-envelope parsing, with explicit incomplete, malformed and unsupported outcomes. It integrates lazily with IPv4/IPv6 UDP packet analysis; already-delimited TCP messages use the same parser. It adds no DNS attack detector or DNS flow features.
+
 Capture supplies immutable `PacketObservation` values. Analysis returns `PacketAnalysisOutcome`, including recognized failures. `run_detection_pipeline()` uses `DetectionSession` to produce ordered packet and closed-flow findings in `DetectionPipelineResult`.
 
 For incremental processing of large captures, [`run_detection_stream()`](src/application/README.md#incremental-detection-finding-delivery) delivers those findings to synchronous packet and flow consumers without accumulating a result history. The collecting pipeline uses this same lifecycle. Active analysis remains bounded by the window limit; consumer-retained findings can still retain packet/window evidence. Delivery adds no persistent archival, output queue, or serialization. The CLI and end-to-end reporting APIs continue to collect complete results.

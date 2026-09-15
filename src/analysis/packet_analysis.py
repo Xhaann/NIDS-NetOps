@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
+from analysis.dns import DNSMessageObservation, analyze_dns_message
 from analysis.ethernet import EthernetFrame, decode_ethernet
 from analysis.icmp import ICMPMessage, decode_icmp
 from analysis.icmp_checksum import validate_icmp_checksum
@@ -101,6 +102,13 @@ class PacketAnalysis:
             raise PacketAnalysisError(
                 "IPv6 base-header analysis cannot include IPv4, transport, or checksum results"
             )
+
+    @property
+    def dns(self) -> Optional[DNSMessageObservation]:
+        udp = self.udp if self.udp is not None else self.ipv6_udp
+        if udp is None or 53 not in (udp.source_port, udp.destination_port):
+            return None
+        return analyze_dns_message(udp.payload)
 
     @property
     def ldap(self) -> Optional[LDAPPayloadObservation]:
