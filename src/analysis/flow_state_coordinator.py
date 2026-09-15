@@ -6,6 +6,8 @@ from analysis.directional_inter_arrival_statistics import (
     DirectionalInterArrivalStatistics,
     update_directional_inter_arrival_statistics,
 )
+from analysis.dns_correlation import DNSCorrelationState, update_dns_correlation_state
+from analysis.flow_direction import flow_direction_from_packet
 from analysis.flow_identity import FlowIdentity, flow_identity_from_packet
 from analysis.flow_inter_arrival_statistics import FlowInterArrivalStatistics, update_flow_inter_arrival_statistics
 from analysis.flow_packet_size_statistics import FlowPacketSizeStatistics, update_flow_packet_size_statistics
@@ -34,6 +36,7 @@ class CoordinatedFlowState:
     tcp_stream_state: Optional[TCPStreamState] = None
     ldap_stream_state: Optional[LDAPStreamState] = None
     ldap_correlation_state: Optional[LDAPCorrelationState] = None
+    dns_correlation_state: Optional[DNSCorrelationState] = None
 
     def __post_init__(self) -> None:
         for name, value, expected in (
@@ -46,6 +49,14 @@ class CoordinatedFlowState:
         ):
             if type(value) is not expected:
                 raise TypeError(f"{name} must be exactly a {expected.__name__}")
+        dns = self.dns_correlation_state
+        if dns is not None:
+            if type(dns) is not DNSCorrelationState:
+                raise TypeError("dns_correlation_state must be exactly a DNSCorrelationState or None")
+            if dns.identity != self.identity or self.identity.protocol != 17:
+                raise FlowCoordinationError("DNS correlation must belong to the UDP flow")
+            if dns.last_captured_at != self.flow_statistics.last_captured_at:
+                raise FlowCoordinationError("DNS correlation timestamp must match the flow")
         framing = self.ldap_stream_state
         if framing is not None:
             if type(framing) is not LDAPStreamState:
@@ -203,7 +214,12 @@ class FlowStateCoordinator:
         correlation = None if framing is None else update_ldap_correlation_state(
             None if current is None else current.ldap_correlation_state, framing,
         )
-        return CoordinatedFlowState(**values, ldap_stream_state=framing, ldap_correlation_state=correlation)
+        dns = update_dns_correlation_state(
+            None if current is None else current.dns_correlation_state, analysis.dns,
+            identity, flow_direction_from_packet(analysis, identity), analysis.observation.captured_at,
+        ) if identity.protocol == 17 else None
+        return CoordinatedFlowState(**values, ldap_stream_state=framing,
+                                    ldap_correlation_state=correlation, dns_correlation_state=dns)
 
     def _commit_record(self, state: CoordinatedFlowState) -> None:
         self._state = state

@@ -94,3 +94,7 @@ Authorized lab methodology belongs to [labs](../labs/README.md). Portable checks
 ## DNS protocol foundation
 
 `test_dns.py` checks header and section contracts, binary names, compression boundaries and loops, message/entry/traversal limits, opaque RDATA, malformed prefixes, immutable APIs and bounded reproducible adversarial input. `test_dns_packet_analysis.py` checks real IPv4/IPv6 UDP observations, extension headers, external TCP message delimitation, all four classic PCAP encodings, unchanged flow/detection/evaluation behavior, capture failure propagation and identical serialized observations across three hash seeds and three time zones. Run both with `PYTHONPATH=src python3 -B -m unittest tests.test_dns tests.test_dns_packet_analysis`.
+
+## DNS transaction correlation
+
+`test_dns_correlation.py` checks immutable request/response associations, direction/question/opcode matching, ID reuse, ambiguity, pending-state saturation, invalid DNS exclusion, timestamp contracts and bounded state without history. `test_dns_correlation_lifecycle.py` uses real UDP packet analysis and flow/session admission for IPv4/IPv6 isolation, publication failure/retry, all closure reasons, capture/consumer failures, client-port isolation, PCAP equivalence and deterministic state churn. Replay runs all nine combinations of hash seeds 1/29/503 and UTC/Asia-Kolkata/America-New-York time zones. Run with `PYTHONPATH=src python3 -B -m unittest tests.test_dns_correlation tests.test_dns_correlation_lifecycle`.

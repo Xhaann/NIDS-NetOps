@@ -1,3 +1,12 @@
+from analysis.dns_correlation import (
+    DNS_MAX_PENDING_REQUESTS,
+    DNSCorrelationStatus,
+    DNSCorrelationReason,
+    DNSTransactionObservation,
+    DNSCorrelationState,
+    update_dns_correlation_state,
+    finalize_dns_correlation_state,
+)
 from analysis.dns import (
     DNS_MAX_MESSAGE_BYTES,
     DNS_MAX_ENTRIES,
@@ -134,6 +143,14 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "DNS_MAX_PENDING_REQUESTS",
+    "DNSCorrelationStatus",
+    "DNSCorrelationReason",
+    "DNSTransactionObservation",
+    "DNSCorrelationState",
+    "update_dns_correlation_state",
+    "finalize_dns_correlation_state",
+
     "DNS_MAX_MESSAGE_BYTES",
     "DNS_MAX_ENTRIES",
     "DNS_MAX_POINTER_HOPS",

@@ -1,8 +1,9 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional
 
+from analysis.dns_correlation import DNSCorrelationState, finalize_dns_correlation_state
 from analysis.flow_identity import FlowIdentity, flow_identity_from_packet
 from analysis.flow_state_coordinator import CoordinatedFlowState, FlowStateCoordinator
 from analysis.packet_analysis import PacketAnalysis
@@ -60,6 +61,19 @@ class FlowObservationWindow:
             raise FlowObservationWindowError(
                 "coordinated_state must contain at least one accepted packet"
             )
+
+        dns = self.coordinated_state.dns_correlation_state
+        if dns is not None:
+            if self.closure_reason is None and dns.finalized:
+                raise FlowObservationWindowError("active windows require active DNS correlation")
+            if self.closure_reason is not None and not dns.finalized:
+                object.__setattr__(self, "coordinated_state", replace(
+                    self.coordinated_state, dns_correlation_state=finalize_dns_correlation_state(dns),
+                ))
+
+    @property
+    def dns_correlation_state(self) -> Optional[DNSCorrelationState]:
+        return self.coordinated_state.dns_correlation_state
 
     @property
     def identity(self) -> FlowIdentity:

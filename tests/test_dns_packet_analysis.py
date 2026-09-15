@@ -2,7 +2,7 @@ import os
 import subprocess
 import sys
 import unittest
-from dataclasses import fields
+from dataclasses import fields, replace
 from datetime import timedelta
 from pathlib import Path
 from struct import pack
@@ -11,7 +11,7 @@ from unittest.mock import PropertyMock, patch
 
 from analysis import (
     DNSMessageStatus, FlowObservationWindowManager, PacketAnalysis,
-    analyze_dns_message, analyze_packet, analyze_packet_outcome,
+    analyze_dns_message, analyze_packet, analyze_packet_outcome, extract_flow_feature_snapshot,
 )
 from application import GroundTruth, run_end_to_end_validation, run_streaming_evaluation
 from capture import CaptureError, CaptureSource, PcapPacketSource
@@ -130,10 +130,19 @@ class DNSPacketTests(unittest.TestCase):
     def test_detector_evaluation_and_streaming_semantics_unchanged(self):
         args = dict(configuration=settings(), capture_session_id='dns', ground_truth=GroundTruth((), ()))
         expected = run_end_to_end_validation(MemoryPacketSource(samples()), **args)
-        with patch.object(PacketAnalysis, 'dns', new_callable=PropertyMock, side_effect=AssertionError('no DNS detector')):
+        with patch.object(PacketAnalysis, 'dns', new_callable=PropertyMock, return_value=None):
             actual = run_end_to_end_validation(MemoryPacketSource(samples()), **args)
             metrics = run_streaming_evaluation(MemoryPacketSource(samples()), **args)
-        self.assertEqual(actual, expected)
+        self.assertEqual(actual.report.metrics, expected.report.metrics)
+        self.assertEqual(actual.pipeline_result.packet_findings, expected.pipeline_result.packet_findings)
+        self.assertEqual(len(actual.pipeline_result.flow_findings), len(expected.pipeline_result.flow_findings))
+        for finding, baseline in zip(expected.pipeline_result.flow_findings, actual.pipeline_result.flow_findings):
+            evidence = finding.raw_evidence
+            window = evidence.snapshot.observation_window if hasattr(evidence, 'snapshot') else evidence.observation_window
+            stripped = replace(window, coordinated_state=replace(window.coordinated_state, dns_correlation_state=None))
+            evidence = replace(evidence, **({'snapshot': extract_flow_feature_snapshot(stripped)} if hasattr(evidence, 'snapshot')
+                                           else {'observation_window': stripped}))
+            self.assertEqual(replace(finding, raw_evidence=evidence), baseline)
         self.assertEqual(metrics, expected.report.metrics)
         self.assertEqual([item.name for item in fields(DetectionFinding)],
                          ['detector_id', 'detector_version', 'decision', 'raw_evidence', 'security_interpretation'])

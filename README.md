@@ -8,6 +8,8 @@ Capture → packet analysis → flow/features → detection → evaluation again
 
 [DNS protocol observation](src/analysis/README.md#dns-message-observation) provides bounded header, name/compression and record-envelope parsing, with explicit incomplete, malformed and unsupported outcomes. It integrates lazily with IPv4/IPv6 UDP packet analysis; already-delimited TCP messages use the same parser. It adds no DNS attack detector or DNS flow features.
 
+[Bounded DNS transaction correlation](src/analysis/README.md#bounded-dns-transaction-correlation) now associates valid UDP DNS requests/responses within existing flow windows, with explicit ambiguity, unmatched outcomes, capacity closure and capture-time durations. Closed windows finalize outstanding requests; no DNS detector is added.
+
 Capture supplies immutable `PacketObservation` values. Analysis returns `PacketAnalysisOutcome`, including recognized failures. `run_detection_pipeline()` uses `DetectionSession` to produce ordered packet and closed-flow findings in `DetectionPipelineResult`.
 
 For incremental processing of large captures, [`run_detection_stream()`](src/application/README.md#incremental-detection-finding-delivery) delivers those findings to synchronous packet and flow consumers without accumulating a result history. The collecting pipeline uses this same lifecycle. Active analysis remains bounded by the window limit; consumer-retained findings can still retain packet/window evidence. Delivery adds no persistent archival, output queue, or serialization. The CLI and end-to-end reporting APIs continue to collect complete results.
