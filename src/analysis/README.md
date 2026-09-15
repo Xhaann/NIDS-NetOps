@@ -763,3 +763,49 @@ Flow identity, IP version, direction, admission, active capacity and release rem
 One statistics result stores 11 scalar slots and two fixed tuples of 16 counters each, with no predecessor, transaction, message, name, RDATA, packet, PCAP or capture-source references. Updates use two temporary 16-bin lists and at most two message references; closure may slice at most 128 newly terminal observation references from the already-bounded correlation result. No collection grows with transaction count. Exact Python integer bit lengths grow logarithmically with accumulated counts/totals, so this is a bounded number of values, not a constant-byte memory claim. Aggregate memory also depends on the existing active-window ceiling and any snapshots retained by callers. Completed observations can be released when correlation's latest batch and callers no longer retain them; features add no retention.
 
 Frozen dataclasses, exact integer validation and tuple-only distributions prevent ordinary caller mutation and mutable-container exposure. Exported copies can be changed without changing the result. These statistics create no findings or thresholds for unanswered requests, ambiguity, latency, opcodes, response codes or record counts. DNS parsing, matching, LDAP, packet/flow detectors, finding fields, collecting/streaming evaluation, metrics and historical NOT_EVALUABLE semantics remain unchanged.
+
+## DNS query-name structural statistics
+
+[dns_query_name_statistics.py](dns_query_name_statistics.py) exports frozen `DNSQueryNameStatistics` and `update_dns_query_name_statistics(current, observation)`. The reducer consumes an established non-PENDING `DNSTransactionObservation`, then measures only its contributing messages' parsed `DNSQuestion.name` values. `current=None` starts empty statistics. PENDING raises `ValueError`; wrong argument types raise `TypeError`. The parser and transaction factories remain the admission boundary: malformed, incomplete, unsupported and absent DNS messages cannot produce contributing transactions, even when an invalid message contains an already-parsed question prefix.
+
+### Query-name accounting and units
+
+Only question-section names are query names. Answer, authority and additional owner names and RDATA-embedded names never contribute. Accounting follows the established transaction-statistics convention: MATCHED contributes both the request and response message's question sections, including repeated response questions as separate observed message content. UNMATCHED, AMBIGUOUS and UNRESOLVED contribute only their observed `message`; contextual request references on ambiguous observations are ignored. The original outstanding request later contributes its own unresolved closure observation. There is no inferred logical-query identity or deduplication. In coordinator-produced states, `dns_query_name_statistics.query_name_count` equals `dns_transaction_statistics.question_count`.
+
+`DNSName.labels` is an immutable tuple of nonempty binary labels, preserving case and bytes. No decoding, Unicode/IDNA interpretation, case folding or extra canonicalization occurs. Name length uses the existing `DNSName.expanded_length`: expanded wire octets, equal to label payload octets plus one length octet per label plus one terminal root octet. It does not use `encoded_length`, pointer hops or compression-pointer bytes. Label length is the number of payload octets in each existing label, excluding its length octet. These are byte-oriented structural measurements, not character counts or dotted presentation-string lengths. A dot or zero byte inside a parsed label remains a payload byte, not a new separator.
+
+The root name is represented by `labels=()`: expanded length one, label count zero, and no fake empty label. The terminal root is included exactly once in name length and never in label count, label-length extrema or label-length means. The parser currently permits labels up to 63 octets, expanded names up to 255 octets and up to 127 nonempty labels per name.
+
+### Public statistics
+
+| Field/property | Meaning |
+| --- | --- |
+| `query_name_count` | Total contributing question-name observations, including roots and repetitions. |
+| `label_count` | Total nonempty labels across all contributing names. |
+| `min_name_length_bytes`, `max_name_length_bytes`, `total_name_length_bytes` | Expanded wire name-length extrema and sum. |
+| `mean_name_length_bytes` | Exact `Fraction(total_name_length_bytes, query_name_count)`, or `None` without names. |
+| `min_label_length_bytes`, `max_label_length_bytes`, `total_label_length_bytes` | Parsed label-payload length extrema and sum. |
+| `mean_label_length_bytes` | Exact `Fraction(total_label_length_bytes, label_count)`, or `None` without labels. |
+| `max_labels_per_name` | Maximum nonempty label count in an observed name. |
+| `min_labels_per_non_root_name` | Minimum label count among non-root names only. |
+| `root_name_count` | Number of root question-name observations. |
+| `digit_name_count` | Names with at least one ASCII digit byte, 48 through 57 inclusive. |
+| `hyphen_name_count` | Names with at least one byte 45 (`-`). |
+| `underscore_name_count` | Names with at least one byte 95 (`_`). |
+| `non_ascii_name_count` | Names with at least one byte 128 through 255 inclusive. |
+
+Each byte-class counter increments at most once per name, regardless of repetitions or labels. Classes are independent and can overlap. Non-ASCII does not imply valid or invalid text; encoded non-ASCII digit characters do not become ASCII digit bytes. No entropy, unique-domain count, lexical score, heuristic threshold, reputation or maliciousness interpretation is added.
+
+The aggregate identity is `total_name_length_bytes = total_label_length_bytes + label_count + query_name_count`. Counts, totals and extrema use exact Python integers. Both means use Feature 14's standard-library `fractions.Fraction` convention, without floating-point conversion, rounding or clamping. Structure is independent of capture timestamps and latency; this reducer neither stores nor reads them. Existing canonical UTC admission and decreasing-timestamp rejection remain upstream.
+
+### Empty state, ownership and bounds
+
+`DNSQueryNameStatistics()` has zero counts/totals and `None` for every minimum, maximum and mean. Root-only input differs: name extrema and mean are one, maximum labels per name is zero, label total is zero, and label extrema/mean and minimum non-root label count remain `None`. Non-DNS flows, messages with no questions and active windows with only pending requests have the same explicit empty statistics.
+
+The additive `CoordinatedFlowState.dns_query_name_statistics` defaults to the immutable empty value; `FlowObservationWindow.dns_query_name_statistics` exposes the stored result. Existing flow identity, active capacity, admission, closure and release remain authoritative. IPv4/IPv6 and client-port interleaving stay isolated; endpoint/ID/name reuse in a new window starts fresh statistics. The UDP packet path supplies only established DNS observations. Already-delimited TCP transaction observations may use the reducer; there is no DNS-over-TCP buffering, framing or length-prefix parsing.
+
+Both DNS reducers run during the existing atomic coordinator preparation and closed-window publication. Closure consumes only correlation's newly terminal suffix; the retained completed prefix has already contributed. Reconstructing an already-closed window preserves the same feature value. Aggregation failure, including partway through a batch, leaves the old state intact; publication failure cannot double-count an explicit retry. Capture and parser infrastructure failures retain their existing propagation and cleanup behavior. Standalone callers remain responsible for flow scope and exactly-once delivery of terminal observations; no replay history or secondary lifecycle is stored.
+
+The result stores exactly **15 scalar integer-or-`None` fields**. Its two mean properties construct exact rational values on access. There are no stored collections or source references: no names, labels, questions, messages, transactions, packets, flows, capture sources or PCAP data. Updating uses a fixed 15-entry local value mapping, at most two contributing message references and bounded traversal of existing question/name/label objects. The parser bounds input to at most 128 entries per message; a match contributes at most 256 questions, each with expanded length at most 255 octets. No name-sized copy, global name state, distinct-name set or history is created. Integer storage grows with bit length, so this is fixed scalar shape, not constant-byte memory. Total ownership costs also include the existing active-window ceiling and any immutable snapshots retained by callers.
+
+Frozen dataclass validation rejects mutable containers and non-integer scalar inputs. Caller-owned constructor mappings and exported copies cannot mutate a recorded result. Retaining the feature result does not retain its source graph; completed observations can be reclaimed when correlation and callers release them. The existing `DNSTransactionStatistics` semantics, `FlowFeatureSnapshot` version 1, 49-value ML projection, LDAP, detectors, finding fields, evaluation and metrics remain unchanged. These measurements establish structural observations only and do not identify DGA activity, DNS tunneling or attacks.

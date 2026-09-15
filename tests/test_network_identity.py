@@ -33,7 +33,7 @@ def synthetic_window(identity):
     state = template.coordinated_state
     components = {}
     for field in fields(state):
-        if field.name == "dns_transaction_statistics":
+        if field.name in ("dns_transaction_statistics", "dns_query_name_statistics"):
             continue
         component = getattr(state, field.name)
         components[field.name] = (
