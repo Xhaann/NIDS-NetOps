@@ -1,3 +1,7 @@
+from analysis.tls_record_framing import (
+    TLS_RECORD_MAX_PAYLOAD_BYTES, TLSRecordHeader, TLSRecordObservation, TLSRecordState,
+    TLSRecordStatus, TLSRecordUpdate, update_tls_record_state,
+)
 from analysis.dns_transaction_statistics import DNSTransactionStatistics, update_dns_transaction_statistics
 from analysis.dns_query_name_statistics import DNSQueryNameStatistics, update_dns_query_name_statistics
 from analysis.dns_resource_record_statistics import DNSResourceRecordStatistics, update_dns_resource_record_statistics
@@ -156,6 +160,13 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "TLS_RECORD_MAX_PAYLOAD_BYTES",
+    "TLSRecordHeader",
+    "TLSRecordObservation",
+    "TLSRecordState",
+    "TLSRecordStatus",
+    "TLSRecordUpdate",
+    "update_tls_record_state",
     "DNSStreamStatus",
     "DNSStreamObservation",
     "DNSStreamState",

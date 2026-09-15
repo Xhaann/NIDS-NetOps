@@ -227,7 +227,7 @@ class TCPStreamIntegrationTests(unittest.TestCase):
                                          closed_window_consumer=windows.append)
         self.assertEqual(tuple(windows), expected)
         for window in windows:
-            legacy = replace(window, coordinated_state=replace(window.coordinated_state, tcp_stream_state=None))
+            legacy = replace(window, coordinated_state=replace(window.coordinated_state, tcp_stream_state=None, tls_record_state=None))
             self.assertEqual(research_example_from_window(window).projection, research_example_from_window(legacy).projection)
             actual, previous = extract_flow_feature_snapshot(window), extract_flow_feature_snapshot(legacy)
             for field in fields(actual):
@@ -244,7 +244,7 @@ class TCPStreamIntegrationTests(unittest.TestCase):
         for finding, reference in zip(actual.pipeline_result.flow_findings, previous.pipeline_result.flow_findings):
             evidence = finding.raw_evidence
             window = evidence.snapshot.observation_window if hasattr(evidence, 'snapshot') else evidence.observation_window
-            stripped = replace(window, coordinated_state=replace(window.coordinated_state, tcp_stream_state=None))
+            stripped = replace(window, coordinated_state=replace(window.coordinated_state, tcp_stream_state=None, tls_record_state=None))
             evidence = replace(evidence, **({'snapshot': extract_flow_feature_snapshot(stripped)} if hasattr(evidence, 'snapshot')
                                            else {'observation_window': stripped}))
             self.assertEqual(replace(finding, raw_evidence=evidence), reference)
@@ -257,7 +257,7 @@ class TCPStreamIntegrationTests(unittest.TestCase):
         with self.assertRaises(FlowCoordinationError):
             replace(state, tcp_stream_state=other.tcp_stream_state)
         arguments = tuple(getattr(state, field.name) for field in fields(state)
-                          if field.name not in ('tcp_stream_state', 'dns_transaction_statistics', 'dns_query_name_statistics', 'dns_resource_record_statistics', 'dns_message_flag_statistics', 'dns_edns_statistics', 'dns_stream_state'))
+                          if field.name not in ('tcp_stream_state', 'dns_transaction_statistics', 'dns_query_name_statistics', 'dns_resource_record_statistics', 'dns_message_flag_statistics', 'dns_edns_statistics', 'dns_stream_state', 'tls_record_state'))
         self.assertIsNone(type(state)(*arguments).tcp_stream_state)
         udp = analyze_packet(observation(frame(17, transport(17, b'udp')), 0))
         udp_state = FlowStateCoordinator().record(udp)

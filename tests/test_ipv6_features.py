@@ -163,7 +163,7 @@ class IPv6FeatureParityTests(unittest.TestCase):
         self.assertNotEqual(v4_snapshot.identity, v6_snapshot.identity)
         self.assertEqual(snapshot_features(v4_snapshot), snapshot_features(v6_snapshot))
         for field in fields(v4_snapshot.coordinated_state):
-            if field.name == "tcp_stream_state":
+            if field.name in ("tcp_stream_state", "tls_record_state"):
                 continue
             left = getattr(v4_snapshot.coordinated_state, field.name)
             right = getattr(v6_snapshot.coordinated_state, field.name)

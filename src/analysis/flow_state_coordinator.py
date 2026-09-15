@@ -24,6 +24,7 @@ from analysis.ldap_correlation import LDAPCorrelationState, update_ldap_correlat
 from analysis.ldap_stream_framing import LDAPStreamState, update_ldap_stream_state
 from analysis.packet_analysis import PacketAnalysis
 from analysis.tcp_stream_observation import TCPStreamState, update_tcp_stream_state
+from analysis.tls_record_framing import TLSRecordState, update_tls_record_state
 from analysis.tcp_control_statistics import TCPControlStatistics, update_tcp_control_statistics
 
 
@@ -50,6 +51,7 @@ class CoordinatedFlowState:
     dns_message_flag_statistics: DNSMessageFlagStatistics = DNSMessageFlagStatistics()
     dns_edns_statistics: DNSEDNSStatistics = DNSEDNSStatistics()
     dns_stream_state: Optional[DNSStreamState] = None
+    tls_record_state: Optional[TLSRecordState] = None
 
     def __post_init__(self) -> None:
         for name, value, expected in (
@@ -104,6 +106,12 @@ class CoordinatedFlowState:
                 raise TypeError("tcp_stream_state must be exactly a TCPStreamState or None")
             if streams.identity != self.identity:
                 raise FlowCoordinationError("TCP stream identity must match")
+        tls = self.tls_record_state
+        if tls is not None:
+            if type(tls) is not TLSRecordState:
+                raise TypeError("tls_record_state must be exactly a TLSRecordState or None")
+            if tls.tcp_stream_state is not self.tcp_stream_state or framing is not None or dns_framing is not None:
+                raise FlowCoordinationError("TLS framing requires exclusive ownership of the exact TCP stream state")
         ldap = self.ldap_statistics
         if ldap is not None:
             if type(ldap) is not LDAPFlowStatistics:
@@ -248,6 +256,11 @@ class FlowStateCoordinator:
         )
         if dns_update is not None:
             values["tcp_stream_state"] = dns_update.state.tcp_stream_state
+        tls_update = None if streams is None else update_tls_record_state(
+            None if current is None else current.tls_record_state, streams,
+        )
+        if tls_update is not None:
+            values["tcp_stream_state"] = tls_update.state.tcp_stream_state
         direction = flow_direction_from_packet(analysis, identity)
         if identity.protocol == 17:
             messages = ((direction, analysis.dns),)
@@ -280,7 +293,8 @@ class FlowStateCoordinator:
                                     dns_transaction_statistics=dns_statistics, dns_query_name_statistics=dns_names,
                                     dns_resource_record_statistics=dns_records, dns_message_flag_statistics=dns_flags,
                                     dns_edns_statistics=dns_edns,
-                                    dns_stream_state=None if dns_update is None else dns_update.state)
+                                    dns_stream_state=None if dns_update is None else dns_update.state,
+                                    tls_record_state=None if tls_update is None else tls_update.state)
 
     def _commit_record(self, state: CoordinatedFlowState) -> None:
         self._state = state

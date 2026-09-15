@@ -1046,3 +1046,51 @@ Infrastructure exceptions from TCP observation, framing allocation, parsing, cor
 At inactivity, capacity, explicit segmentation or capture end, complete frames have already entered the parser. An incomplete prefix or payload stays INCOMPLETE in the closed window and is never converted into a DNS message. Existing finalization terminalizes only already-admitted pending requests; repeated finalization cannot recount the completed prefix. TCP FIN/RST does not itself replace the existing window closure policy. New windows begin with independent empty framing state. Capture failures retain established session cleanup and publication behavior.
 
 Valid no-OPT and EDNS messages use exactly the same Features 12–21 parser, header, correlation and reducer contracts as already-delimited TCP messages and UDP DNS. Unknown EDNS codes/versions, DO, opaque options, malformed EDNS admission and Feature 21's unknown-option meaning are unchanged. `PacketAnalysis.dns` stays UDP-only because a packet-local accessor cannot own stream framing. Direct `analyze_dns_message` and correlation APIs remain available for already-delimited TCP input. `FlowFeatureSnapshot`, contract `flow-feature-snapshot` version `1`, the 49-value ML projection, LDAP, detectors, evaluation, metrics, capture and CLI are unchanged. DNS-over-TCP framing is protocol ingestion infrastructure and does not detect attacks.
+
+
+## TLS record framing
+
+Feature 23 adds [tls_record_framing.py](tls_record_framing.py). `update_tls_record_state(current: Optional[TLSRecordState], streams: TCPStreamState) -> Optional[TLSRecordUpdate]` consumes the existing ordered directional TCP byte boundary. The five-byte TLS record header contains an unsigned one-byte content type, two exact protocol-version bytes and an unsigned two-byte network-order length. The length excludes the header. Payloads are opaque exact bytes: arbitrary content types, versions, zero bytes and zero-length records are preserved without semantic validation.
+
+Every header/payload split is supported, including one-byte observations, multiple records per observation and complete records followed by an incomplete suffix. Complete records are emitted in directional wire order; an arbitrary complete payload does not prevent subsequent records. Packet boundaries carry no record-framing meaning.
+
+### Public values and ownership
+
+All public values are frozen and factory-only. The analysis package exports the updater, bound, enum and these types:
+
+| Value | Stored fields |
+| --- | --- |
+| `TLSRecordHeader` | `content_type`, `protocol_version`, `declared_length` |
+| `TLSRecordObservation` | `stream`, `prefix`, `header`, `payload`, `status`, `unavailable_reason` |
+| `TLSRecordState` | `tcp_stream_state`, `forward`, `reverse` |
+| `TLSRecordUpdate` | `state`, `forward_records`, `reverse_records` |
+
+The observation's `declared_length` derives from its optional header, avoiding duplicated length state. `identity`, `direction` and `consumed_offset` delegate to its shared `TCPStreamObservation`. Partial headers reside in `prefix`; after five bytes arrive, `prefix` is cleared and `header` stores their fields. Bytes and output tuples are immutable. Prefix/payload bytes are excluded from repr.
+
+`TLSRecordStatus.READY` in retained directional state means an empty framing boundary with no current header or payload. INCOMPLETE means a partial header or body; UNAVAILABLE means an inherited TCP failure or oversized TLS declaration. These statuses describe framing, not TLS validity. A transient completed record is a READY observation with a non-None header and exactly its declared payload. An eligible empty TCP state has absent directions; an observed empty direction is READY and emits nothing.
+
+`forward_records` and `reverse_records` contain only newly completed observations. Each references the same consumed directional TCP observation as the returned state, including the metadata of the observation that completed the record. All records completed in one call share that direction's stream reference and final consumption offset; this offset is not an individual record-end coordinate. TCP observations do not contain capture timestamps. A future consumer can use the completing packet/flow's existing capture-time context; this feature introduces no timestamp copy or wall clock.
+
+Retained state has no reference to the update or completed record objects. Keeping updates or closed windows is explicit caller ownership. The coordinator prepares TLS consumption and publishes `tls_record_state` with the exact shared TCP state; the window exposes it as `tls_record_state`. The coordinator currently retains framing state only: no TLS semantic consumer, completed-record archive or external record-delivery API exists. Future analysis can consume the public update at the existing preparation boundary.
+
+Automatic dispatch requires a TCP endpoint on port 443. A flow involving 389 preserves LDAP precedence; a flow involving 53 preserves DNS precedence. Non-443 ports do not create TLS state. Canonical IPv4/IPv6 identities, client ports and directions remain isolated within existing flow/window owners. There is no second TCP owner, global cache or application-stream abstraction. Starting at an already-consumed origin, changing identity/consumption externally, or losing an established direction raises an error.
+
+### Exact bounds and failures
+
+`TLS_RECORD_MAX_PAYLOAD_BYTES = 18432` uses the conservative TLS 1.2 TLSCiphertext ceiling of `2^14 + 2048` from [RFC 5246 section 6.2.3](https://www.rfc-editor.org/rfc/rfc5246.html#section-6.2.3). This is a framing envelope bound, not version-dependent validity checking. A complete bounded record contains at most 18,437 wire bytes. The length field can naturally encode 65,535; both 18,433 and 65,535 are representable declarations rejected by this implementation. The value 65,536 cannot be encoded in that two-byte field.
+
+No declared-size preallocation occurs. Available fragments are consumed immediately through `consume_tcp_stream`. Per direction, retained TLS byte state is either at most **four incomplete header bytes**, or one decoded header and at most **18,431 incomplete payload bytes**. Header assembly transiently uses five bytes; a completed payload transiently uses at most **18,432 bytes**. The existing TCP layer separately retains at most **65,536 bytes per direction**, including consumed raw bytes until reclamation. Consuming fragments allows even a long sequence of maximum-sized records to reclaim TCP storage without retaining complete TLS history.
+
+One update handles at most two directions. A direction can transiently emit at most 13,108 records: one previously partial record plus records using the remaining bounded input, each fresh record requiring at least five bytes. Transient emitted payload bytes are bounded above by 65,536 available TCP bytes plus 18,431 previously incomplete payload bytes. Object overhead, temporary immutable-byte copies, integer offset widths, window capacity and caller-retained snapshots are additional memory costs; this is not a constant process-memory guarantee. No packets, predecessor states, handshake histories, parsed messages or transaction graphs are retained by TLS framing.
+
+A declaration above 18,432 consumes its five-byte header, retains its metadata and enters UNAVAILABLE with `TCPStreamStatus.LIMIT_EXCEEDED` before consuming or copying its body into TLS state. Any body already present remains within the existing bounded TCP buffer. Earlier complete records in that update are still emitted. No later bytes are framed in the failed direction. Inherited TCP failures use their existing reason; the first applicable failure is sticky, including when TCP later reports a different failure. The existing bounded partial fragment remains inspectable.
+
+TCP alone owns sequence numbers, SYN/FIN/RST, retransmissions, wraparound, gaps, overlap/conflict, fragmentation, restart, buffer limits and after-close behavior. Recognized retransmissions and unchanged updates emit no duplicate records. FIN/RESET may provide final contiguous bytes; a partial suffix remains INCOMPLETE, while subsequent payload follows TCP AFTER_CLOSE. There is no gap repair, out-of-order reconstruction, stream resynchronization or guessed alignment. Framing starts at the observed origin; a midstream capture or new window does not prove that this origin is a TLS record boundary.
+
+### Publication, closure and scope
+
+Infrastructure exceptions during TCP updating, framing, allocation, record extraction or window construction abort the candidate before publication. Published state and consumption remain intact, and retry from that state reproduces the complete record batch. Tests also compose a failing future consumer at the preparation boundary; no TLS-specific rollback is introduced. This guarantees state atomicity, not rollback of arbitrary external consumer side effects. Existing closed-window delivery happens after publication and keeps its existing failure contract.
+
+At explicit close, inactivity, capacity eviction or capture end, incomplete headers and payloads stay INCOMPLETE in the closed window and never become complete records. Previously extracted complete records are not re-emitted by closure. Repeated capture finalization returns no new windows; repeated explicit close keeps the existing missing-active-window error. New windows own independent framing. FIN/RST does not replace the existing window closure policy. Capture errors preserve already published state and existing cleanup behavior.
+
+This feature performs no TLS semantic parsing, handshake/certificate analysis, decryption, cryptographic validation, fingerprinting, attack detection or encrypted-DNS analysis. Features 12–22, `FlowFeatureSnapshot`, `flow-feature-snapshot` version `1`, all 49 projected values, LDAP, detectors, evaluation, metrics, capture and CLI remain unchanged. Validation uses synthetic traffic through existing packet/capture/session helpers and all four classic PCAP encodings; no external corpus or submicrosecond timestamp preservation is claimed.
