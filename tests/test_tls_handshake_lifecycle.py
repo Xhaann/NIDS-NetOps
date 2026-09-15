@@ -252,7 +252,7 @@ class TLSHandshakeLifecycleTests(unittest.TestCase):
         original = coordinator_module.update_tls_handshake_state
         with patch.object(coordinator_module, 'update_tls_handshake_state', wraps=original) as updater:
             baseline, = run_packets(inputs)
-        stripped = replace(baseline, coordinated_state=replace(baseline.coordinated_state, tls_handshake_state=None))
+        stripped = replace(baseline, coordinated_state=replace(baseline.coordinated_state, tls_handshake_state=None, tls_client_hellos=()))
         left, right = extract_flow_feature_snapshot(window), extract_flow_feature_snapshot(stripped)
         self.assertEqual(updater.call_count, 2)
         self.assertEqual(left.feature_contract, FeatureContractVersion('flow-feature-snapshot', '1'))
@@ -267,7 +267,7 @@ class TLSHandshakeLifecycleTests(unittest.TestCase):
             replace(state, tls_handshake_state={})
         with self.assertRaises(FlowCoordinationError):
             replace(state, tls_record_state=None)
-        values = tuple(getattr(state, field.name) for field in fields(state) if field.name not in ('tls_handshake_state', 'tls_handshake_statistics'))
+        values = tuple(getattr(state, field.name) for field in fields(state) if field.name not in ('tls_handshake_state', 'tls_handshake_statistics', 'tls_client_hellos'))
         self.assertIsNone(type(state)(*values).tls_handshake_state)
 
     def test_four_pcap_encodings_through_capture_session(self):

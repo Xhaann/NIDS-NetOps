@@ -125,3 +125,9 @@ See the [CLI contract](src/application/README.md#command-line-adapter) for evide
 | [Labs](labs/README.md) | Planned authorized lab methodology |
 
 `enrichment`, `events`, `storage`, and `integrations` contain future responsibility notes, not services. Documentation is Markdown; source follows the zero-comment rule.
+
+## TLS ClientHello structural analysis
+
+Completed ClientHello handshakes now feed bounded structural analysis after the existing TLS framing and statistics layers. Immutable results preserve version/random/session bytes, ordered cipher suites/compression methods and extensions, with selected structural decoding for supported groups, signature algorithms and ALPN. Unknown and duplicate extensions remain observable in wire order. Explicit parser statuses distinguish complete, incomplete, malformed and unsupported structures.
+
+The flow/window API publishes only the current packet's ClientHello batch, with existing direction/source ownership and atomic retry behavior. No fingerprinting, JA3/JA4, cryptographic validation, role inference, detection, decryption or ML is added. See the [ClientHello contract, bounds and validation limitations](src/analysis/README.md#tls-clienthello-structural-analysis).

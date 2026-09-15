@@ -1,3 +1,17 @@
+from analysis.tls_client_hello import (
+    TLS_CLIENT_HELLO_MAX_BODY_BYTES,
+    TLS_CLIENT_HELLO_MAX_SESSION_ID_BYTES,
+    TLS_CLIENT_HELLO_MAX_CIPHER_SUITE_BYTES,
+    TLS_CLIENT_HELLO_MAX_COMPRESSION_BYTES,
+    TLS_CLIENT_HELLO_MAX_EXTENSION_BYTES,
+    TLS_CLIENT_HELLO_MAX_EXTENSION_DATA_BYTES,
+    TLS_CLIENT_HELLO_MAX_EXTENSIONS,
+    TLSClientHello,
+    TLSClientHelloExtension,
+    TLSClientHelloObservation,
+    TLSClientHelloStatus,
+    analyze_tls_client_hello,
+)
 from analysis.tls_handshake_statistics import (
     TLSHandshakeStatistics, DirectionalTLSHandshakeStatistics,
     update_tls_handshake_statistics, update_directional_tls_handshake_statistics,
@@ -168,6 +182,19 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "TLS_CLIENT_HELLO_MAX_BODY_BYTES",
+    "TLS_CLIENT_HELLO_MAX_SESSION_ID_BYTES",
+    "TLS_CLIENT_HELLO_MAX_CIPHER_SUITE_BYTES",
+    "TLS_CLIENT_HELLO_MAX_COMPRESSION_BYTES",
+    "TLS_CLIENT_HELLO_MAX_EXTENSION_BYTES",
+    "TLS_CLIENT_HELLO_MAX_EXTENSION_DATA_BYTES",
+    "TLS_CLIENT_HELLO_MAX_EXTENSIONS",
+    "TLSClientHello",
+    "TLSClientHelloExtension",
+    "TLSClientHelloObservation",
+    "TLSClientHelloStatus",
+    "analyze_tls_client_hello",
+
     "TLSHandshakeStatistics",
     "DirectionalTLSHandshakeStatistics",
     "update_tls_handshake_statistics",

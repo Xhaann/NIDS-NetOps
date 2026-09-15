@@ -144,7 +144,8 @@ def snapshot_features(snapshot: FlowFeatureSnapshot) -> tuple:
 
 
 def state_components(state: CoordinatedFlowState) -> tuple:
-    return tuple(value for value in vars(state).values() if value is not None)
+    return tuple(component for value in vars(state).values() if value is not None
+                 for component in (value if type(value) is tuple else (value,)))
 
 
 class FlowFeatureSnapshotTests(unittest.TestCase):

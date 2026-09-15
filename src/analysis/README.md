@@ -1149,7 +1149,7 @@ Allocation, framing, extraction, state-construction or publication exceptions ab
 
 At explicit flow close, inactivity, capacity eviction or capture end, incomplete headers and bodies remain INCOMPLETE and are never emitted as messages. Complete messages have already been extracted. Repeated finalization produces no additional messages; repeated explicit close retains the existing missing-active-window error. New windows start independently. FIN/RESET may supply final contiguous bytes and leave an incomplete suffix; they do not replace window closure policy. Capture failures preserve earlier published state and existing cleanup.
 
-Framing follows only the supplied record payload boundary and never scans for plausible headers. Midstream capture does not prove record or handshake alignment. An assumed origin can produce opaque complete framing without proving semantic validity; the layer does not guess missing bytes, recover gaps or resynchronize. No ClientHello/ServerHello/certificate parsing, SNI/ALPN/cipher interpretation, fingerprinting, decryption, cryptographic validation or detection is implemented. Features 12–23, `FlowFeatureSnapshot`, contract version `1` and the 49-value ML projection remain unchanged.
+Framing follows only the supplied record payload boundary and never scans for plausible headers. Midstream capture does not prove record or handshake alignment. An assumed origin can produce opaque complete framing without proving semantic validity; the layer does not guess missing bytes, recover gaps or resynchronize. No ClientHello/ServerHello/certificate parsing, SNI/ALPN/cipher interpretation, fingerprinting, decryption, cryptographic validation or detection is implemented by the handshake framer. Features 12–23, `FlowFeatureSnapshot`, contract version `1` and the 49-value ML projection remain unchanged.
 
 Validation uses synthetic traffic through the existing real packet/capture/session path and four classic PCAP encodings. No external corpus, Authentication Header support beyond existing helpers, or submicrosecond capture-time preservation is claimed. Replay covers IPv4/IPv6, both directions, cross-record/segmented/coalesced messages, ignored records, TCP failure, capacity closure and weak-reference release under all nine required seed/timezone combinations.
 
@@ -1198,6 +1198,61 @@ Per direction, retained statistics contain five scalar fields and one fixed 256-
 
 ### Scope and validation limits
 
-These are body-length/type measurements of completed framing, not TLS semantic validity, handshake state-machine interpretation or proof of attack. No ClientHello/ServerHello/certificate parsing, SNI/ALPN/cipher/extension analysis, fingerprints, JA3/JA4, decryption, detection, scoring or ML is implemented. Features 12–24, `FlowFeatureSnapshot`, `flow-feature-snapshot` version `1` and all 49 projected values remain unchanged. No generic statistics framework or shared DNS/LDAP refactor is introduced.
+These are body-length/type measurements of completed framing, not TLS semantic validity, handshake state-machine interpretation or proof of attack. No ClientHello/ServerHello/certificate parsing, SNI/ALPN/cipher/extension analysis, fingerprints, JA3/JA4, decryption, detection, scoring or ML is implemented by the statistics layer. Features 12–24, `FlowFeatureSnapshot`, `flow-feature-snapshot` version `1` and all 49 projected values remain unchanged. No generic statistics framework or shared DNS/LDAP refactor is introduced.
 
 Validation uses synthetic traffic through the existing real packet/capture/session path, all four classic PCAP encodings and all nine required hash-seed/timezone combinations. Replay includes exact means, all 256 type bins, both directions, IPv4/IPv6, segmented/cross-record/coalesced messages, zero-length messages, TCP failure, capacity closure and lifecycle release. No external corpus, semantic TLS validity, midstream alignment recovery or submicrosecond timestamp preservation is claimed.
+
+## TLS ClientHello structural analysis
+
+Feature 26 adds [tls_client_hello.py](tls_client_hello.py). `analyze_tls_client_hello(observation)` accepts an exact completed `TLSHandshakeObservation`. Framing remains authoritative: the parser validates the READY status, header, immutable bytes and declared-length/payload-length agreement before reading the body. Inconsistent source objects raise TypeError or ValueError; the parser does not repair them. The coordinator invokes it only for newly emitted handshake type 1 messages, after the existing structural-statistics reduction.
+
+### Wire structure and public values
+
+The body contains two legacy-version bytes, 32 random bytes, a one-byte session-ID length and its bytes, a two-byte cipher-suite byte length and ordered two-byte integers, then a one-byte compression-vector length and ordered one-byte integers. Remaining bytes require a two-byte extension-block length followed by exactly that block. Trailing bytes are MALFORMED. Lengths are checked against available bytes before slicing or allocating their representations. There is no scanning, padding, normalization or resynchronization.
+
+The frozen, factory-only public values are:
+
+- `TLSClientHello`: `legacy_version`, `random`, `session_id` as exact bytes; `cipher_suites`, `compression_methods`, `extensions` as ordered tuples; `extensions_present` distinguishes an absent block from an explicitly empty block.
+- `TLSClientHelloExtension`: `extension_type`, exact opaque `data`, and optional tuple fields `supported_groups`, `signature_algorithms`, `alpn_protocols`. Only types 10, 13 and 16 populate their corresponding structural field. Other fields are None. Unknown extensions, including empty data, remain opaque without a registry.
+- `TLSClientHelloObservation`: `stream`, `status`, `reason`, `client_hello`, `failure_offset`. Identity, direction and consumed offset delegate to the completing handshake's exact TCP stream observation. No independent timestamp is added. Failures expose no partial ClientHello object; offsets are measured from the body start.
+
+Supported groups and signature algorithms each require a two-byte vector length, exact extension-data consumption and an even identifier byte count. Empty identifier vectors are representable structurally. ALPN requires an exact two-byte list length and one-byte lengths for nonempty opaque protocol names; empty lists/names and inconsistent boundaries are MALFORMED. Names retain exact bytes and order, including case and zero bytes. Every duplicate extension occurrence remains separately represented in wire order, with its own selected tuple. Values are never merged, deduplicated, named or assigned security meaning.
+
+The layout follows [RFC 5246 section 7.4.1.2](https://www.rfc-editor.org/rfc/rfc5246.html#section-7.4.1.2); nonempty ALPN names follow [RFC 7301 section 3.1](https://www.rfc-editor.org/rfc/rfc7301.html#section-3.1). This bounded structural contract deliberately preserves the entire one-byte session-ID range through 255, without asserting compliance with the protocol's narrower session-ID constraints. Cipher suites must be nonempty and even; compression methods must be nonempty. Version values, random bytes, duplicate types and identifiers receive no semantic or cryptographic validation.
+
+### Bounds and statuses
+
+| Public constant | Maximum |
+| --- | ---: |
+| `TLS_CLIENT_HELLO_MAX_BODY_BYTES` | 262144, the existing handshake ceiling |
+| `TLS_CLIENT_HELLO_MAX_SESSION_ID_BYTES` | 255 |
+| `TLS_CLIENT_HELLO_MAX_CIPHER_SUITE_BYTES` | 65535 wire bytes; largest accepted even vector is 65534 |
+| `TLS_CLIENT_HELLO_MAX_COMPRESSION_BYTES` | 255 |
+| `TLS_CLIENT_HELLO_MAX_EXTENSION_BYTES` | 65535 including extension headers |
+| `TLS_CLIENT_HELLO_MAX_EXTENSION_DATA_BYTES` | 65531 within the enclosing block |
+| `TLS_CLIENT_HELLO_MAX_EXTENSIONS` | 1024 occurrences |
+
+Each extension's length must fit inside its containing block. Selected vectors must fill their extension data exactly; ALPN names must fit their list. These bounds also bound tuple cardinalities: at most 32767 cipher identifiers, 255 compression methods, and 32764 identifiers or minimum-size ALPN names in one maximum-size selected extension. No allocation uses an unchecked declaration. The largest structurally representable body is 131619 bytes under these field bounds. An input of exactly 262144 bytes can arrive from handshake framing but cannot be a valid ClientHello layout; tests reject its excess instead of manufacturing a valid fixture.
+
+`TLSClientHelloStatus` separates structural results:
+
+- COMPLETE: every required field and vector is fully represented; this does not assert valid TLS negotiation.
+- INCOMPLETE: the body lacks required outer field/vector bytes. A complete handshake envelope can contain an incomplete ClientHello structure.
+- MALFORMED: an available length violates a structural constraint, an inner boundary contradicts its fully available container, or bytes trail the extension block.
+- UNSUPPORTED: the direct API receives a non-ClientHello handshake, or more than 1024 extensions exceed the implementation count ceiling. Unknown extension types are supported opaque values.
+
+Only these protocol parse results are caught. MemoryError and other infrastructure exceptions propagate, leaving the whole coordinator/window candidate unpublished for retry.
+
+### Publication and ownership
+
+`CoordinatedFlowState.tls_client_hellos` and `FlowObservationWindow.tls_client_hellos` expose an immutable tuple containing only ClientHello analyses newly produced by that packet update, in directional wire order. Each element retains the supplied direction; either direction is accepted without role inference. The next packet replaces the tuple, including with an empty tuple when no ClientHello completes. It is not an accumulated flow summary. Callers of the coordinator/window manager consume new batches from successful record updates, not by treating repeated snapshot access as new delivery.
+
+A/B/partial-C publishes A and B; C appears once when its handshake later completes. Retransmissions and incomplete/unavailable framing do not create results. Malformed ClientHello input remains an ordinary published parser result and does not prevent subsequent complete messages from being analyzed. Preparation includes all messages and statistics; failure on a later parse, allocation, state construction or publication leaves previously published bytes, counts and analyses intact. Retrying the same packet reproduces the batch. No external side effect is performed during preparation.
+
+Closure exposes the last published tuple without reparsing; it is not another emission. Capacity/inactivity/reopened windows remain independent. The existing session API delivers only closed-window snapshots, so it exposes only their latest batch, not all earlier ClientHellos. This feature does not add a session event callback or message archive. Tests observe successful manager publication while exercising the real capture/session path to verify all incremental results.
+
+The parser is stateless. A retained flow owns only its latest bounded batch, not predecessor messages, TLS records, handshakes, packets or session history. Parsed structures hold only their immutable fields. Observation wrappers share the existing bounded TCP stream reference for source ownership; consumers retaining wrappers extend that reference's lifetime. Consumers retaining only `client_hello` do not retain the source handshake or stream. Old windows/results are released when callers release their snapshots, as verified with weak references. Wire bounds limit representation sizes, but Python object overhead is not claimed to equal a wire-byte ceiling.
+
+Features 12–25 remain semantically unchanged. TLS port 443 eligibility, LDAP/DNS precedence, TCP/record/handshake failure behavior and the unproven alignment of midstream capture remain lower-layer contracts. No ServerHello/certificate parsing, SNI extraction, security classification, cryptographic validation, role inference, fingerprinting, JA3/JA4, decryption, detection or ML is added. `FlowFeatureSnapshot`, version 1 and all 49 projected values remain unchanged.
+
+Validation uses synthetic IPv4/IPv6 traffic and existing supported extension chains through all four classic PCAP encodings, plus nine hash-seed/timezone replays. No external corpus, complete TLS semantic validity, arbitrary TCP reconstruction, new IPv6 extension support or submicrosecond timestamp preservation is claimed.

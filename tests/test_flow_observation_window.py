@@ -546,7 +546,8 @@ class FlowObservationWindowManagerTests(unittest.TestCase):
         transition = manager.record(packet_at(5, ack=True))
         closed = transition.closed_windows[0]
         sources = (closed, closed.coordinated_state) + tuple(
-            value for value in vars(closed.coordinated_state).values() if value is not None
+            component for value in vars(closed.coordinated_state).values() if value is not None
+            for component in (value if type(value) is tuple else (value,))
         )
         before = [vars(value).copy() for value in sources]
         manager.record(packet_at(6, fin=True))

@@ -46,6 +46,8 @@ def feature_sequence(protocol):
 
 
 def scalar_values(value):
+    if type(value) is tuple:
+        return value
     return tuple(getattr(value, field.name) for field in fields(value) if field.name != "identity")
 
 
@@ -381,7 +383,8 @@ class IPv6FeatureParityTests(unittest.TestCase):
             snapshot = snapshot_from_packets(*feature_sequence(protocol))
             state = snapshot.coordinated_state
             models = (snapshot, snapshot.observation_window, state) + snapshot_features(snapshot)
-            models += tuple(getattr(state, field.name) for field in fields(state))
+            models += tuple(getattr(state, field.name) for field in fields(state) if field.name != "tls_client_hellos")
+            self.assertEqual(state.tls_client_hellos, ())
             for model in models:
                 if model is not None:
                     for field in fields(model):

@@ -10,6 +10,7 @@ from analysis.dns_resource_record_statistics import DNSResourceRecordStatistics,
 from analysis.dns_message_flag_statistics import DNSMessageFlagStatistics, update_dns_message_flag_statistics
 from analysis.dns_edns_statistics import DNSEDNSStatistics, update_dns_edns_statistics
 from analysis.dns_stream_framing import DNSStreamState
+from analysis.tls_client_hello import TLSClientHelloObservation
 from analysis.tls_record_framing import TLSRecordState
 from analysis.tls_handshake_framing import TLSHandshakeState
 from analysis.tls_handshake_statistics import DirectionalTLSHandshakeStatistics
@@ -97,6 +98,10 @@ class FlowObservationWindow:
                     dns_message_flag_statistics=flags,
                     dns_edns_statistics=edns,
                 ))
+
+    @property
+    def tls_client_hellos(self) -> tuple[TLSClientHelloObservation, ...]:
+        return self.coordinated_state.tls_client_hellos
 
     @property
     def tls_handshake_statistics(self) -> DirectionalTLSHandshakeStatistics:

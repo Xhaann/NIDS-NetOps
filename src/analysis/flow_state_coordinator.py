@@ -24,6 +24,7 @@ from analysis.ldap_correlation import LDAPCorrelationState, update_ldap_correlat
 from analysis.ldap_stream_framing import LDAPStreamState, update_ldap_stream_state
 from analysis.packet_analysis import PacketAnalysis
 from analysis.tcp_stream_observation import TCPStreamState, update_tcp_stream_state
+from analysis.tls_client_hello import TLSClientHelloObservation, analyze_tls_client_hello
 from analysis.tls_handshake_statistics import DirectionalTLSHandshakeStatistics, update_directional_tls_handshake_statistics
 from analysis.tls_handshake_framing import TLSHandshakeState, update_tls_handshake_state
 from analysis.tls_record_framing import TLSRecordState, update_tls_record_state
@@ -56,6 +57,7 @@ class CoordinatedFlowState:
     tls_record_state: Optional[TLSRecordState] = None
     tls_handshake_state: Optional[TLSHandshakeState] = None
     tls_handshake_statistics: DirectionalTLSHandshakeStatistics = DirectionalTLSHandshakeStatistics()
+    tls_client_hellos: tuple[TLSClientHelloObservation, ...] = ()
 
     def __post_init__(self) -> None:
         for name, value, expected in (
@@ -80,6 +82,13 @@ class CoordinatedFlowState:
             raise TypeError("dns_edns_statistics must be exactly a DNSEDNSStatistics")
         if type(self.tls_handshake_statistics) is not DirectionalTLSHandshakeStatistics:
             raise TypeError("tls_handshake_statistics must be exactly a DirectionalTLSHandshakeStatistics")
+        if type(self.tls_client_hellos) is not tuple:
+            raise TypeError("tls_client_hellos must be exactly a tuple")
+        for hello in self.tls_client_hellos:
+            if type(hello) is not TLSClientHelloObservation:
+                raise TypeError("tls_client_hellos must contain exact TLSClientHelloObservation values")
+            if self.tls_handshake_state is None or hello.identity != self.identity:
+                raise FlowCoordinationError("ClientHello observations must belong to the TLS handshake flow")
         dns = self.dns_correlation_state
         if dns is not None:
             if type(dns) is not DNSCorrelationState:
@@ -277,9 +286,12 @@ class FlowStateCoordinator:
             None if current is None else current.tls_handshake_state, tls_update,
         )
         handshake_statistics = DirectionalTLSHandshakeStatistics() if current is None else current.tls_handshake_statistics
+        client_hellos = []
         if handshake_update is not None:
             for observation in handshake_update.forward_messages + handshake_update.reverse_messages:
                 handshake_statistics = update_directional_tls_handshake_statistics(handshake_statistics, observation)
+                if observation.header.handshake_type == 1:
+                    client_hellos.append(analyze_tls_client_hello(observation))
         direction = flow_direction_from_packet(analysis, identity)
         if identity.protocol == 17:
             messages = ((direction, analysis.dns),)
@@ -315,7 +327,8 @@ class FlowStateCoordinator:
                                     dns_stream_state=None if dns_update is None else dns_update.state,
                                     tls_record_state=None if tls_update is None else tls_update.state,
                                     tls_handshake_state=None if handshake_update is None else handshake_update.state,
-                                    tls_handshake_statistics=handshake_statistics)
+                                    tls_handshake_statistics=handshake_statistics,
+                                    tls_client_hellos=tuple(client_hellos))
 
     def _commit_record(self, state: CoordinatedFlowState) -> None:
         self._state = state
