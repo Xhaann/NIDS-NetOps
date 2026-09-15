@@ -33,6 +33,8 @@ def synthetic_window(identity):
     state = template.coordinated_state
     components = {}
     for field in fields(state):
+        if field.name == "dns_transaction_statistics":
+            continue
         component = getattr(state, field.name)
         components[field.name] = (
             None if component is None or field.name == "tcp_stream_state" else replace(component, identity=identity)

@@ -215,7 +215,8 @@ class LDAPCorrelationLifecycleTests(unittest.TestCase):
         other = correlation_states(((False, correlation_message(0x60, 2)),))[0]
         with self.assertRaises(FlowCoordinationError):
             replace(state, ldap_correlation_state=other.ldap_correlation_state)
-        previous = tuple(getattr(state, field.name) for field in fields(state) if field.name != 'ldap_correlation_state')
+        previous = tuple(getattr(state, field.name) for field in fields(state)
+                         if field.name not in ('ldap_correlation_state', 'dns_transaction_statistics'))
         self.assertIsNone(type(state)(*previous).ldap_correlation_state)
 
     def test_repeated_hash_seed_timezone_results_are_byte_identical(self):

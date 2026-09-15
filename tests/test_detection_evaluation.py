@@ -87,7 +87,8 @@ def flow_finding_with_address_type(finding, address_type, name="source_address")
     identity = replace(window.identity, **{name: address_type(getattr(window.identity, name))})
     state = window.coordinated_state
     changes = {field.name: replace(getattr(state, field.name), identity=identity)
-               for field in fields(state) if getattr(state, field.name) is not None}
+               for field in fields(state) if getattr(state, field.name) is not None
+               and field.name != 'dns_transaction_statistics'}
     window = replace(window, coordinated_state=replace(state, **changes))
     evidence = replace(finding.raw_evidence, snapshot=extract_flow_feature_snapshot(window))
     return replace(finding, raw_evidence=evidence)

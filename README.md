@@ -6,9 +6,11 @@ NIDS-NetOps is a deterministic network intrusion detection research implementati
 
 Capture → packet analysis → flow/features → detection → evaluation against ground truth → metrics/reporting.
 
-[DNS protocol observation](src/analysis/README.md#dns-message-observation) provides bounded header, name/compression and record-envelope parsing, with explicit incomplete, malformed and unsupported outcomes. It integrates lazily with IPv4/IPv6 UDP packet analysis; already-delimited TCP messages use the same parser. It adds no DNS attack detector or DNS flow features.
+[DNS protocol observation](src/analysis/README.md#dns-message-observation) provides bounded header, name/compression and record-envelope parsing, with explicit incomplete, malformed and unsupported outcomes. It integrates lazily with IPv4/IPv6 UDP packet analysis; already-delimited TCP messages use the same parser. It adds no DNS attack detector.
 
 [Bounded DNS transaction correlation](src/analysis/README.md#bounded-dns-transaction-correlation) now associates valid UDP DNS requests/responses within existing flow windows, with explicit ambiguity, unmatched outcomes, capacity closure and capture-time durations. Closed windows finalize outstanding requests; no DNS detector is added.
+
+[DNS transaction statistics](src/analysis/README.md#dns-transaction-derived-statistics) aggregate finalized observations within those same flow windows: status and record counts, fixed opcode/response-code distributions, and exact capture-time latency statistics. The immutable DNS-specific result retains no transaction history and leaves the generic feature contract at version 1. These observations make no attack claims.
 
 Capture supplies immutable `PacketObservation` values. Analysis returns `PacketAnalysisOutcome`, including recognized failures. `run_detection_pipeline()` uses `DetectionSession` to produce ordered packet and closed-flow findings in `DetectionPipelineResult`.
 

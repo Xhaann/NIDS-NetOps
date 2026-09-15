@@ -3,7 +3,8 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional
 
-from analysis.dns_correlation import DNSCorrelationState, finalize_dns_correlation_state
+from analysis.dns_correlation import DNSCorrelationState, DNSCorrelationStatus, finalize_dns_correlation_state
+from analysis.dns_transaction_statistics import DNSTransactionStatistics, update_dns_transaction_statistics
 from analysis.flow_identity import FlowIdentity, flow_identity_from_packet
 from analysis.flow_state_coordinator import CoordinatedFlowState, FlowStateCoordinator
 from analysis.packet_analysis import PacketAnalysis
@@ -67,9 +68,19 @@ class FlowObservationWindow:
             if self.closure_reason is None and dns.finalized:
                 raise FlowObservationWindowError("active windows require active DNS correlation")
             if self.closure_reason is not None and not dns.finalized:
+                finalized = finalize_dns_correlation_state(dns)
+                retained_count = sum(item.status is not DNSCorrelationStatus.PENDING for item in dns.observations)
+                statistics = self.coordinated_state.dns_transaction_statistics
+                for observation in finalized.observations[retained_count:]:
+                    statistics = update_dns_transaction_statistics(statistics, observation)
                 object.__setattr__(self, "coordinated_state", replace(
-                    self.coordinated_state, dns_correlation_state=finalize_dns_correlation_state(dns),
+                    self.coordinated_state, dns_correlation_state=finalized,
+                    dns_transaction_statistics=statistics,
                 ))
+
+    @property
+    def dns_transaction_statistics(self) -> DNSTransactionStatistics:
+        return self.coordinated_state.dns_transaction_statistics
 
     @property
     def dns_correlation_state(self) -> Optional[DNSCorrelationState]:

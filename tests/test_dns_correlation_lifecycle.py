@@ -259,7 +259,8 @@ class DNSCorrelationLifecycleTests(unittest.TestCase):
 
     def test_legacy_coordinator_constructor_remains_available(self):
         state = FlowStateCoordinator().record(analyze_packet(packet()))
-        values = tuple(getattr(state, member.name) for member in fields(state) if member.name != 'dns_correlation_state')
+        values = tuple(getattr(state, member.name) for member in fields(state)
+                       if member.name not in ('dns_correlation_state', 'dns_transaction_statistics'))
         self.assertIsNone(type(state)(*values).dns_correlation_state)
 
     def test_finalized_state_cannot_be_reopened_as_active_window(self):

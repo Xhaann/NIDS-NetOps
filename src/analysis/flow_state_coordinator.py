@@ -6,7 +6,8 @@ from analysis.directional_inter_arrival_statistics import (
     DirectionalInterArrivalStatistics,
     update_directional_inter_arrival_statistics,
 )
-from analysis.dns_correlation import DNSCorrelationState, update_dns_correlation_state
+from analysis.dns_correlation import DNSCorrelationState, DNSCorrelationStatus, update_dns_correlation_state
+from analysis.dns_transaction_statistics import DNSTransactionStatistics, update_dns_transaction_statistics
 from analysis.flow_direction import flow_direction_from_packet
 from analysis.flow_identity import FlowIdentity, flow_identity_from_packet
 from analysis.flow_inter_arrival_statistics import FlowInterArrivalStatistics, update_flow_inter_arrival_statistics
@@ -37,6 +38,7 @@ class CoordinatedFlowState:
     ldap_stream_state: Optional[LDAPStreamState] = None
     ldap_correlation_state: Optional[LDAPCorrelationState] = None
     dns_correlation_state: Optional[DNSCorrelationState] = None
+    dns_transaction_statistics: DNSTransactionStatistics = DNSTransactionStatistics()
 
     def __post_init__(self) -> None:
         for name, value, expected in (
@@ -49,6 +51,8 @@ class CoordinatedFlowState:
         ):
             if type(value) is not expected:
                 raise TypeError(f"{name} must be exactly a {expected.__name__}")
+        if type(self.dns_transaction_statistics) is not DNSTransactionStatistics:
+            raise TypeError("dns_transaction_statistics must be exactly a DNSTransactionStatistics")
         dns = self.dns_correlation_state
         if dns is not None:
             if type(dns) is not DNSCorrelationState:
@@ -218,8 +222,14 @@ class FlowStateCoordinator:
             None if current is None else current.dns_correlation_state, analysis.dns,
             identity, flow_direction_from_packet(analysis, identity), analysis.observation.captured_at,
         ) if identity.protocol == 17 else None
+        dns_statistics = DNSTransactionStatistics() if current is None else current.dns_transaction_statistics
+        if dns is not None:
+            for observation in dns.observations:
+                if observation.status is not DNSCorrelationStatus.PENDING:
+                    dns_statistics = update_dns_transaction_statistics(dns_statistics, observation)
         return CoordinatedFlowState(**values, ldap_stream_state=framing,
-                                    ldap_correlation_state=correlation, dns_correlation_state=dns)
+                                    ldap_correlation_state=correlation, dns_correlation_state=dns,
+                                    dns_transaction_statistics=dns_statistics)
 
     def _commit_record(self, state: CoordinatedFlowState) -> None:
         self._state = state

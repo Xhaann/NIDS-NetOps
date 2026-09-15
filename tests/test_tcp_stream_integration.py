@@ -256,7 +256,8 @@ class TCPStreamIntegrationTests(unittest.TestCase):
         other = FlowStateCoordinator().record(stream_packet(b'ab', ipv6=True))
         with self.assertRaises(FlowCoordinationError):
             replace(state, tcp_stream_state=other.tcp_stream_state)
-        arguments = tuple(getattr(state, field.name) for field in fields(state) if field.name != 'tcp_stream_state')
+        arguments = tuple(getattr(state, field.name) for field in fields(state)
+                          if field.name not in ('tcp_stream_state', 'dns_transaction_statistics'))
         self.assertIsNone(type(state)(*arguments).tcp_stream_state)
         udp = analyze_packet(observation(frame(17, transport(17, b'udp')), 0))
         udp_state = FlowStateCoordinator().record(udp)

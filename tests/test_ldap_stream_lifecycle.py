@@ -226,7 +226,8 @@ class LDAPStreamLifecycleTests(unittest.TestCase):
             replace(state, tcp_stream_state=replace(state.tcp_stream_state))
         with self.assertRaises(FlowCoordinationError):
             replace(state, tcp_stream_state=TCPStreamState(state.identity))
-        previous_arguments = tuple(getattr(state, field.name) for field in fields(state) if field.name not in ('ldap_stream_state', 'ldap_correlation_state'))
+        previous_arguments = tuple(getattr(state, field.name) for field in fields(state)
+                                   if field.name not in ('ldap_stream_state', 'ldap_correlation_state', 'dns_transaction_statistics'))
         self.assertIsNone(type(state)(*previous_arguments).ldap_stream_state)
 
     def test_hash_seed_timezone_and_repeated_structural_determinism(self):
