@@ -27,6 +27,7 @@ from application.evaluation_report import EvaluationReport
 from application.ground_truth import GroundTruth, GroundTruthPolarity, GroundTruthRecord
 from application.incremental_detection_evaluation import IncrementalDetectionEvaluator
 from application.incremental_detection_metrics import IncrementalDetectionMetrics
+from application.streaming_evaluation import run_streaming_evaluation
 
 from application.operational_diagnostics import OperationalDiagnostic, OperationalErrorCategory, diagnose_error
 from application.performance_benchmark import PerformanceBenchmarkConfiguration, PerformanceBenchmarkResult, run_performance_benchmark
@@ -73,4 +74,5 @@ __all__ = [
     "run_flow_observation_session",
     "run_packet_detectors",
     "run_performance_benchmark",
+    "run_streaming_evaluation",
 ]

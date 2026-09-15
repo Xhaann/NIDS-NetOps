@@ -440,6 +440,31 @@ Completion does not mean all expectations passed: FP, FN, unclassified entries, 
 
 Tests cover real synthetic PCAP bytes across IPv4/IPv6 TCP/UDP, inactivity, directional features, packet-integrity failures, truth, and reports. Guards check one analysis per observation, extraction per closed window, pipeline-owned detectors, and one evaluation/metrics/report call. This boundary adds no parser, rendering, serialization, storage, networking, discovery, or timing.
 
+## Streaming end-to-end evaluation
+
+[`run_streaming_evaluation(source, *, configuration, capture_session_id, ground_truth) -> DetectionEvaluationMetrics`](streaming_evaluation.py) is the metrics-only execution counterpart to `run_end_to_end_validation()`. The public inputs follow that boundary: exact `DetectionConfiguration`, exact external `GroundTruth`, a source, and explicit capture-session ID. Configuration supplies detector settings, inactivity timeout, and active-window capacity; callers do not also construct a session or expectations. Configuration and truth types are checked before acquisition. Session-ID and source behavior remain delegated to detection/capture, including existing exception types and cleanup precedence.
+
+The function converts ordered truth records to existing expectations with the same mapping as collecting validation, preserving target references and explicit polarity. It constructs one `DetectionSession`, one `IncrementalDetectionEvaluator`, and one `IncrementalDetectionMetrics`. A single `run_detection_stream()` sends packet/flow findings to the matching evaluator methods; the evaluator sends entries directly to the corresponding metric methods. There is no new matcher, detector, counter, ratio formula, or protocol branch.
+
+Successful completion is strictly ordered: the detection stream returns after its flow finalization, evaluator `finish()` delivers deferred findings and missing expectations, then metric `finish()` returns the existing immutable result. No stage is retried or finalized twice. Empty sources are valid and still finalize unresolved expectations. Historical positive `NOT_EVALUABLE` false negatives and unclassified outcomes are preserved. Completion does not mean all expectations matched.
+
+On any stream or evaluation failure, metrics are aborted and the unfinished evaluator is aborted; no partial metrics are returned and no incomplete evaluator is finalized. Metric-finalization failure aborts metrics while preserving the already completed evaluator. Evaluator-construction failure aborts already constructed metrics without acquiring the source. Original exceptions propagate, including existing source-stop/final-flow exception precedence and context. Aborting drops the evaluator's deferred references; caller-retained tracebacks can still retain inputs. Acquisition and flow cleanup remain owned by the existing stream.
+
+```python
+from application import run_streaming_evaluation
+
+metrics = run_streaming_evaluation(
+    source,
+    configuration=configuration,
+    capture_session_id=session_id,
+    ground_truth=truth,
+)
+```
+
+The wrapper retains no result history and returns no references to sources, findings, truth, configuration, or evidence. Active detection state remains bounded by configured flow capacity and per-flow limits. Evaluation retains `O(E + B)` expectation/deferred-matching state, where `B` may grow with the remaining stream. Metrics retain ten exact integer counters with logarithmic count-width growth. Temporary expectation references are required evaluator input, not another truth store. Caller-owned sources, collections, and exceptions retain their own memory costs; the entire execution is not claimed to use constant memory.
+
+This is a single execution function with no output-consumer, experiment, report, serialization, or archival options. Callers needing individual findings or evaluation entries can use the existing synchronous lower-level APIs and own their retention. Packet detection remains mandatory for source observations; supplying only flow truth does not create a flow-only detection mode. All collecting APIs, including `run_end_to_end_validation()`, remain unchanged. Repeated deterministic execution requires equivalent observations and appropriately prepared sources; the wrapper creates fresh evaluator/metric state for each call.
+
 ## Performance benchmarking
 
 `run_performance_benchmark(operation, *, configuration, clock=None)` times a synchronous zero-argument operation. `PerformanceBenchmarkConfiguration(operation_id, operation_version, measured_executions, warmup_executions=0, dataset=None, experiment=None, detection_configuration=None)` declares repetitions and context.

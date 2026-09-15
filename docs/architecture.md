@@ -224,6 +224,14 @@ The frozen `EndToEndValidationResult` retains `pipeline_result`, `ground_truth`,
 
 The integration tests exercise IPv4/IPv6 TCP/UDP, extensions/fragments, inactivity and ordering, expected analysis failures, and fail-fast execution guards. Validation delegates to the existing parsing, feature, detector, evaluation, metric, and reporting implementations; it is not a second implementation of them.
 
+### Streaming end-to-end evaluation
+
+`run_streaming_evaluation()` provides the application composition previously left to callers: source → `run_detection_stream()` → `IncrementalDetectionEvaluator` → `IncrementalDetectionMetrics` → completed `DetectionEvaluationMetrics`. It accepts the same configuration, capture-session ID, and external truth conventions as collecting validation. Ordered truth-to-expectation conversion and session construction reuse those contracts; all processing delegates to the established components.
+
+The function returns metrics only after the detection stream, evaluator finalization, and metric finalization succeed in that order. Upstream failures abort metrics and the unfinished evaluator without attempting completion or retry. A metric-finalization failure leaves the completed evaluator completed and returns no metrics. Capture/flow cleanup and exception precedence stay with the existing owners. No findings or evaluation entries are collected, and no report is constructed.
+
+The memory guarantee combines bounded active flow state, the evaluator's `O(E + B)` expectation/deferred-suffix state, and fixed-count incremental metric state. The evaluator's suffix can grow with input; caller-retained sources and tracebacks have separate costs. This is not constant memory for the entire operation. The metrics-only convenience API has no extra output consumers; the lower-level synchronous APIs remain available when callers need individual outputs. Existing collecting validation, CLI, and reporting remain compatible. No new detection, matching, metric, protocol, persistence, or research/ML behavior is introduced. See the [application contract](../src/application/README.md#streaming-end-to-end-evaluation).
+
 ## Detection and performance benchmarking
 
 `run_detection_benchmark(dataset, operation)` invokes `operation(case)` once for each exact dataset case in order. Each returned `DetectionBenchmarkCaseResult` must refer to an equal case and may retain optional evaluation/metrics. `DetectionBenchmarkResult` validates one ordered result per case and exposes dataset name and case count. Empty datasets invoke no operation. The caller owns payload relevance and any detection/evaluation inside the operation; the framework does not fill in missing results or aggregate metrics. Exceptions stop execution without retries, skipped cases, or a partial returned summary.

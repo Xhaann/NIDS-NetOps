@@ -14,6 +14,8 @@ For incremental processing of large captures, [`run_detection_stream()`](src/app
 
 [`IncrementalDetectionEvaluator`](src/application/README.md#incremental-detection-evaluation) evaluates the same finding objects downstream of the detection stream, using explicit existing expectations. It delivers settled entries without collecting a complete detection result. Exact historical matching can defer a flow suffix until explicit finalization, so memory is proportional to expectations plus that suffix, not necessarily constant. `IncrementalDetectionMetrics` can consume these evaluation entries directly and return the existing immutable metrics without collecting an evaluation result. Metrics retain ten exact integer counters; reporting remains a separate collecting boundary.
 
+[`run_streaming_evaluation()`](src/application/README.md#streaming-end-to-end-evaluation) composes the detection stream, incremental evaluation, and incremental metrics from a source, detection configuration, capture-session ID, and explicit ground truth. It returns completed metrics after successful finalization, without collecting findings or evaluation entries. The existing CLI and reporting APIs remain collecting paths.
+
 Supporting contracts:
 
 - `DetectionDataset`: ordered evaluation cases; `run_detection_benchmark()` calls an operation once per case.
