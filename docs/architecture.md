@@ -347,7 +347,7 @@ The full unsigned 16-bit `flags` value, including every historical Z position, r
 
 ## EDNS(0) protocol analysis
 
-The existing DNS wire parser → existing `DNSResourceRecord` → `DNSEDNS` / ordered `DNSEDNSOption` values. No separate message parser, flow owner or statistics reducer is introduced. `DNSResourceRecord.edns` is additive; `DNSMessageObservation.edns` exposes the same value only after the entire message is COMPLETE, otherwise `None`. Existing raw type, class, TTL, RDLENGTH and RDATA remain intact.
+The existing DNS wire parser → existing `DNSResourceRecord` → `DNSEDNS` / ordered `DNSEDNSOption` values. Parsing uses the existing message parser and flow owner. `DNSResourceRecord.edns` is additive; `DNSMessageObservation.edns` exposes the same value only after the entire message is COMPLETE, otherwise `None`. Existing raw type, class, TTL, RDLENGTH and RDATA remain intact.
 
 OPT uses TYPE 41 and a root owner in the additional section. Its CLASS is the advertised UDP payload size without clamping. Its TTL supplies a separate eight-bit extended RCODE, eight-bit version and sixteen-bit flags with semantic DNSSEC OK (DO). Header AD and EDNS DO remain independent; header response-code statistics still use only four bits. Unknown versions, reserved flags and all option codes remain representable. Option data is immutable opaque bytes; individual option semantics are outside this foundation.
 
@@ -356,3 +356,11 @@ The existing record decoder first checks the full RDLENGTH envelope. The EDNS he
 At most 128 options are admitted per OPT. The existing 65,535-byte DNS message ceiling leaves at most 65,512 option-envelope bytes and 65,508 bytes in one option's payload. Retaining both raw RDATA and copied option bytes is bounded by these ceilings; no packet, transaction or flow references are added. Frozen factory-created values preserve tuple order and repeated options. See the [EDNS contract](../src/analysis/README.md#edns0-protocol-analysis) for exact bounds and compatibility.
 
 IPv4/IPv6 UDP and already-delimited TCP observations share this parser. Automatic DNS-over-TCP framing remains unavailable. Features 14–19 statistics and header semantics, generic version 1, the 49-value ML projection, LDAP, detection and evaluation remain unchanged. Previously opaque invalid OPT data now receives structural failure status; valid OPT remains one additional record for existing statistics. EDNS analysis does not detect attacks or assign security meaning.
+
+## DNS EDNS option structural statistics
+
+Feature 21 adds `DNSEDNSStatistics` and `update_dns_edns_statistics` at the existing terminal-transaction reducer boundary. The reducer reads semantic `DNSEDNS` and `DNSEDNSOption` properties. It does not parse DNS bytes, decode individual options, consult a registry or interpret reserved flags. `unknown_option_count` equals the option count because all options lack decoded semantics under the current repository contract; it does not identify IANA-unassigned codes.
+
+`CoordinatedFlowState.dns_edns_statistics` defaults to an empty immutable aggregate, and `FlowObservationWindow.dns_edns_statistics` exposes it. MATCHED contributes each EDNS-bearing request/response independently. UNMATCHED, AMBIGUOUS and UNRESOLVED contribute only their observed message. PENDING contributes on terminalization. Closure reduces only the new unresolved suffix; repeated finalization and failed prepare/publication retries preserve existing accounting and atomicity. Malformed, incomplete and unsupported messages never contribute.
+
+State contains twelve scalar fields, two 256-bin tuples and one 256-by-256 tuple for all 65,536 option codes. There are no source-object or payload references, history collections or unbounded mappings. Exact integer widths grow with totals; caller-retained snapshots and active-window capacity still affect total memory. See the [complete field and memory contract](../src/analysis/README.md#dns-edns-option-structural-statistics). Features 14–20, `FlowFeatureSnapshot` version 1, its 49-value ML projection, LDAP, capture, CLI, detection and evaluation retain their semantics. These statistics do not detect attacks.

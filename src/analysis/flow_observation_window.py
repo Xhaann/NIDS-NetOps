@@ -8,6 +8,7 @@ from analysis.dns_transaction_statistics import DNSTransactionStatistics, update
 from analysis.dns_query_name_statistics import DNSQueryNameStatistics, update_dns_query_name_statistics
 from analysis.dns_resource_record_statistics import DNSResourceRecordStatistics, update_dns_resource_record_statistics
 from analysis.dns_message_flag_statistics import DNSMessageFlagStatistics, update_dns_message_flag_statistics
+from analysis.dns_edns_statistics import DNSEDNSStatistics, update_dns_edns_statistics
 from analysis.flow_identity import FlowIdentity, flow_identity_from_packet
 from analysis.flow_state_coordinator import CoordinatedFlowState, FlowStateCoordinator
 from analysis.packet_analysis import PacketAnalysis
@@ -77,18 +78,25 @@ class FlowObservationWindow:
                 names = self.coordinated_state.dns_query_name_statistics
                 records = self.coordinated_state.dns_resource_record_statistics
                 flags = self.coordinated_state.dns_message_flag_statistics
+                edns = self.coordinated_state.dns_edns_statistics
                 for observation in finalized.observations[retained_count:]:
                     statistics = update_dns_transaction_statistics(statistics, observation)
                     names = update_dns_query_name_statistics(names, observation)
                     records = update_dns_resource_record_statistics(records, observation)
                     flags = update_dns_message_flag_statistics(flags, observation)
+                    edns = update_dns_edns_statistics(edns, observation)
                 object.__setattr__(self, "coordinated_state", replace(
                     self.coordinated_state, dns_correlation_state=finalized,
                     dns_transaction_statistics=statistics,
                     dns_query_name_statistics=names,
                     dns_resource_record_statistics=records,
                     dns_message_flag_statistics=flags,
+                    dns_edns_statistics=edns,
                 ))
+
+    @property
+    def dns_edns_statistics(self) -> DNSEDNSStatistics:
+        return self.coordinated_state.dns_edns_statistics
 
     @property
     def dns_message_flag_statistics(self) -> DNSMessageFlagStatistics:

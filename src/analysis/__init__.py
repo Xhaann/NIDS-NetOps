@@ -2,6 +2,7 @@ from analysis.dns_transaction_statistics import DNSTransactionStatistics, update
 from analysis.dns_query_name_statistics import DNSQueryNameStatistics, update_dns_query_name_statistics
 from analysis.dns_resource_record_statistics import DNSResourceRecordStatistics, update_dns_resource_record_statistics
 from analysis.dns_message_flag_statistics import DNSMessageFlagStatistics, update_dns_message_flag_statistics
+from analysis.dns_edns_statistics import DNSEDNSStatistics, update_dns_edns_statistics
 from analysis.dns_correlation import (
     DNS_MAX_PENDING_REQUESTS,
     DNSCorrelationStatus,
@@ -153,6 +154,8 @@ from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_check
 
 __all__ = [
     "DNSMessageFlagStatistics",
+    "DNSEDNSStatistics",
+    "update_dns_edns_statistics",
     "update_dns_message_flag_statistics",
     "DNSResourceRecordStatistics",
     "update_dns_resource_record_statistics",

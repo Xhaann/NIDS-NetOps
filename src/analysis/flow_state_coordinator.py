@@ -11,6 +11,7 @@ from analysis.dns_transaction_statistics import DNSTransactionStatistics, update
 from analysis.dns_query_name_statistics import DNSQueryNameStatistics, update_dns_query_name_statistics
 from analysis.dns_resource_record_statistics import DNSResourceRecordStatistics, update_dns_resource_record_statistics
 from analysis.dns_message_flag_statistics import DNSMessageFlagStatistics, update_dns_message_flag_statistics
+from analysis.dns_edns_statistics import DNSEDNSStatistics, update_dns_edns_statistics
 from analysis.flow_direction import flow_direction_from_packet
 from analysis.flow_identity import FlowIdentity, flow_identity_from_packet
 from analysis.flow_inter_arrival_statistics import FlowInterArrivalStatistics, update_flow_inter_arrival_statistics
@@ -45,6 +46,7 @@ class CoordinatedFlowState:
     dns_query_name_statistics: DNSQueryNameStatistics = DNSQueryNameStatistics()
     dns_resource_record_statistics: DNSResourceRecordStatistics = DNSResourceRecordStatistics()
     dns_message_flag_statistics: DNSMessageFlagStatistics = DNSMessageFlagStatistics()
+    dns_edns_statistics: DNSEDNSStatistics = DNSEDNSStatistics()
 
     def __post_init__(self) -> None:
         for name, value, expected in (
@@ -65,6 +67,8 @@ class CoordinatedFlowState:
             raise TypeError("dns_resource_record_statistics must be exactly a DNSResourceRecordStatistics")
         if type(self.dns_message_flag_statistics) is not DNSMessageFlagStatistics:
             raise TypeError("dns_message_flag_statistics must be exactly a DNSMessageFlagStatistics")
+        if type(self.dns_edns_statistics) is not DNSEDNSStatistics:
+            raise TypeError("dns_edns_statistics must be exactly a DNSEDNSStatistics")
         dns = self.dns_correlation_state
         if dns is not None:
             if type(dns) is not DNSCorrelationState:
@@ -238,6 +242,7 @@ class FlowStateCoordinator:
         dns_names = DNSQueryNameStatistics() if current is None else current.dns_query_name_statistics
         dns_records = DNSResourceRecordStatistics() if current is None else current.dns_resource_record_statistics
         dns_flags = DNSMessageFlagStatistics() if current is None else current.dns_message_flag_statistics
+        dns_edns = DNSEDNSStatistics() if current is None else current.dns_edns_statistics
         if dns is not None:
             for observation in dns.observations:
                 if observation.status is not DNSCorrelationStatus.PENDING:
@@ -245,10 +250,12 @@ class FlowStateCoordinator:
                     dns_names = update_dns_query_name_statistics(dns_names, observation)
                     dns_records = update_dns_resource_record_statistics(dns_records, observation)
                     dns_flags = update_dns_message_flag_statistics(dns_flags, observation)
+                    dns_edns = update_dns_edns_statistics(dns_edns, observation)
         return CoordinatedFlowState(**values, ldap_stream_state=framing,
                                     ldap_correlation_state=correlation, dns_correlation_state=dns,
                                     dns_transaction_statistics=dns_statistics, dns_query_name_statistics=dns_names,
-                                    dns_resource_record_statistics=dns_records, dns_message_flag_statistics=dns_flags)
+                                    dns_resource_record_statistics=dns_records, dns_message_flag_statistics=dns_flags,
+                                    dns_edns_statistics=dns_edns)
 
     def _commit_record(self, state: CoordinatedFlowState) -> None:
         self._state = state

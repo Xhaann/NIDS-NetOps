@@ -331,7 +331,7 @@ class DNSResourceRecordLifecycleTests(unittest.TestCase):
 
     def test_legacy_coordinator_constructor_and_new_field_validation(self):
         state = FlowStateCoordinator().record(analyze_packet(packet()))
-        arguments = tuple(getattr(state, field.name) for field in fields(state) if field.name not in ('dns_resource_record_statistics', 'dns_message_flag_statistics'))
+        arguments = tuple(getattr(state, field.name) for field in fields(state) if field.name not in ('dns_resource_record_statistics', 'dns_message_flag_statistics', 'dns_edns_statistics'))
         self.assertEqual(type(state)(*arguments).dns_resource_record_statistics, DNSResourceRecordStatistics())
         with self.assertRaises(TypeError):
             replace(state, dns_resource_record_statistics={})

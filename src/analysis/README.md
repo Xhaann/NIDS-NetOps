@@ -931,7 +931,7 @@ Feature 18 established semantic header access without changing Feature 17 statis
 | `DNSEDNSOption.data` | Immutable opaque payload bytes, excluded from representation strings. |
 | `DNSEDNSOption.data_length` | Exact derived integer byte length, excluding the four-byte code/length envelope. |
 
-Empty OPT RDATA gives an empty option tuple. A zero-length option has an entry with `data=b''` and `data_length=0`; it remains distinct from no options. No ECS, COOKIE, NSID, padding, EDE or other option-specific decoding is performed. DO is an observed request/control bit, not DNSSEC validation. No combined twelve-bit response code or new EDNS statistics are introduced.
+Empty OPT RDATA gives an empty option tuple. A zero-length option has an entry with `data=b''` and `data_length=0`; it remains distinct from no options. No ECS, COOKIE, NSID, padding, EDE or other option-specific decoding is performed. DO is an observed request/control bit, not DNSSEC validation. The extended response code remains separate from the header's four-bit code. Semantic EDNS values feed the [structural statistics reducer](#dns-edns-option-structural-statistics).
 
 The wire interpretation follows [RFC 6891 section 6](https://www.rfc-editor.org/rfc/rfc6891.html#section-6). OPT must have a root owner using the existing empty-label-tuple name representation. Existing name compression rules still apply, including a valid backward pointer to a proven root. OPT may appear anywhere in the additional section, with ordinary records before or after it. Non-root owners, OPT in answers/authorities and a second OPT are MALFORMED. A question with type 41 remains a question and is not an OPT record. Unknown versions and reserved flags do not cause rejection when the common structure is representable.
 
@@ -956,3 +956,49 @@ Raw RDATA remains retained by its existing record, and option payloads are separ
 Features 12–19 retain their existing non-OPT parsing, header, correlation and statistics contracts. This feature intentionally makes formerly opaque invalid OPT structures malformed/incomplete/unsupported under the rules above. Valid OPT still contributes one additional record, its raw TYPE/CLASS bins and its full RDLENGTH to Feature 16. Option entries do not become separate resource records or query names. Feature 14 retains its four-bit response-code distribution and exact transaction latency. Features 17/19 flag counters and Feature 18 header properties are unchanged. Generic `FlowFeatureSnapshot` version 1 and the 49-value ML projection receive no EDNS fields.
 
 IPv4 and IPv6 use the same established UDP analysis path. Already-delimited TCP DNS messages and their existing transaction observations may contain EDNS; automatic DNS-over-TCP framing, buffering and reassembly remain unavailable. No global EDNS state or new flow/transaction ownership is added. LDAP, detectors, evaluation, metrics, capture and CLI behavior are unchanged. This protocol-analysis foundation does not detect attacks, infer maliciousness or assign security classifications.
+
+## DNS EDNS option structural statistics
+
+Feature 21 exports the frozen `DNSEDNSStatistics` value and `update_dns_edns_statistics(current, observation)`. The reducer consumes terminal `DNSTransactionObservation` values and their already-parsed semantic `DNSEDNS` / `DNSEDNSOption` properties. It never reparses wire bytes, reads option payload contents, decodes option-specific semantics or creates an option registry. Unknown versions and codes remain structural values; reserved flags stay parser-owned without new statistics or interpretation.
+
+### Stored fields and distribution domains
+
+The result stores exactly twelve scalar fields and three immutable distributions:
+
+| Field | Contract |
+| --- | --- |
+| `edns_message_count` | Number of contributing COMPLETE messages with an admitted OPT. |
+| `option_count` | Number of observed options, including repeated codes and zero-length options. |
+| `min_option_data_length` | Smallest option payload byte length, excluding its four-byte envelope; `None` without options. |
+| `max_option_data_length` | Largest option payload byte length; `None` without options. |
+| `total_option_data_length_bytes` | Sum of option payload byte lengths, excluding envelopes. |
+| `zero_length_option_count` | Number of options whose payload length is zero. |
+| `max_options_in_message` | Largest option count in a contributing EDNS message; `None` without EDNS messages. |
+| `min_options_in_message` | Smallest option count in a contributing EDNS message; `None` without EDNS messages. |
+| `udp_payload_size_min` | Smallest observed unsigned 16-bit advertised UDP size, without clamping; `None` without EDNS messages. |
+| `udp_payload_size_max` | Largest observed advertised UDP size; `None` without EDNS messages. |
+| `udp_payload_size_total` | Sum of advertised UDP sizes across contributing EDNS messages. |
+| `extended_rcode_counts` | Fixed 256-element tuple indexed 0–255 by EDNS extended RCODE, separate from the header response code. |
+| `version_counts` | Fixed 256-element tuple indexed 0–255 by EDNS version, including every nonzero version. |
+| `option_code_counts` | Exactly 65,536 logical bins in 256 immutable blocks of 256 integers; code `c` uses `[c // 256][c % 256]`, for 0–65,535 inclusive. |
+| `dnssec_ok_count` | Number of contributing EDNS messages with semantic DO set, independent of header AD. |
+
+Three derived properties add no stored fields: `mean_option_data_length` is exact `Fraction(total_option_data_length_bytes, option_count)`, or `None` without options; `non_dnssec_ok_count` is `edns_message_count - dnssec_ok_count`; `unknown_option_count` equals `option_count`. Here **unknown means without decoded semantics under the current repository contract**. Feature 20 preserves every option as opaque bytes and has no recognized-option registry. The count includes familiar/assigned codes and does **not** claim codes are IANA-unassigned, invalid or malicious.
+
+An empty aggregate has zero counts, totals and bins, with absent extrema and mean. An empty OPT counts as one EDNS message with zero options and measured zero per-message option extrema; a zero-length option instead has one option, measured zero data extrema and `Fraction(0)`. Messages without OPT change no EDNS measurements. Repeated options, repeated messages and sequential transaction-ID reuse preserve multiplicity.
+
+Constructor validation requires exact nonnegative integers, rejecting booleans, floats, mutable distributions, invalid dimensions and inconsistent totals/extrema. Each version/extended-RCODE distribution sums to `edns_message_count`; option-code bins sum to `option_count`. DO and zero-length counts cannot exceed their corresponding populations. Extrema must be attained and ordered within parser bounds, positive-length options must fit the total, and total payload bytes plus four bytes per option cannot exceed the aggregate parser envelope bound. This validates aggregate constraints; it does not reconstruct individual source messages.
+
+### Lifecycle and compatibility
+
+MATCHED contributes the request and response separately, counting only those with EDNS. UNMATCHED, AMBIGUOUS and UNRESOLVED contribute their observed message once; a referenced earlier request in an ambiguous observation is not counted again there. The original pending request contributes separately when correlation terminalizes it. Direct PENDING reducer calls are rejected. Malformed, incomplete and unsupported messages are excluded upstream by existing correlation, and forged non-COMPLETE terminal inputs are rejected by the reducer.
+
+The coordinator reduces newly terminal batches inside its existing prepare/commit boundary. Its appended `dns_edns_statistics` field defaults to an empty aggregate, preserving earlier positional constructors. The window property exposes the identical value. Explicit segmentation, inactivity, capacity eviction and capture end reduce only newly unresolved closure observations, after the already-counted terminal prefix. Repeated finalization adds nothing. Aggregation, partial-batch and publication failures leave the published state unchanged and retries count the successful contribution once. A new window begins with new empty statistics. The reducer itself has no deduplication history: deliberately feeding the same terminal observation twice counts it twice.
+
+IPv4/IPv6 UDP, including supported extension headers, use the existing packet and flow path. Already-delimited TCP terminal observations can use the reducer directly; automatic DNS-over-TCP framing remains unavailable. Features 14–20 semantics remain unchanged: OPT is still one additional record, EDNS extended RCODE stays separate from the header RCODE, and DO stays separate from AD. `FlowFeatureSnapshot` is unchanged, its contract remains `flow-feature-snapshot` version `1`, and its ML projection remains 49 values. LDAP, detectors, evaluation, capture and CLI implementations are unchanged. These are structural measurements and do not detect attacks.
+
+### Memory and arithmetic bounds
+
+One aggregate contains twelve scalar slots and 66,048 logical integer bins (65,536 + 256 + 256), with 256 additional block references in the option distribution. Its distributions require at most 259 tuple objects: two direct distributions, one outer code tuple and 256 code blocks. Empty blocks are shared, and updates replace affected immutable blocks. A fixed twelve-key temporary scalar mapping, three 256-entry working lists and one 256-entry option-block list support updates; no mapping grows with codes or messages. At most two source messages are traversed per transaction, each with at most 128 options, 65,512 total option-envelope bytes and 65,508 individual option payload bytes under Feature 20's parser bounds. Closure uses the existing bounded suffix of at most 128 newly terminal observations.
+
+The result retains no predecessor, packets, messages, transactions, options, payload bytes, DNS names, timestamps or source observation graph. Weak-reference tests cover release both after closure and while a flow remains active. Bytes themselves do not support weak references; source-graph release and inspection of exclusively integer/tuple aggregate fields verify absence of payload retention. Exact Python integers are used throughout, with standard-library `Fraction` for the mean and no floating-point conversion. Integer bit lengths grow logarithmically with totals, so bounded field/bin count is not a constant-byte memory promise. Active-window limits and snapshots retained by callers still determine aggregate multiplicity.

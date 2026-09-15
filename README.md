@@ -20,7 +20,9 @@ Capture → packet analysis → flow/features → detection → evaluation again
 
 [Semantic DNS header control flags](src/analysis/README.md#semantic-dns-header-control-flags) expose QR, AA, TC, RD, RA, AD and CD as exact boolean properties on the existing frozen `DNSHeader`. Decoding stays in the parser module; the complete raw flag word and original QR/TC statistics semantics remain unchanged. Reserved information is preserved without interpretation.
 
-[EDNS(0) analysis](src/analysis/README.md#edns0-protocol-analysis) exposes OPT UDP payload size, extended RCODE, version, DNSSEC OK and ordered opaque options through the existing DNS parser. Immutable options have explicit count/byte bounds; malformed OPT structures use existing DNS statuses. This is protocol analysis and does not detect attacks or add statistics.
+[EDNS(0) analysis](src/analysis/README.md#edns0-protocol-analysis) exposes OPT UDP payload size, extended RCODE, version, DNSSEC OK and ordered opaque options through the existing DNS parser. Immutable options have explicit count/byte bounds; malformed OPT structures use existing DNS statuses. This protocol analysis does not detect attacks.
+
+[DNS EDNS option structural statistics](src/analysis/README.md#dns-edns-option-structural-statistics) aggregate semantic EDNS values from terminal transactions in existing flow windows. Twelve scalar fields and three fixed distributions measure messages, option lengths/codes, advertised UDP sizes, versions, extended RCODEs and DO. Exact rational means retain no option payloads or source history. `unknown_option_count` counts options without decoded semantics under this repository's opaque-option contract; it makes no claim about IANA assignment. Generic features and detectors remain unchanged.
 
 Capture supplies immutable `PacketObservation` values. Analysis returns `PacketAnalysisOutcome`, including recognized failures. `run_detection_pipeline()` uses `DetectionSession` to produce ordered packet and closed-flow findings in `DetectionPipelineResult`.
 
