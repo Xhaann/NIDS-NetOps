@@ -848,7 +848,7 @@ IPv4 and IPv6 share the existing UDP DNS packet path and stay isolated by establ
 
 ### Supported properties and accounting
 
-Feature 17 consumes `DNSHeader.is_response` for QR and `DNSHeader.truncated` for TC. The header now also exposes semantic AA, RD, RA, AD and CD properties through the [header control-flag contract](#semantic-dns-header-control-flags). The existing statistics implementation remains unchanged and does not aggregate those additional flags or reserved information. Opcode and response-code distributions stay in `DNSTransactionStatistics` and are not duplicated.
+Feature 19 extends the existing Feature 17 statistics using all seven semantic properties established by the [Feature 18 header control-flag contract](#semantic-dns-header-control-flags). Flag decoding and the raw word remain parser-owned; the reducer reads only semantic booleans. Reserved information has no counter. Opcode and response-code distributions stay in `DNSTransactionStatistics` and are not duplicated.
 
 | Field/property | Observation |
 | --- | --- |
@@ -856,16 +856,21 @@ Feature 17 consumes `DNSHeader.is_response` for QR and `DNSHeader.truncated` for
 | `response_count` | Messages whose parsed `is_response` property is true (QR set). |
 | `query_count` | Derived `message_count - response_count`, representing QR-clear messages. |
 | `truncated_count` | Messages whose parsed `truncated` property is true (TC set), including either queries or responses. |
+| `authoritative_answer_count` | Messages with `authoritative_answer` true (AA set). |
+| `recursion_desired_count` | Messages with `recursion_desired` true (RD set). |
+| `recursion_available_count` | Messages with `recursion_available` true (RA set). |
+| `authenticated_data_count` | Messages with `authenticated_data` true (AD set); no DNSSEC validation is performed. |
+| `checking_disabled_count` | Messages with `checking_disabled` true (CD set). |
 
-Each contributing message increments the total once and each supported set-flag counter at most once. MATCHED contributes its request and response messages separately. UNMATCHED, AMBIGUOUS and UNRESOLVED contribute only their observed `message`; contextual request references are ignored. The original pending request contributes when it becomes terminal under correlation's existing lifecycle. Neither QR nor TC is inferred from transaction status. Repeated observations preserve multiplicity, without logical-query deduplication. Message counts do not depend on question or resource-record counts, including when every section is empty.
+Each contributing message increments the total once and each supported set-flag counter at most once. MATCHED contributes its request and response messages separately. UNMATCHED, AMBIGUOUS and UNRESOLVED contribute only their observed `message`; contextual request references are ignored. The original pending request contributes when it becomes terminal under correlation's existing lifecycle. No flag is inferred from transaction status. RD in a request and RA in its response contribute independently. Repeated observations preserve multiplicity, without logical-query deduplication. Message counts do not depend on question or resource-record counts, including when every section is empty.
 
 ### Validation, empty state and bounds
 
 `current=None` starts empty statistics. Wrong reducer argument types raise `TypeError`; PENDING and invalid transaction statuses raise `ValueError`. Contributing messages must be exact `DNSMessageObservation` objects with COMPLETE status and an established `DNSHeader`; semantic flag properties must return exact booleans. Invalid, incomplete, unsupported or absent DNS messages cannot produce contributions, even if they contain a valid parsed header or section prefix. Infrastructure exceptions propagate.
 
-The result stores exactly **three scalar integer fields**, with query count computed on access. Constructor validation requires exact non-negative integers, rejects booleans/floats/containers, and requires response and truncation counts to be no greater than message count. Query plus response count consequently always equals message count; QR and TC can overlap independently. `DNSMessageFlagStatistics()` has all stored and derived counts zero. Arithmetic uses exact Python integers without floating point, ratios, rounding or clamping.
+The result stores exactly **eight scalar integer fields**, with query count computed on access. Constructor validation requires exact non-negative integers, rejects booleans/floats/containers, and requires every set-flag count to be no greater than message count. Query plus response count consequently always equals message count; all supported flag counts can overlap independently, without restrictions on combinations. `DNSMessageFlagStatistics()` has all stored and derived counts zero. Arithmetic uses exact Python integers without floating point, ratios, rounding or clamping.
 
-Storage has fixed scalar shape, with no collections, flag maps, message history, source objects or previous aggregates. Temporary reduction holds three scalar totals and at most two contributing messages. Integer storage grows in bit length as counts increase, so this does not imply constant-byte memory. Existing active-window limits and caller-retained snapshots determine aggregate ownership costs. Frozen values and exported copies cannot mutate prior results; retaining statistics does not keep headers, messages, transactions, packet analysis, packets or flow/window state alive.
+Storage has fixed scalar shape, with no collections, flag maps, message history, source objects or previous aggregates. Temporary reduction holds a fixed eight-entry counter mapping, seven fixed property pairs and at most two contributing messages; none are retained in the result. Integer storage grows in bit length as counts increase, so this does not imply constant-byte memory. Existing active-window limits and caller-retained snapshots determine aggregate ownership costs. Frozen values and exported copies cannot mutate prior results; retaining statistics does not keep headers, messages, transactions, packet analysis, packets or flow/window state alive.
 
 ### Lifecycle and compatibility
 
@@ -873,7 +878,7 @@ Storage has fixed scalar shape, with no collections, flag maps, message history,
 
 Flow identity, active capacity, eviction, inactivity, explicit closure, capture-session finalization and readmission remain authoritative. New owners start with empty statistics, and IPv4/IPv6 and client-port interleaving remain isolated. Standalone reducer callers provide flow scope and exactly-once terminal delivery. The UDP packet path delegates all parsing to existing analysis. Already-delimited TCP transactions may use the reducer; automatic DNS-over-TCP framing, buffering and reassembly remain unavailable.
 
-DNS parser/correlation and Features 14, 15 and 16 retain their existing semantics. Generic `FlowFeatureSnapshot` version 1 and the 49-value ML projection are unchanged. No detector, threshold, alert, classification, score, LDAP behavior, evaluator or metrics change is added. QR and TC counts describe observed message controls only; they do not identify attacks or classify flags as suspicious or malicious.
+The original three stored fields keep their positional order, names and semantics, and `query_count` remains derived. Five new fields follow them with zero defaults, preserving existing three-argument construction. Dataclass serialization and representation now include all eight fields. DNS parser/correlation and Features 14, 15, 16 and 18 retain their existing semantics. Generic `FlowFeatureSnapshot` version 1 and the 49-value ML projection are unchanged. No detector, threshold, alert, classification, score, LDAP behavior, evaluator or metrics change is added. These counts describe observed message controls only; they do not detect attacks or assign security meaning.
 
 ## Semantic DNS header control flags
 
@@ -903,4 +908,4 @@ The six stored header fields, equality, hashing, representation and dataclass se
 
 IPv4/IPv6 UDP packet analysis delegates to this same parser/header representation. Already-delimited TCP transaction observations expose the same properties; automatic DNS-over-TCP framing, reassembly and buffering remain unavailable. Header values are message-local; no identity, flow state, history or lifecycle is added.
 
-Features 12–17 retain their existing parsing, correlation and statistics behavior. `DNSMessageFlagStatistics` still stores only message, response and truncation counts, with derived query count; this change adds no new flag statistics. DNS transaction, query-name and resource-record statistics, generic `FlowFeatureSnapshot` version 1, the 49-value ML projection, detectors, evaluation, metrics, LDAP, capture and CLI behavior remain unchanged.
+Feature 18 established semantic header access without changing Feature 17 statistics. Feature 19 now aggregates all seven properties in the existing `DNSMessageFlagStatistics`, preserving its original message, response, truncation and derived query semantics. Features 12–16 retain their existing behavior. DNS transaction, query-name and resource-record statistics, generic `FlowFeatureSnapshot` version 1, the 49-value ML projection, detectors, evaluation, metrics, LDAP, capture and CLI behavior remain unchanged.

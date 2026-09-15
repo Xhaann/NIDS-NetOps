@@ -22,6 +22,7 @@ from tests.pcap_scenarios import pcap_bytes
 from tests.test_dns import header, question, record
 from tests.test_dns_correlation_lifecycle import manager
 from tests.test_dns_packet_analysis import dns_packet
+from tests.test_dns_message_flag_statistics import expected_statistics
 from tests.test_dns_transaction_statistics_lifecycle import run_packets
 from tests.test_flow_feature_snapshot import snapshot_features
 from tests.test_flow_observation_session import MemoryPacketSource
@@ -40,7 +41,7 @@ def replay():
     instance = manager(3)
     events = []
     for index in range(80):
-        update = instance.record(analyze_packet(packet(flags=(0, 0x8200, 0x0200, 0x8000)[index % 4],
+        update = instance.record(analyze_packet(packet(flags=(0x0110, 0x87b0, 0x0220, 0x8080)[index % 4],
                                  identifier=index % 7, ipv6=bool(index % 3), client_port=12345 + index % 5,
                                  seconds=index // 8)))
         for window in (update.active_window,) + update.closed_windows:
@@ -59,40 +60,42 @@ class DNSMessageFlagLifecycleTests(unittest.TestCase):
 
     def test_pending_message_is_counted_only_when_terminal(self):
         instance = manager()
-        active = record_window(instance, flags=0x0200)
+        active = record_window(instance, flags=0x07b0)
         self.assertEqual(active.dns_message_flag_statistics, DNSMessageFlagStatistics())
         closed = instance.close(active.identity)
-        self.assertEqual(closed.dns_message_flag_statistics, DNSMessageFlagStatistics(1, 0, 1))
+        self.assertEqual(closed.dns_message_flag_statistics, expected_statistics(0x07b0))
         self.assertEqual(active.dns_message_flag_statistics.message_count, 0)
 
     def test_real_ipv4_udp_match(self):
-        window, = run_packets((packet(flags=0x0200), packet(flags=0x8200)))
+        window, = run_packets((packet(flags=0x07b0), packet(flags=0x87b0)))
         self.assertEqual((window.identity.ip_version, window.identity.protocol), (4, 17))
-        self.assertEqual(window.dns_message_flag_statistics, DNSMessageFlagStatistics(2, 1, 2))
+        self.assertEqual(window.dns_message_flag_statistics, expected_statistics(0x07b0, 0x87b0))
 
     def test_real_ipv6_udp_match(self):
-        window, = run_packets((packet(flags=0x0200, ipv6=True), packet(flags=0x8000, ipv6=True)))
+        window, = run_packets((packet(flags=0x0130, ipv6=True), packet(flags=0x84a0, ipv6=True)))
         self.assertEqual((window.identity.ip_version, window.identity.protocol), (6, 17))
-        self.assertEqual(window.dns_message_flag_statistics, DNSMessageFlagStatistics(2, 1, 1))
+        self.assertEqual(window.dns_message_flag_statistics, expected_statistics(0x0130, 0x84a0))
 
     def test_ipv6_extension_headers_use_existing_dns_path(self):
         window, = run_packets((packet(ipv6=True, extensions=(0, 60)), packet(flags=0x8200, ipv6=True, extensions=(43, 60))))
         self.assertEqual(window.dns_message_flag_statistics, DNSMessageFlagStatistics(2, 1, 1))
 
     def test_equivalent_ip_versions_have_equal_isolated_statistics(self):
-        windows = run_packets((packet(), packet(ipv6=True), packet(flags=0x8200), packet(flags=0x8200, ipv6=True)))
+        windows = run_packets((packet(flags=0x0110), packet(flags=0x0110, ipv6=True), packet(flags=0x87b0), packet(flags=0x87b0, ipv6=True)))
         self.assertNotEqual(windows[0].identity, windows[1].identity)
-        self.assertEqual([window.dns_message_flag_statistics for window in windows], [DNSMessageFlagStatistics(2, 1, 1)] * 2)
+        self.assertEqual([window.dns_message_flag_statistics for window in windows], [expected_statistics(0x0110, 0x87b0)] * 2)
 
     def test_different_ip_flags_do_not_cross_contaminate(self):
-        windows = run_packets((packet(flags=0x0200), packet(ipv6=True), packet(flags=0x8200), packet(flags=0x8000, ipv6=True)))
-        self.assertEqual([window.dns_message_flag_statistics.truncated_count for window in windows], [2, 0])
+        windows = run_packets((packet(flags=0x07b0), packet(flags=0x0010, ipv6=True),
+                               packet(flags=0x87b0), packet(flags=0x8080, ipv6=True)))
+        self.assertEqual([window.dns_message_flag_statistics for window in windows],
+                         [expected_statistics(0x07b0, 0x87b0), expected_statistics(0x0010, 0x8080)])
 
     def test_interleaved_client_ports_with_same_id_are_isolated(self):
-        windows = run_packets((packet(), packet(client_port=12346, flags=0x0200), packet(flags=0x8000),
-                               packet(flags=0x8200, client_port=12346)))
+        windows = run_packets((packet(flags=0x0100), packet(client_port=12346, flags=0x0410), packet(flags=0x8080),
+                               packet(flags=0x8420, client_port=12346)))
         self.assertEqual([window.dns_message_flag_statistics for window in windows],
-                         [DNSMessageFlagStatistics(2, 1, 0), DNSMessageFlagStatistics(2, 1, 2)])
+                         [expected_statistics(0x0100, 0x8080), expected_statistics(0x0410, 0x8420)])
 
     def test_sequential_transaction_reuse_remains_multiplicity_sensitive(self):
         window, = run_packets(tuple(item for _ in range(25) for item in (packet(flags=0x0200), packet(flags=0x8000))))
@@ -105,14 +108,14 @@ class DNSMessageFlagLifecycleTests(unittest.TestCase):
         self.assertEqual((window.dns_transaction_statistics.ambiguous_count, window.dns_transaction_statistics.unresolved_count), (2, 1))
 
     def test_inactivity_closure_publishes_before_readmission(self):
-        windows = run_packets((packet(flags=0x0200), packet(flags=0x8000, seconds=5)))
+        windows = run_packets((packet(flags=0x07b0), packet(flags=0x87b0, seconds=5)))
         self.assertIs(windows[0].closure_reason, FlowObservationWindowClosureReason.INACTIVITY)
         self.assertEqual([window.dns_message_flag_statistics for window in windows],
-                         [DNSMessageFlagStatistics(1, 0, 1), DNSMessageFlagStatistics(1, 1, 0)])
+                         [expected_statistics(0x07b0), expected_statistics(0x87b0)])
 
     def test_explicit_closure_readmission_starts_empty(self):
         instance = manager()
-        active = record_window(instance, flags=0x8200)
+        active = record_window(instance, flags=0x87b0)
         closed = instance.close(active.identity)
         self.assertIs(closed.closure_reason, FlowObservationWindowClosureReason.EXPLICIT_SEGMENTATION)
         after = record_window(instance)
@@ -122,33 +125,34 @@ class DNSMessageFlagLifecycleTests(unittest.TestCase):
 
     def test_capacity_eviction_finalizes_and_releases_old_owner(self):
         instance = manager(1)
-        before = record_window(instance, flags=0x0200)
+        before = record_window(instance, flags=0x07b0)
         update = instance.record(analyze_packet(packet(ipv6=True)))
         self.assertIs(update.closed_windows[0].closure_reason, FlowObservationWindowClosureReason.CAPACITY)
-        self.assertEqual(update.closed_windows[0].dns_message_flag_statistics, DNSMessageFlagStatistics(1, 0, 1))
+        self.assertEqual(update.closed_windows[0].dns_message_flag_statistics, expected_statistics(0x07b0))
         self.assertEqual(update.active_window.dns_message_flag_statistics, DNSMessageFlagStatistics())
         self.assertEqual(len(instance.active_windows()), 1)
         self.assertNotEqual(instance.active_windows()[0].identity, before.identity)
 
     def test_completed_prefix_is_not_counted_again(self):
         instance = manager()
-        record_window(instance)
-        before = record_window(instance, flags=0x8200)
+        record_window(instance, flags=0x07b0)
+        before = record_window(instance, flags=0x87b0)
         closed = instance.close(before.identity)
         self.assertIs(closed.dns_message_flag_statistics, before.dns_message_flag_statistics)
-        self.assertEqual(closed.dns_message_flag_statistics.message_count, 2)
+        self.assertEqual(closed.dns_message_flag_statistics, expected_statistics(0x07b0, 0x87b0))
 
     def test_unresolved_suffix_is_added_after_completed_prefix(self):
-        window, = run_packets((packet(flags=0x0200), packet(flags=0x8000, identifier=2)))
-        self.assertEqual(window.dns_message_flag_statistics, DNSMessageFlagStatistics(2, 1, 1))
+        window, = run_packets((packet(flags=0x07b0), packet(flags=0x87b0, identifier=2)))
+        self.assertEqual(window.dns_message_flag_statistics, expected_statistics(0x07b0, 0x87b0))
 
     def test_capture_finalization_is_idempotent(self):
         instance = manager()
-        record_window(instance, flags=0x0200)
+        record_window(instance, flags=0x07b0)
         window, = instance.end_capture_session()
         self.assertIs(window.closure_reason, FlowObservationWindowClosureReason.CAPTURE_SESSION_END)
         for _ in range(10):
             self.assertIs(replace(window).dns_message_flag_statistics, window.dns_message_flag_statistics)
+        self.assertEqual(window.dns_message_flag_statistics, expected_statistics(0x07b0))
         self.assertEqual(instance.end_capture_session(), ())
         self.assertEqual(instance.active_windows(), ())
 
@@ -165,16 +169,16 @@ class DNSMessageFlagLifecycleTests(unittest.TestCase):
             self.assertEqual(window.dns_message_flag_statistics, DNSMessageFlagStatistics())
 
     def test_malformed_message_is_excluded(self):
-        self.assert_excluded(header(1, flags=0x8200) + b'\x80', DNSMessageStatus.MALFORMED)
+        self.assert_excluded(header(1, flags=0x87b0) + b'\x80', DNSMessageStatus.MALFORMED)
 
     def test_incomplete_message_is_excluded(self):
-        self.assert_excluded(header(1, flags=0x8200) + b'\x01', DNSMessageStatus.INCOMPLETE)
+        self.assert_excluded(header(1, flags=0x87b0) + b'\x01', DNSMessageStatus.INCOMPLETE)
 
     def test_unsupported_message_is_excluded(self):
-        self.assert_excluded(header(1, flags=0x8200) + b'\x40', DNSMessageStatus.UNSUPPORTED)
+        self.assert_excluded(header(1, flags=0x87b0) + b'\x40', DNSMessageStatus.UNSUPPORTED)
 
     def test_invalid_message_header_and_valid_prefix_are_excluded(self):
-        self.assert_excluded(header(2, flags=0x8200) + question() + b'\x80', DNSMessageStatus.MALFORMED)
+        self.assert_excluded(header(2, flags=0x87b0) + question() + b'\x80', DNSMessageStatus.MALFORMED)
 
     def test_invalid_dns_cannot_change_previous_flags(self):
         instance = manager()
@@ -210,9 +214,9 @@ class DNSMessageFlagLifecycleTests(unittest.TestCase):
 
     def test_partial_terminal_batch_failure_leaves_closure_retryable(self):
         instance = manager()
-        record_window(instance, flags=0x8200, identifier=3)
-        record_window(instance, flags=0x0200, identifier=1)
-        before = record_window(instance, identifier=2)
+        record_window(instance, flags=0x87b0, identifier=3)
+        record_window(instance, flags=0x07b0, identifier=1)
+        before = record_window(instance, flags=0x0110, identifier=2)
         calls = 0
         def fail_second(current, observation):
             nonlocal calls
@@ -225,25 +229,25 @@ class DNSMessageFlagLifecycleTests(unittest.TestCase):
                 instance.end_capture_session()
         self.assertIs(instance.active_windows()[0].coordinated_state, before.coordinated_state)
         window, = instance.end_capture_session()
-        self.assertEqual(window.dns_message_flag_statistics, DNSMessageFlagStatistics(3, 1, 2))
+        self.assertEqual(window.dns_message_flag_statistics, expected_statistics(0x87b0, 0x07b0, 0x0110))
 
     def test_failed_publication_does_not_double_count_retry(self):
         instance = manager()
-        before = record_window(instance)
+        before = record_window(instance, flags=0x07b0)
         with patch('analysis.flow_observation_window.FlowObservationWindowUpdate', side_effect=RuntimeError('publication')):
             with self.assertRaises(RuntimeError):
-                record_window(instance, flags=0x8200)
+                record_window(instance, flags=0x87b0)
         self.assertIs(instance.active_windows()[0].coordinated_state, before.coordinated_state)
-        self.assertEqual(record_window(instance, flags=0x8200).dns_message_flag_statistics, DNSMessageFlagStatistics(2, 1, 1))
+        self.assertEqual(record_window(instance, flags=0x87b0).dns_message_flag_statistics, expected_statistics(0x07b0, 0x87b0))
 
     def test_failed_eviction_keeps_owner_and_pending_message(self):
         instance = manager(1)
-        before = record_window(instance, flags=0x0200)
+        before = record_window(instance, flags=0x07b0)
         with patch('analysis.flow_observation_window.update_dns_message_flag_statistics', side_effect=MemoryError('eviction')):
             with self.assertRaises(MemoryError):
                 record_window(instance, ipv6=True)
         self.assertIs(instance.active_windows()[0].coordinated_state, before.coordinated_state)
-        self.assertEqual(record_window(instance, flags=0x8000).dns_message_flag_statistics, DNSMessageFlagStatistics(2, 1, 1))
+        self.assertEqual(record_window(instance, flags=0x87b0).dns_message_flag_statistics, expected_statistics(0x07b0, 0x87b0))
 
     def test_parser_infrastructure_failure_propagates_without_publication(self):
         instance = manager()
@@ -253,17 +257,17 @@ class DNSMessageFlagLifecycleTests(unittest.TestCase):
         self.assertEqual(instance.active_windows(), ())
 
     def test_capture_failure_publishes_existing_terminal_and_pending_messages(self):
-        source = MemoryPacketSource((packet(flags=0x8200), packet(flags=0x0200, identifier=2)), iteration_error=CaptureError('capture'))
+        source = MemoryPacketSource((packet(flags=0x87b0), packet(flags=0x07b0, identifier=2)), iteration_error=CaptureError('capture'))
         closed = []
         with self.assertRaises(CaptureError):
             run_flow_observation_session(source, capture_session_id='flags', inactivity_timeout=timedelta(seconds=5),
                                          closed_window_consumer=closed.append)
-        self.assertEqual(closed[0].dns_message_flag_statistics, DNSMessageFlagStatistics(2, 1, 2))
+        self.assertEqual(closed[0].dns_message_flag_statistics, expected_statistics(0x87b0, 0x07b0))
         self.assertEqual(source.events[-1], 'stop')
 
     def test_retained_statistics_release_complete_source_graph(self):
         instance = manager()
-        analyzed = analyze_packet(packet(flags=0x0200))
+        analyzed = analyze_packet(packet(flags=0x07b0))
         active = instance.record(analyzed).active_window
         source = active.dns_correlation_state.requests[0]
         references = [weakref.ref(item) for item in (analyzed, analyzed.observation, active, active.coordinated_state,
@@ -275,7 +279,7 @@ class DNSMessageFlagLifecycleTests(unittest.TestCase):
         del analyzed, active, source, closed
         gc.collect()
         self.assertTrue(all(reference() is None for reference in references))
-        self.assertEqual(value, DNSMessageFlagStatistics(1, 0, 1))
+        self.assertEqual(value, expected_statistics(0x07b0))
 
     def test_completed_sources_are_released_while_flow_stays_active(self):
         instance = manager()
@@ -300,8 +304,8 @@ class DNSMessageFlagLifecycleTests(unittest.TestCase):
         self.assertIsNone(reference())
 
     def test_features_fourteen_fifteen_sixteen_remain_identical(self):
-        packets = (packet(flags=0x0200, questions=(question(),)),
-                   packet(flags=0x8200, questions=(question(),), answers=(record(data=b'opaque'),)))
+        packets = (packet(flags=0x0130, questions=(question(),)),
+                   packet(flags=0x87b0, questions=(question(),), answers=(record(data=b'opaque'),)))
         actual, = run_packets(packets)
         empty = DNSMessageFlagStatistics()
         with patch('analysis.flow_state_coordinator.update_dns_message_flag_statistics', return_value=empty):
@@ -314,7 +318,7 @@ class DNSMessageFlagLifecycleTests(unittest.TestCase):
         self.assertEqual(actual.dns_resource_record_statistics.resource_record_count, 1)
 
     def test_generic_version_one_and_49_projected_values_remain_identical(self):
-        window, = run_packets((packet(flags=0x0200), packet(flags=0x8200, seconds=1)))
+        window, = run_packets((packet(flags=0x0130), packet(flags=0x87b0, seconds=1)))
         original = extract_flow_feature_snapshot(window)
         stripped = replace(window, coordinated_state=replace(window.coordinated_state, dns_message_flag_statistics=DNSMessageFlagStatistics()))
         baseline = extract_flow_feature_snapshot(stripped)
@@ -331,7 +335,7 @@ class DNSMessageFlagLifecycleTests(unittest.TestCase):
             replace(state, dns_message_flag_statistics={})
 
     def test_four_classic_pcap_encodings_are_equivalent(self):
-        packets = (packet(flags=0x0200), packet(ipv6=True), packet(flags=0x8000), packet(flags=0x8200, ipv6=True))
+        packets = (packet(flags=0x0130), packet(flags=0x0400, ipv6=True), packet(flags=0x87b0), packet(flags=0x80b0, ipv6=True))
         expected = [window.dns_message_flag_statistics for window in run_packets(packets)]
         with TemporaryDirectory() as directory:
             path = Path(directory) / 'flags.pcap'
@@ -355,7 +359,7 @@ class DNSMessageFlagReplayTests(unittest.TestCase):
                 value = window.dns_message_flag_statistics
                 self.assertEqual(value.message_count, sum(window.dns_transaction_statistics.opcode_counts))
                 self.assertEqual(value.response_count, sum(window.dns_transaction_statistics.response_code_counts))
-                self.assertEqual(len(vars(value)), 3)
+                self.assertEqual(len(vars(value)), 8)
         for window in instance.end_capture_session():
             self.assertEqual(window.dns_message_flag_statistics.message_count, sum(window.dns_transaction_statistics.opcode_counts))
 
@@ -371,3 +375,78 @@ class DNSMessageFlagReplayTests(unittest.TestCase):
                 actual = subprocess.check_output([sys.executable, '-B', '-c', script],
                                                 env=dict(os.environ, PYTHONPATH='src', PYTHONHASHSEED=seed, TZ=zone))
                 self.assertEqual(actual, expected)
+
+
+class CompleteDNSMessageFlagLifecycleTests(unittest.TestCase):
+    def test_sequential_id_reuse_preserves_every_flag_counter(self):
+        words = (0x07b0, 0x87b0, 0x0010, 0x8480) * 25
+        window, = run_packets(tuple(packet(flags=word) for word in words))
+        self.assertEqual(window.dns_message_flag_statistics, expected_statistics(*words))
+        self.assertEqual(window.dns_transaction_statistics.matched_count, 50)
+
+    def test_ambiguous_request_response_and_original_close_are_independent(self):
+        words = (0x07b0, 0x0100, 0x84a0)
+        window, = run_packets(tuple(packet(flags=word) for word in words))
+        self.assertEqual(window.dns_message_flag_statistics, expected_statistics(*words))
+        self.assertEqual((window.dns_transaction_statistics.ambiguous_count, window.dns_transaction_statistics.unresolved_count), (2, 1))
+
+    def test_second_message_late_flag_failure_is_retryable(self):
+        instance = manager()
+        record_window(instance, flags=0x87b0, identifier=2)
+        before = record_window(instance, flags=0x07b0)
+        with patch.object(DNSHeader, 'checking_disabled', new_callable=PropertyMock,
+                          side_effect=(True, MemoryError('second message final flag'))):
+            with self.assertRaises(MemoryError):
+                record_window(instance, flags=0x87b0)
+        self.assertIs(instance.active_windows()[0].coordinated_state, before.coordinated_state)
+        self.assertEqual(record_window(instance, flags=0x87b0).dns_message_flag_statistics,
+                         expected_statistics(0x87b0, 0x07b0, 0x87b0))
+
+    def test_new_counter_failure_preserves_previous_protocol_values(self):
+        instance = manager()
+        before = record_window(instance, flags=0x87b0)
+        with patch.object(DNSHeader, 'authenticated_data', new_callable=PropertyMock, side_effect=MemoryError('AD')):
+            with self.assertRaises(MemoryError):
+                record_window(instance, flags=0x87b0, seconds=2)
+        self.assertIs(instance.active_windows()[0].coordinated_state, before.coordinated_state)
+        after = record_window(instance, flags=0x87b0, seconds=1)
+        self.assertEqual(after.dns_message_flag_statistics, expected_statistics(0x87b0, 0x87b0))
+
+    def test_retained_extended_statistics_release_completed_message_graph(self):
+        instance = manager()
+        record_window(instance, flags=0x07b0)
+        completed = record_window(instance, flags=0x87b0)
+        source = completed.dns_correlation_state.observations[0]
+        references = [weakref.ref(item) for item in (source, source.request, source.message, source.request.header, source.message.header)]
+        value = completed.dns_message_flag_statistics
+        record_window(instance, identifier=2)
+        del source, completed
+        gc.collect()
+        self.assertTrue(all(reference() is None for reference in references))
+        self.assertEqual(value, expected_statistics(0x07b0, 0x87b0))
+
+    def test_flow_churn_conserves_all_observed_flag_counts(self):
+        instance = manager(3)
+        closed = []
+        words = []
+        for index in range(180):
+            word = (0x0110, 0x87b0, 0x0420, 0x8080)[index % 4]
+            words.append(word)
+            update = instance.record(analyze_packet(packet(flags=word, identifier=index % 7,
+                                                          ipv6=bool(index % 3), client_port=12345 + index % 5)))
+            closed.extend(window.dns_message_flag_statistics for window in update.closed_windows)
+            self.assertLessEqual(len(instance.active_windows()), 3)
+        closed.extend(window.dns_message_flag_statistics for window in instance.end_capture_session())
+        combined = DNSMessageFlagStatistics(**{field.name: sum(getattr(value, field.name) for value in closed)
+                                               for field in fields(DNSMessageFlagStatistics)})
+        self.assertEqual(combined, expected_statistics(*words))
+
+    def test_semantic_header_objects_are_not_mutated_by_aggregation(self):
+        instance = manager()
+        analyzed = analyze_packet(packet(flags=0x87b0))
+        source = analyzed.dns.header
+        before = vars(source).copy()
+        window = instance.record(analyzed).active_window
+        self.assertEqual(vars(source), before)
+        self.assertEqual(window.dns_correlation_state.observations[0].message.header, source)
+        self.assertEqual(window.dns_message_flag_statistics, expected_statistics(0x87b0))

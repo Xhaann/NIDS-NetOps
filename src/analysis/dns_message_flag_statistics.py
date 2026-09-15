@@ -10,6 +10,11 @@ class DNSMessageFlagStatistics:
     message_count: int = 0
     response_count: int = 0
     truncated_count: int = 0
+    authoritative_answer_count: int = 0
+    recursion_desired_count: int = 0
+    recursion_available_count: int = 0
+    authenticated_data_count: int = 0
+    checking_disabled_count: int = 0
 
     def __post_init__(self) -> None:
         for member in fields(self):
@@ -18,8 +23,9 @@ class DNSMessageFlagStatistics:
                 raise TypeError(f'{member.name} must be exactly an integer')
             if value < 0:
                 raise ValueError(f'{member.name} must not be negative')
-        if self.response_count > self.message_count or self.truncated_count > self.message_count:
-            raise ValueError('set-flag counts must not exceed message_count')
+        for member in fields(self):
+            if getattr(self, member.name) > self.message_count:
+                raise ValueError('set-flag counts must not exceed message_count')
 
     @property
     def query_count(self) -> int:
@@ -37,7 +43,7 @@ def update_dns_message_flag_statistics(
                                   DNSCorrelationStatus.AMBIGUOUS, DNSCorrelationStatus.UNRESOLVED):
         raise ValueError('message flag statistics require a terminal transaction observation')
     current = DNSMessageFlagStatistics() if current is None else current
-    count, responses, truncated = current.message_count, current.response_count, current.truncated_count
+    values = {member.name: getattr(current, member.name) for member in fields(current)}
     messages = (observation.request, observation.message) if observation.status is DNSCorrelationStatus.MATCHED else (observation.message,)
     for message in messages:
         if type(message) is not DNSMessageObservation:
@@ -46,10 +52,15 @@ def update_dns_message_flag_statistics(
             raise ValueError('contributing DNS messages must be complete')
         if type(message.header) is not DNSHeader:
             raise TypeError('contributing messages require an established DNSHeader')
-        response, shortened = message.header.is_response, message.header.truncated
-        if type(response) is not bool or type(shortened) is not bool:
-            raise TypeError('parsed header flag properties must be exactly booleans')
-        count += 1
-        responses += int(response)
-        truncated += int(shortened)
-    return DNSMessageFlagStatistics(count, responses, truncated)
+        values['message_count'] += 1
+        for name, attribute in (
+            ('response_count', 'is_response'), ('truncated_count', 'truncated'),
+            ('authoritative_answer_count', 'authoritative_answer'), ('recursion_desired_count', 'recursion_desired'),
+            ('recursion_available_count', 'recursion_available'), ('authenticated_data_count', 'authenticated_data'),
+            ('checking_disabled_count', 'checking_disabled'),
+        ):
+            enabled = getattr(message.header, attribute)
+            if type(enabled) is not bool:
+                raise TypeError('parsed header flag properties must be exactly booleans')
+            values[name] += int(enabled)
+    return DNSMessageFlagStatistics(**values)
