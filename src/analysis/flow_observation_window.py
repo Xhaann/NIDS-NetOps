@@ -9,6 +9,7 @@ from analysis.dns_query_name_statistics import DNSQueryNameStatistics, update_dn
 from analysis.dns_resource_record_statistics import DNSResourceRecordStatistics, update_dns_resource_record_statistics
 from analysis.dns_message_flag_statistics import DNSMessageFlagStatistics, update_dns_message_flag_statistics
 from analysis.dns_edns_statistics import DNSEDNSStatistics, update_dns_edns_statistics
+from analysis.dns_stream_framing import DNSStreamState
 from analysis.flow_identity import FlowIdentity, flow_identity_from_packet
 from analysis.flow_state_coordinator import CoordinatedFlowState, FlowStateCoordinator
 from analysis.packet_analysis import PacketAnalysis
@@ -93,6 +94,10 @@ class FlowObservationWindow:
                     dns_message_flag_statistics=flags,
                     dns_edns_statistics=edns,
                 ))
+
+    @property
+    def dns_stream_state(self) -> Optional[DNSStreamState]:
+        return self.coordinated_state.dns_stream_state
 
     @property
     def dns_edns_statistics(self) -> DNSEDNSStatistics:

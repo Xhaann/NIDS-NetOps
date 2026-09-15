@@ -12,7 +12,9 @@ from analysis.dns_query_name_statistics import DNSQueryNameStatistics, update_dn
 from analysis.dns_resource_record_statistics import DNSResourceRecordStatistics, update_dns_resource_record_statistics
 from analysis.dns_message_flag_statistics import DNSMessageFlagStatistics, update_dns_message_flag_statistics
 from analysis.dns_edns_statistics import DNSEDNSStatistics, update_dns_edns_statistics
-from analysis.flow_direction import flow_direction_from_packet
+from analysis.dns import analyze_dns_message
+from analysis.dns_stream_framing import DNSStreamState, update_dns_stream_state
+from analysis.flow_direction import FlowDirection, flow_direction_from_packet
 from analysis.flow_identity import FlowIdentity, flow_identity_from_packet
 from analysis.flow_inter_arrival_statistics import FlowInterArrivalStatistics, update_flow_inter_arrival_statistics
 from analysis.flow_packet_size_statistics import FlowPacketSizeStatistics, update_flow_packet_size_statistics
@@ -47,6 +49,7 @@ class CoordinatedFlowState:
     dns_resource_record_statistics: DNSResourceRecordStatistics = DNSResourceRecordStatistics()
     dns_message_flag_statistics: DNSMessageFlagStatistics = DNSMessageFlagStatistics()
     dns_edns_statistics: DNSEDNSStatistics = DNSEDNSStatistics()
+    dns_stream_state: Optional[DNSStreamState] = None
 
     def __post_init__(self) -> None:
         for name, value, expected in (
@@ -73,8 +76,8 @@ class CoordinatedFlowState:
         if dns is not None:
             if type(dns) is not DNSCorrelationState:
                 raise TypeError("dns_correlation_state must be exactly a DNSCorrelationState or None")
-            if dns.identity != self.identity or self.identity.protocol != 17:
-                raise FlowCoordinationError("DNS correlation must belong to the UDP flow")
+            if dns.identity != self.identity or (self.identity.protocol != 17 and self.dns_stream_state is None):
+                raise FlowCoordinationError("DNS correlation must belong to the UDP or framed TCP flow")
             if dns.last_captured_at != self.flow_statistics.last_captured_at:
                 raise FlowCoordinationError("DNS correlation timestamp must match the flow")
         framing = self.ldap_stream_state
@@ -83,6 +86,12 @@ class CoordinatedFlowState:
                 raise TypeError("ldap_stream_state must be exactly an LDAPStreamState or None")
             if framing.tcp_stream_state is not self.tcp_stream_state:
                 raise FlowCoordinationError("LDAP framing must retain the exact TCP stream state")
+        dns_framing = self.dns_stream_state
+        if dns_framing is not None:
+            if type(dns_framing) is not DNSStreamState:
+                raise TypeError("dns_stream_state must be exactly a DNSStreamState or None")
+            if dns_framing.tcp_stream_state is not self.tcp_stream_state or framing is not None:
+                raise FlowCoordinationError("DNS framing requires exclusive ownership of the exact TCP stream state")
         correlation = self.ldap_correlation_state
         if correlation is not None:
             if type(correlation) is not LDAPCorrelationState:
@@ -234,16 +243,31 @@ class FlowStateCoordinator:
         correlation = None if framing is None else update_ldap_correlation_state(
             None if current is None else current.ldap_correlation_state, framing,
         )
-        dns = update_dns_correlation_state(
-            None if current is None else current.dns_correlation_state, analysis.dns,
-            identity, flow_direction_from_packet(analysis, identity), analysis.observation.captured_at,
-        ) if identity.protocol == 17 else None
+        dns_update = None if streams is None else update_dns_stream_state(
+            None if current is None else current.dns_stream_state, streams,
+        )
+        if dns_update is not None:
+            values["tcp_stream_state"] = dns_update.state.tcp_stream_state
+        direction = flow_direction_from_packet(analysis, identity)
+        if identity.protocol == 17:
+            messages = ((direction, analysis.dns),)
+        elif dns_update is not None and (dns_update.forward_frames or dns_update.reverse_frames):
+            messages = ((frame_direction, analyze_dns_message(payload))
+                        for frame_direction, frames in ((FlowDirection.FORWARD, dns_update.forward_frames),
+                                                        (FlowDirection.REVERSE, dns_update.reverse_frames))
+                        for payload in frames)
+        else:
+            messages = () if dns_update is None else ((direction, None),)
+        dns = None if current is None else current.dns_correlation_state
         dns_statistics = DNSTransactionStatistics() if current is None else current.dns_transaction_statistics
         dns_names = DNSQueryNameStatistics() if current is None else current.dns_query_name_statistics
         dns_records = DNSResourceRecordStatistics() if current is None else current.dns_resource_record_statistics
         dns_flags = DNSMessageFlagStatistics() if current is None else current.dns_message_flag_statistics
         dns_edns = DNSEDNSStatistics() if current is None else current.dns_edns_statistics
-        if dns is not None:
+        for message_direction, message in messages:
+            dns = update_dns_correlation_state(dns, message, identity, message_direction, analysis.observation.captured_at)
+            if dns is None:
+                continue
             for observation in dns.observations:
                 if observation.status is not DNSCorrelationStatus.PENDING:
                     dns_statistics = update_dns_transaction_statistics(dns_statistics, observation)
@@ -255,7 +279,8 @@ class FlowStateCoordinator:
                                     ldap_correlation_state=correlation, dns_correlation_state=dns,
                                     dns_transaction_statistics=dns_statistics, dns_query_name_statistics=dns_names,
                                     dns_resource_record_statistics=dns_records, dns_message_flag_statistics=dns_flags,
-                                    dns_edns_statistics=dns_edns)
+                                    dns_edns_statistics=dns_edns,
+                                    dns_stream_state=None if dns_update is None else dns_update.state)
 
     def _commit_record(self, state: CoordinatedFlowState) -> None:
         self._state = state
