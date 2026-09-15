@@ -46,6 +46,26 @@ class DNSHeader:
     def truncated(self) -> bool:
         return bool(self.flags & 0x0200)
 
+    @property
+    def authoritative_answer(self) -> bool:
+        return bool(self.flags & 0x0400)
+
+    @property
+    def recursion_desired(self) -> bool:
+        return bool(self.flags & 0x0100)
+
+    @property
+    def recursion_available(self) -> bool:
+        return bool(self.flags & 0x0080)
+
+    @property
+    def authenticated_data(self) -> bool:
+        return bool(self.flags & 0x0020)
+
+    @property
+    def checking_disabled(self) -> bool:
+        return bool(self.flags & 0x0010)
+
 
 @dataclass(frozen=True, init=False)
 class DNSName:

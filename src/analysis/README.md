@@ -848,7 +848,7 @@ IPv4 and IPv6 share the existing UDP DNS packet path and stay isolated by establ
 
 ### Supported properties and accounting
 
-The parser provides `DNSHeader.is_response` for QR and `DNSHeader.truncated` for TC. Those are the only semantic flag properties currently exposed. Although `DNSHeader.flags` preserves the entire 16-bit word, AA, RD, RA, AD, CD and reserved Z have no separate semantic properties; this feature neither masks that word nor adds parser properties to obtain them. This is an explicit parser-boundary limitation. Opcode and response-code distributions stay in `DNSTransactionStatistics` and are not duplicated.
+Feature 17 consumes `DNSHeader.is_response` for QR and `DNSHeader.truncated` for TC. The header now also exposes semantic AA, RD, RA, AD and CD properties through the [header control-flag contract](#semantic-dns-header-control-flags). The existing statistics implementation remains unchanged and does not aggregate those additional flags or reserved information. Opcode and response-code distributions stay in `DNSTransactionStatistics` and are not duplicated.
 
 | Field/property | Observation |
 | --- | --- |
@@ -874,3 +874,33 @@ Storage has fixed scalar shape, with no collections, flag maps, message history,
 Flow identity, active capacity, eviction, inactivity, explicit closure, capture-session finalization and readmission remain authoritative. New owners start with empty statistics, and IPv4/IPv6 and client-port interleaving remain isolated. Standalone reducer callers provide flow scope and exactly-once terminal delivery. The UDP packet path delegates all parsing to existing analysis. Already-delimited TCP transactions may use the reducer; automatic DNS-over-TCP framing, buffering and reassembly remain unavailable.
 
 DNS parser/correlation and Features 14, 15 and 16 retain their existing semantics. Generic `FlowFeatureSnapshot` version 1 and the 49-value ML projection are unchanged. No detector, threshold, alert, classification, score, LDAP behavior, evaluator or metrics change is added. QR and TC counts describe observed message controls only; they do not identify attacks or classify flags as suspicious or malicious.
+
+## Semantic DNS header control flags
+
+`DNSHeader` in [dns.py](dns.py) is the canonical semantic boundary for DNS control flags. `analyze_dns_message(payload)` still constructs the same frozen header from the existing unsigned 16-bit flag word. Five new computed properties extend the established `is_response` / `truncated` pattern; they add no stored fields or parallel header model. Downstream consumers must use these semantic properties rather than decoding `header.flags` or packet bytes.
+
+| Flag | Exact boolean property | Wire mask | Observation |
+| --- | --- | --- | --- |
+| QR | `is_response` | `0x8000` | Set means response; clear means query. Existing behavior unchanged. |
+| AA | `authoritative_answer` | `0x0400` | Authoritative Answer bit as supplied by the sender. |
+| TC | `truncated` | `0x0200` | Message truncation bit. Existing behavior unchanged; it does not determine structural completeness. |
+| RD | `recursion_desired` | `0x0100` | Recursion Desired bit as supplied by the sender. |
+| RA | `recursion_available` | `0x0080` | Recursion Available bit as supplied by the sender. |
+| AD | `authenticated_data` | `0x0020` | AD (Authentic Data) bit as supplied by the sender; this parser performs no DNSSEC validation. |
+| CD | `checking_disabled` | `0x0010` | Checking Disabled bit as supplied by the sender. |
+
+The DNS header layout follows [RFC 1035 section 4.1.1](https://www.rfc-editor.org/rfc/rfc1035#section-4.1.1), with AD/CD defined by the DNSSEC header extensions described in [RFC 4035 section 3](https://www.rfc-editor.org/rfc/rfc4035#section-3). Each property reports its wire bit independently. No query/response normalization, inference from records or transaction status, or security interpretation is performed. A property being true is an observation only and does not detect an attack.
+
+### Raw compatibility, reserved positions and construction
+
+`DNSHeader.flags` continues to preserve every bit exactly, including unknown opcode/response-code values and the three historical Z positions (`0x0070`). AD (`0x0020`) and CD (`0x0010`) now have semantic accessors; the remaining reserved bit (`0x0040`) stays preserved in the raw word without an invented meaning or new parser rejection. No previously preserved information is discarded. Opcode and response-code accessors are unchanged.
+
+All seven control properties return exact `bool` values computed from the parser-created integer. The public constructor remains factory-only: `DNSHeader()` and direct positional/keyword construction raise `TypeError`, as before. No boolean constructor parameters are introduced, so integers, strings, floats, `None` and arbitrary truthy/falsy objects cannot enter a new coercing construction path. `analyze_dns_message` retains its existing exact-`bytes` input contract and internal header construction. Frozen assignment/deletion behavior is unchanged.
+
+The six stored header fields, equality, hashing, representation and dataclass serialization remain unchanged. Reading properties does not cache state or retain payload, packet analysis, packets, DNS messages, transactions or flows. Malformed, incomplete and unsupported messages preserve their existing statuses and partial-header behavior; a readable header does not admit an invalid message to correlation or statistics. Inputs shorter than the fixed header still expose no header, and infrastructure failures still propagate.
+
+### Integration and compatibility
+
+IPv4/IPv6 UDP packet analysis delegates to this same parser/header representation. Already-delimited TCP transaction observations expose the same properties; automatic DNS-over-TCP framing, reassembly and buffering remain unavailable. Header values are message-local; no identity, flow state, history or lifecycle is added.
+
+Features 12–17 retain their existing parsing, correlation and statistics behavior. `DNSMessageFlagStatistics` still stores only message, response and truncation counts, with derived query count; this change adds no new flag statistics. DNS transaction, query-name and resource-record statistics, generic `FlowFeatureSnapshot` version 1, the 49-value ML projection, detectors, evaluation, metrics, LDAP, capture and CLI behavior remain unchanged.

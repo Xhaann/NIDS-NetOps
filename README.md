@@ -16,7 +16,9 @@ Capture → packet analysis → flow/features → detection → evaluation again
 
 [DNS resource-record structural statistics](src/analysis/README.md#dns-resource-record-structural-statistics) count parsed answer, authority and additional records, opaque RDATA byte lengths, and all 16-bit type/class codes in fixed immutable distributions. Terminal transactions contribute observed message sections with repetitions preserved. Exact rational means and flow-owned snapshots retain no records or source objects; the generic version-1 feature contract and 49-value ML projection remain unchanged. These statistics do not detect attacks.
 
-[DNS message flag statistics](src/analysis/README.md#dns-message-flag-statistics) count observed queries, responses and messages with truncation set through the existing parsed QR/TC properties. Three immutable integer counters follow terminal-message accounting and existing flow ownership, without message history. Other flag bits have no separate semantic parser properties and are not decoded here. This feature does not detect attacks.
+[DNS message flag statistics](src/analysis/README.md#dns-message-flag-statistics) count observed queries, responses and messages with truncation set through the existing parsed QR/TC properties. Three immutable integer counters follow terminal-message accounting and existing flow ownership, without message history. This statistics contract continues to measure only QR and TC. This feature does not detect attacks.
+
+[Semantic DNS header control flags](src/analysis/README.md#semantic-dns-header-control-flags) expose QR, AA, TC, RD, RA, AD and CD as exact boolean properties on the existing frozen `DNSHeader`. Decoding stays in the parser module; the complete raw flag word and existing statistics remain unchanged. Reserved information is preserved without interpretation.
 
 Capture supplies immutable `PacketObservation` values. Analysis returns `PacketAnalysisOutcome`, including recognized failures. `run_detection_pipeline()` uses `DetectionSession` to produce ordered packet and closed-flow findings in `DetectionPipelineResult`.
 
