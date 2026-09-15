@@ -6,6 +6,7 @@ from typing import Optional
 from analysis.dns_correlation import DNSCorrelationState, DNSCorrelationStatus, finalize_dns_correlation_state
 from analysis.dns_transaction_statistics import DNSTransactionStatistics, update_dns_transaction_statistics
 from analysis.dns_query_name_statistics import DNSQueryNameStatistics, update_dns_query_name_statistics
+from analysis.dns_resource_record_statistics import DNSResourceRecordStatistics, update_dns_resource_record_statistics
 from analysis.flow_identity import FlowIdentity, flow_identity_from_packet
 from analysis.flow_state_coordinator import CoordinatedFlowState, FlowStateCoordinator
 from analysis.packet_analysis import PacketAnalysis
@@ -73,14 +74,21 @@ class FlowObservationWindow:
                 retained_count = sum(item.status is not DNSCorrelationStatus.PENDING for item in dns.observations)
                 statistics = self.coordinated_state.dns_transaction_statistics
                 names = self.coordinated_state.dns_query_name_statistics
+                records = self.coordinated_state.dns_resource_record_statistics
                 for observation in finalized.observations[retained_count:]:
                     statistics = update_dns_transaction_statistics(statistics, observation)
                     names = update_dns_query_name_statistics(names, observation)
+                    records = update_dns_resource_record_statistics(records, observation)
                 object.__setattr__(self, "coordinated_state", replace(
                     self.coordinated_state, dns_correlation_state=finalized,
                     dns_transaction_statistics=statistics,
                     dns_query_name_statistics=names,
+                    dns_resource_record_statistics=records,
                 ))
+
+    @property
+    def dns_resource_record_statistics(self) -> DNSResourceRecordStatistics:
+        return self.coordinated_state.dns_resource_record_statistics
 
     @property
     def dns_query_name_statistics(self) -> DNSQueryNameStatistics:

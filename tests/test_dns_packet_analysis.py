@@ -10,7 +10,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import PropertyMock, patch
 
 from analysis import (
-    DNSMessageStatus, DNSQueryNameStatistics, DNSTransactionStatistics, FlowObservationWindowManager, PacketAnalysis,
+    DNSMessageStatus, DNSQueryNameStatistics, DNSResourceRecordStatistics, DNSTransactionStatistics, FlowObservationWindowManager, PacketAnalysis,
     analyze_dns_message, analyze_packet, analyze_packet_outcome, extract_flow_feature_snapshot,
 )
 from application import GroundTruth, run_end_to_end_validation, run_streaming_evaluation
@@ -140,7 +140,8 @@ class DNSPacketTests(unittest.TestCase):
             evidence = finding.raw_evidence
             window = evidence.snapshot.observation_window if hasattr(evidence, 'snapshot') else evidence.observation_window
             stripped = replace(window, coordinated_state=replace(window.coordinated_state, dns_correlation_state=None,
-                               dns_transaction_statistics=DNSTransactionStatistics(), dns_query_name_statistics=DNSQueryNameStatistics()))
+                               dns_transaction_statistics=DNSTransactionStatistics(), dns_query_name_statistics=DNSQueryNameStatistics(),
+                               dns_resource_record_statistics=DNSResourceRecordStatistics()))
             evidence = replace(evidence, **({'snapshot': extract_flow_feature_snapshot(stripped)} if hasattr(evidence, 'snapshot')
                                            else {'observation_window': stripped}))
             self.assertEqual(replace(finding, raw_evidence=evidence), baseline)
