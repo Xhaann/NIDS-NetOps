@@ -220,9 +220,10 @@ class DNSMessageTests(unittest.TestCase):
     def test_zero_length_rdata_is_structural_only(self):
         self.assertEqual(self.parsed(header(answers=1) + record(kind=1)).answers[0].rdata, b'')
 
-    def test_edns_envelope_remains_opaque(self):
-        item = self.parsed(header(additionals=1) + record(kind=41, cls=4096, ttl=0x01008000, data=b'\xff')).additionals[0]
-        self.assertEqual((item.record_type, item.record_class, item.ttl, item.rdata), (41, 4096, 0x01008000, b'\xff'))
+    def test_edns_envelope_preserves_raw_fields(self):
+        data = b'\xff\xff\x00\x01\xff'
+        item = self.parsed(header(additionals=1) + record(kind=41, cls=4096, ttl=0x01008000, data=data)).additionals[0]
+        self.assertEqual((item.record_type, item.record_class, item.ttl, item.rdata), (41, 4096, 0x01008000, data))
 
     def test_empty_payload(self):
         result = self.parsed(b'', DNSMessageStatus.INCOMPLETE)

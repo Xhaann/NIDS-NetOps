@@ -135,10 +135,10 @@ class DNSResourceRecordStatisticsTests(unittest.TestCase):
         self.assertEqual(value.type_counts[65432 >> 8][65432 & 255], 1)
 
     def test_edns_class_and_type_remain_structural_wire_values(self):
-        value = statistics(additionals=(record(kind=41, cls=4096, ttl=0xffffffff, data=b'\x00\xff'),))
+        value = statistics(additionals=(record(kind=41, cls=4096, ttl=0xffffffff, data=b'\x00\xff\x00\x02\x00\xff'),))
         self.assertEqual(value.type_counts[0][41], 1)
         self.assertEqual(value.class_counts[16][0], 1)
-        self.assertEqual(value.total_rdata_length_bytes, 2)
+        self.assertEqual(value.total_rdata_length_bytes, 6)
 
     def test_duplicates_within_a_message_preserve_multiplicity(self):
         value = statistics(answers=(record(data=b'ab'),) * 10)

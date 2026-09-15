@@ -193,6 +193,10 @@ class DNSHeaderControlFlagTests(unittest.TestCase):
 
     def test_existing_adversarial_parser_outputs_match_initial_head(self):
         outputs = tuple(asdict(analyze_dns_message(raw)) for raw in adversarial_payloads())
+        for output in outputs:
+            for section in ('answers', 'authorities', 'additionals'):
+                for record in output[section]:
+                    self.assertIsNone(record.pop('edns'))
         self.assertEqual(len(outputs), 2153)
         self.assertEqual(hashlib.sha256(repr(outputs).encode()).hexdigest(),
                          '8185ed7a57c444c5c4bad68dd1f924611697cf23d7d63023ce7078266316bdac')

@@ -9,6 +9,9 @@ DNS_MAX_ENTRIES = 128
 DNS_MAX_POINTER_HOPS = 32
 DNS_MAX_LABEL_BYTES = 63
 DNS_MAX_NAME_BYTES = 255
+DNS_MAX_EDNS_OPTIONS = DNS_MAX_ENTRIES
+DNS_MAX_EDNS_OPTION_BYTES = DNS_MAX_MESSAGE_BYTES - 23
+DNS_MAX_EDNS_OPTION_DATA_BYTES = DNS_MAX_EDNS_OPTION_BYTES - 4
 
 
 class DNSMessageStatus(Enum):
@@ -93,6 +96,35 @@ class DNSQuestion:
 
 
 @dataclass(frozen=True, init=False)
+class DNSEDNSOption:
+    code: int
+    data: bytes = field(repr=False)
+
+    def __init__(self) -> None:
+        raise TypeError('use analyze_dns_message(payload)')
+
+    @property
+    def data_length(self) -> int:
+        return len(self.data)
+
+
+@dataclass(frozen=True, init=False)
+class DNSEDNS:
+    udp_payload_size: int
+    extended_rcode: int
+    version: int
+    flags: int
+    options: Tuple[DNSEDNSOption, ...]
+
+    def __init__(self) -> None:
+        raise TypeError('use analyze_dns_message(payload)')
+
+    @property
+    def dnssec_ok(self) -> bool:
+        return bool(self.flags & 0x8000)
+
+
+@dataclass(frozen=True, init=False)
 class DNSResourceRecord:
     name: DNSName
     record_type: int
@@ -100,6 +132,7 @@ class DNSResourceRecord:
     ttl: int
     rdlength: int
     rdata: bytes = field(repr=False)
+    edns: Optional[DNSEDNS] = None
 
     def __init__(self) -> None:
         raise TypeError('use analyze_dns_message(payload)')
@@ -121,6 +154,12 @@ class DNSMessageObservation:
 
     def __init__(self) -> None:
         raise TypeError('use analyze_dns_message(payload)')
+
+    @property
+    def edns(self) -> Optional[DNSEDNS]:
+        if self.status is DNSMessageStatus.COMPLETE:
+            return next((record.edns for record in self.additionals if record.edns is not None), None)
+        return None
 
 
 def _observation(model, **values):
@@ -192,6 +231,27 @@ def _name(payload, start, boundaries, opaque_ranges):
         position += length + 1
 
 
+def _edns(record, rdata_start):
+    data = record.rdata
+    if len(data) > DNS_MAX_EDNS_OPTION_BYTES:
+        raise _DNSParseError(DNSMessageStatus.UNSUPPORTED, 'EDNS option byte limit', rdata_start, True)
+    position, options = 0, []
+    while position < len(data):
+        if len(options) == DNS_MAX_EDNS_OPTIONS:
+            raise _DNSParseError(DNSMessageStatus.UNSUPPORTED, 'EDNS option count limit', rdata_start + position, True)
+        if len(data) - position < 4:
+            raise _DNSParseError(DNSMessageStatus.MALFORMED, 'EDNS option header exceeds RDATA', rdata_start + position)
+        code, length = unpack_from('!HH', data, position)
+        end = position + 4 + length
+        if end > len(data):
+            raise _DNSParseError(DNSMessageStatus.MALFORMED, 'EDNS option data exceeds RDATA', rdata_start + position)
+        options.append(_observation(DNSEDNSOption, code=code, data=data[position + 4:end]))
+        position = end
+    return _observation(DNSEDNS, udp_payload_size=record.record_class,
+                        extended_rcode=record.ttl >> 24, version=(record.ttl >> 16) & 255,
+                        flags=record.ttl & 65535, options=tuple(options))
+
+
 def analyze_dns_message(payload: bytes) -> DNSMessageObservation:
     if type(payload) is not bytes:
         raise TypeError('payload must be exactly bytes')
@@ -199,6 +259,7 @@ def analyze_dns_message(payload: bytes) -> DNSMessageObservation:
     sections = ([], [], [], [])
     boundaries, opaque_ranges = set(), []
     status, reason, failure_offset, limited = DNSMessageStatus.COMPLETE, None, None, False
+    edns, edns_index = None, None
     try:
         if len(payload) > DNS_MAX_MESSAGE_BYTES:
             raise _DNSParseError(DNSMessageStatus.UNSUPPORTED, 'DNS message size limit', 0, True)
@@ -228,13 +289,24 @@ def analyze_dns_message(payload: bytes) -> DNSMessageObservation:
                     end = rdata_start + rdlength
                     entry = _observation(DNSResourceRecord, name=name, record_type=record_type,
                                          record_class=record_class, ttl=ttl, rdlength=rdlength,
-                                         rdata=payload[rdata_start:end])
+                                         rdata=payload[rdata_start:end], edns=None)
+                    if record_type == 41:
+                        if section_index != 3:
+                            raise _DNSParseError(DNSMessageStatus.MALFORMED, 'OPT requires additional section', position)
+                        if name.labels:
+                            raise _DNSParseError(DNSMessageStatus.MALFORMED, 'OPT requires root owner', position)
+                        if edns is not None:
+                            raise _DNSParseError(DNSMessageStatus.MALFORMED, 'multiple OPT records', position)
+                        edns = _edns(entry, rdata_start)
+                        edns_index = len(sections[3])
                     opaque_ranges.append((rdata_start, end))
                 sections[section_index].append(entry)
                 position = end
                 count += 1
         if position != len(payload):
             raise _DNSParseError(DNSMessageStatus.MALFORMED, 'bytes after declared DNS sections', position)
+        if edns is not None:
+            sections[3][edns_index] = _observation(DNSResourceRecord, **dict(vars(sections[3][edns_index]), edns=edns))
     except _DNSParseError as error:
         status, reason, failure_offset, limited = error.status, error.reason, error.offset, error.limit_reached
     return _observation(DNSMessageObservation, status=status, reason=reason, header=header,

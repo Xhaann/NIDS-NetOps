@@ -20,6 +20,8 @@ Capture → packet analysis → flow/features → detection → evaluation again
 
 [Semantic DNS header control flags](src/analysis/README.md#semantic-dns-header-control-flags) expose QR, AA, TC, RD, RA, AD and CD as exact boolean properties on the existing frozen `DNSHeader`. Decoding stays in the parser module; the complete raw flag word and original QR/TC statistics semantics remain unchanged. Reserved information is preserved without interpretation.
 
+[EDNS(0) analysis](src/analysis/README.md#edns0-protocol-analysis) exposes OPT UDP payload size, extended RCODE, version, DNSSEC OK and ordered opaque options through the existing DNS parser. Immutable options have explicit count/byte bounds; malformed OPT structures use existing DNS statuses. This is protocol analysis and does not detect attacks or add statistics.
+
 Capture supplies immutable `PacketObservation` values. Analysis returns `PacketAnalysisOutcome`, including recognized failures. `run_detection_pipeline()` uses `DetectionSession` to produce ordered packet and closed-flow findings in `DetectionPipelineResult`.
 
 For incremental processing of large captures, [`run_detection_stream()`](src/application/README.md#incremental-detection-finding-delivery) delivers those findings to synchronous packet and flow consumers without accumulating a result history. The collecting pipeline uses this same lifecycle. Active analysis remains bounded by the window limit; consumer-retained findings can still retain packet/window evidence. Delivery adds no persistent archival, output queue, or serialization. The CLI and end-to-end reporting APIs continue to collect complete results.
