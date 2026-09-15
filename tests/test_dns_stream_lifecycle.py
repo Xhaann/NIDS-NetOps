@@ -403,7 +403,7 @@ class DNSStreamLifecycleTests(unittest.TestCase):
             replace(state, dns_stream_state={})
         with self.assertRaises(FlowCoordinationError):
             replace(state, tcp_stream_state=replace(state.tcp_stream_state))
-        legacy = tuple(getattr(state, member.name) for member in fields(state) if member.name not in ('dns_stream_state', 'tls_record_state'))
+        legacy = tuple(getattr(state, member.name) for member in fields(state) if member.name not in ('dns_stream_state', 'tls_record_state', 'tls_handshake_state'))
         self.assertIsNone(type(state)(*legacy).dns_stream_state)
 
     def test_four_pcap_encodings_use_real_segmented_tcp_session_path(self):

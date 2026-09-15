@@ -331,7 +331,7 @@ class DNSQueryNameLifecycleTests(unittest.TestCase):
 
     def test_legacy_constructor_and_new_field_validation(self):
         state = FlowStateCoordinator().record(analyze_packet(packet()))
-        previous = tuple(getattr(state, field.name) for field in fields(state) if field.name not in ('dns_query_name_statistics', 'dns_resource_record_statistics', 'dns_message_flag_statistics', 'dns_edns_statistics', 'dns_stream_state', 'tls_record_state'))
+        previous = tuple(getattr(state, field.name) for field in fields(state) if field.name not in ('dns_query_name_statistics', 'dns_resource_record_statistics', 'dns_message_flag_statistics', 'dns_edns_statistics', 'dns_stream_state', 'tls_record_state', 'tls_handshake_state'))
         self.assertEqual(type(state)(*previous).dns_query_name_statistics, DNSQueryNameStatistics())
         with self.assertRaises(TypeError):
             replace(state, dns_query_name_statistics={})

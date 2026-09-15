@@ -1094,3 +1094,61 @@ Infrastructure exceptions during TCP updating, framing, allocation, record extra
 At explicit close, inactivity, capacity eviction or capture end, incomplete headers and payloads stay INCOMPLETE in the closed window and never become complete records. Previously extracted complete records are not re-emitted by closure. Repeated capture finalization returns no new windows; repeated explicit close keeps the existing missing-active-window error. New windows own independent framing. FIN/RST does not replace the existing window closure policy. Capture errors preserve already published state and existing cleanup behavior.
 
 This feature performs no TLS semantic parsing, handshake/certificate analysis, decryption, cryptographic validation, fingerprinting, attack detection or encrypted-DNS analysis. Features 12–22, `FlowFeatureSnapshot`, `flow-feature-snapshot` version `1`, all 49 projected values, LDAP, detectors, evaluation, metrics, capture and CLI remain unchanged. Validation uses synthetic traffic through existing packet/capture/session helpers and all four classic PCAP encodings; no external corpus or submicrosecond timestamp preservation is claimed.
+
+
+## TLS handshake-message framing
+
+Feature 24 adds [tls_handshake_framing.py](tls_handshake_framing.py). `update_tls_handshake_state(current: Optional[TLSHandshakeState], records: TLSRecordUpdate) -> TLSHandshakeUpdate` consumes the existing TLS framer's complete record batches. It never reads raw TCP payloads, reconstructs record headers or invokes a semantic parser. Automatic flow integration calls it during preparation after Feature 23 and publishes the resulting state with the exact existing TLS record state.
+
+### Wire format and record eligibility
+
+The four-byte handshake header contains one unsigned opaque `handshake_type` byte and a three-byte unsigned network-order `declared_length`. The length excludes the header. Exactly that many following bytes form the opaque body. Zero-length messages are complete; arbitrary type values and binary bodies remain unchanged. No handshake-specific body structure is validated.
+
+Only `TLSRecordHeader.content_type == 22` supplies handshake bytes. A message may span many records, including one-byte record payloads and split four-byte headers. A record may contain multiple messages or the end of one message followed by a partial next message. Complete messages retain directional wire order independently of both TLS record and TCP observation boundaries.
+
+Other content types are ignored without changing the current partial header/body. Their bytes never enter handshake state. A zero-length ContentType 22 record similarly adds no bytes and emits nothing. This is a framing policy, not an inference about TLS session transitions or encryption state. Lower-layer observation metadata still advances, and lower-layer failures still propagate. No encrypted application data is interpreted as handshake content.
+
+Automatic eligibility remains entirely owned by Feature 23: port 443, preserving LDAP port 389 and DNS port 53 precedence. Ineligible flows have no handshake state. An eligible empty TLS record state produces empty handshake state with absent directions; an observed direction with no handshake bytes is READY.
+
+### Public representation and ownership
+
+All values are frozen and factory-only, exported through the analysis package:
+
+| Value | Stored fields |
+| --- | --- |
+| `TLSHandshakeHeader` | `handshake_type`, `declared_length` |
+| `TLSHandshakeObservation` | `stream`, `prefix`, `header`, `payload`, `status`, `unavailable_reason` |
+| `TLSHandshakeState` | `tls_record_state`, `forward`, `reverse` |
+| `TLSHandshakeUpdate` | `state`, `forward_messages`, `reverse_messages` |
+
+`prefix` contains an incomplete handshake header. Once its four bytes arrive, it is cleared and `header` stores the type and length. Observation `declared_length` derives from its optional header; identity, direction and consumed offset delegate to the shared TCP stream observation. Bytes and output tuples are immutable, with prefix/payload omitted from repr.
+
+`TLSHandshakeStatus.READY` in retained state means no incomplete handshake remains. INCOMPLETE means a partial header or body. UNAVAILABLE means a sticky inherited failure or implementation-limit rejection. A transient complete message is READY with a non-None header and exactly its declared body. These statuses describe framing completeness only, not TLS protocol validity.
+
+Each completed message's `stream` is the exact existing TCP observation referenced by the TLS record that supplied its final byte. Several messages completed in one observation share its metadata and final lower-layer consumption offset; this is not a per-handshake end offset. There is no timestamp copy or new clock. Existing completing packet/flow capture-time context remains available to future consumers.
+
+Retained state references only the current TLS record state and current directional incomplete handshake observations. It retains no complete TLS record objects, handshake message objects, predecessor states, packets, certificates, protocol graphs or arbitrary history. `CoordinatedFlowState.tls_handshake_state` defaults to None and `FlowObservationWindow.tls_handshake_state` exposes it. The coordinator consumes transient updates during preparation and retains state only; this feature introduces no semantic consumer, message archive or external delivery API.
+
+Callers must supply every TLS record update in order from the same observed origin. Reapplying an already consumed batch emits nothing; recognized TCP retransmissions likewise emit nothing again. Identity changes, backwards consumption and loss of an established direction are rejected. This API does not reconstruct updates omitted by a caller or establish missing alignment. It uses the lower-layer consumption coordinate and adds no second lower-layer cursor or ownership model.
+
+### Bounds and failure semantics
+
+`TLS_HANDSHAKE_MAX_MESSAGE_LENGTH = 262144` is a 256 KiB implementation ceiling. A maximum complete handshake frame has 262,148 bytes including its header. The three-byte wire field can represent 16,777,215; both 262,145 and 16,777,215 are representable declarations rejected by this implementation. The value 16,777,216 cannot be encoded in three bytes.
+
+No declared-size allocation is made in advance. Only available ContentType 22 fragments are appended. Per direction, retained handshake bytes are either at most **three partial-header bytes**, or one decoded header and at most **262,143 incomplete body bytes**. Header assembly transiently uses four bytes; complete bodies transiently use at most **262,144 bytes**. The shared lower layers keep their existing separate limits: at most 18,431 incomplete TLS payload bytes (or four partial TLS header bytes) and a 65,536-byte TCP buffer per direction. Consumed TCP bytes remain reclaimable by the unchanged TCP mechanism, including during a maximum-size handshake spanning many records.
+
+Temporary completed batches are also bounded by the existing record updater's bounded input plus a previously incomplete handshake. Keeping updates, windows or snapshots is explicit caller ownership. Immutable-byte copies, scalar/object metadata, integer offset widths and active-window capacity add memory costs; these byte limits are not a total process-memory guarantee.
+
+An oversized handshake declaration records its header and transitions to UNAVAILABLE with `TCPStreamStatus.LIMIT_EXCEEDED` before copying or interpreting its body. The containing TLS record was already framed and consumed by Feature 23; handshake rejection does not undo lower-layer consumption. Remaining handshake bytes and later records in that direction are ignored. Earlier complete messages in the batch remain transient outputs. Failure in one direction does not disable the other.
+
+Existing TCP/TLS record unavailability propagates using its existing reason after any earlier complete records in that update are processed. The first applicable handshake/lower-layer failure remains sticky, and incomplete bytes remain inspectable. TCP alone owns sequence numbers, retransmissions, wraparound, gaps, overlap/conflict, fragmentation, buffer limits, SYN/FIN/RST and after-close behavior. TLS record framing alone owns record headers, boundaries and eligibility. No lower-layer semantics are changed.
+
+### Publication, closure and limitations
+
+Allocation, framing, extraction, state-construction or publication exceptions abort the candidate through the existing prepare/publication boundary. Published TCP/TLS/handshake state remains intact, and retry reproduces the message batch without loss or duplicate successful emission. This is state atomicity; arbitrary external consumer side effects are not rolled back. Existing post-publication closed-window delivery semantics remain unchanged.
+
+At explicit flow close, inactivity, capacity eviction or capture end, incomplete headers and bodies remain INCOMPLETE and are never emitted as messages. Complete messages have already been extracted. Repeated finalization produces no additional messages; repeated explicit close retains the existing missing-active-window error. New windows start independently. FIN/RESET may supply final contiguous bytes and leave an incomplete suffix; they do not replace window closure policy. Capture failures preserve earlier published state and existing cleanup.
+
+Framing follows only the supplied record payload boundary and never scans for plausible headers. Midstream capture does not prove record or handshake alignment. An assumed origin can produce opaque complete framing without proving semantic validity; the layer does not guess missing bytes, recover gaps or resynchronize. No ClientHello/ServerHello/certificate parsing, SNI/ALPN/cipher interpretation, fingerprinting, decryption, cryptographic validation or detection is implemented. Features 12–23, `FlowFeatureSnapshot`, contract version `1` and the 49-value ML projection remain unchanged.
+
+Validation uses synthetic traffic through the existing real packet/capture/session path and four classic PCAP encodings. No external corpus, Authentication Header support beyond existing helpers, or submicrosecond capture-time preservation is claimed. Replay covers IPv4/IPv6, both directions, cross-record/segmented/coalesced messages, ignored records, TCP failure, capacity closure and weak-reference release under all nine required seed/timezone combinations.

@@ -37,7 +37,7 @@ def synthetic_window(identity):
             continue
         component = getattr(state, field.name)
         components[field.name] = (
-            None if component is None or field.name in ("tcp_stream_state", "tls_record_state") else replace(component, identity=identity)
+            None if component is None or field.name in ("tcp_stream_state", "tls_record_state", "tls_handshake_state") else replace(component, identity=identity)
         )
     return replace(template, coordinated_state=replace(state, **components))
 

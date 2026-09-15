@@ -1,3 +1,7 @@
+from analysis.tls_handshake_framing import (
+    TLS_HANDSHAKE_MAX_MESSAGE_LENGTH, TLSHandshakeHeader, TLSHandshakeObservation, TLSHandshakeState,
+    TLSHandshakeStatus, TLSHandshakeUpdate, update_tls_handshake_state,
+)
 from analysis.tls_record_framing import (
     TLS_RECORD_MAX_PAYLOAD_BYTES, TLSRecordHeader, TLSRecordObservation, TLSRecordState,
     TLSRecordStatus, TLSRecordUpdate, update_tls_record_state,
@@ -160,6 +164,13 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "TLS_HANDSHAKE_MAX_MESSAGE_LENGTH",
+    "TLSHandshakeHeader",
+    "TLSHandshakeObservation",
+    "TLSHandshakeState",
+    "TLSHandshakeStatus",
+    "TLSHandshakeUpdate",
+    "update_tls_handshake_state",
     "TLS_RECORD_MAX_PAYLOAD_BYTES",
     "TLSRecordHeader",
     "TLSRecordObservation",

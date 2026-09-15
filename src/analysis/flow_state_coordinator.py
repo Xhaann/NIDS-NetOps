@@ -24,6 +24,7 @@ from analysis.ldap_correlation import LDAPCorrelationState, update_ldap_correlat
 from analysis.ldap_stream_framing import LDAPStreamState, update_ldap_stream_state
 from analysis.packet_analysis import PacketAnalysis
 from analysis.tcp_stream_observation import TCPStreamState, update_tcp_stream_state
+from analysis.tls_handshake_framing import TLSHandshakeState, update_tls_handshake_state
 from analysis.tls_record_framing import TLSRecordState, update_tls_record_state
 from analysis.tcp_control_statistics import TCPControlStatistics, update_tcp_control_statistics
 
@@ -52,6 +53,7 @@ class CoordinatedFlowState:
     dns_edns_statistics: DNSEDNSStatistics = DNSEDNSStatistics()
     dns_stream_state: Optional[DNSStreamState] = None
     tls_record_state: Optional[TLSRecordState] = None
+    tls_handshake_state: Optional[TLSHandshakeState] = None
 
     def __post_init__(self) -> None:
         for name, value, expected in (
@@ -112,6 +114,12 @@ class CoordinatedFlowState:
                 raise TypeError("tls_record_state must be exactly a TLSRecordState or None")
             if tls.tcp_stream_state is not self.tcp_stream_state or framing is not None or dns_framing is not None:
                 raise FlowCoordinationError("TLS framing requires exclusive ownership of the exact TCP stream state")
+        handshake = self.tls_handshake_state
+        if handshake is not None:
+            if type(handshake) is not TLSHandshakeState:
+                raise TypeError("tls_handshake_state must be exactly a TLSHandshakeState or None")
+            if handshake.tls_record_state is not tls:
+                raise FlowCoordinationError("handshake framing must retain the exact TLS record state")
         ldap = self.ldap_statistics
         if ldap is not None:
             if type(ldap) is not LDAPFlowStatistics:
@@ -261,6 +269,9 @@ class FlowStateCoordinator:
         )
         if tls_update is not None:
             values["tcp_stream_state"] = tls_update.state.tcp_stream_state
+        handshake_update = None if tls_update is None else update_tls_handshake_state(
+            None if current is None else current.tls_handshake_state, tls_update,
+        )
         direction = flow_direction_from_packet(analysis, identity)
         if identity.protocol == 17:
             messages = ((direction, analysis.dns),)
@@ -294,7 +305,8 @@ class FlowStateCoordinator:
                                     dns_resource_record_statistics=dns_records, dns_message_flag_statistics=dns_flags,
                                     dns_edns_statistics=dns_edns,
                                     dns_stream_state=None if dns_update is None else dns_update.state,
-                                    tls_record_state=None if tls_update is None else tls_update.state)
+                                    tls_record_state=None if tls_update is None else tls_update.state,
+                                    tls_handshake_state=None if handshake_update is None else handshake_update.state)
 
     def _commit_record(self, state: CoordinatedFlowState) -> None:
         self._state = state
