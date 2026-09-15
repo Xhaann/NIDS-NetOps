@@ -187,3 +187,14 @@ Run `PYTHONPATH=src python3 -B -m unittest tests.test_tls_record_framing tests.t
 Synthetic cross-record handshake traffic passes through the existing little-/big-endian microsecond/nanosecond PCAP readers and real sessions. Wrappers observe the actual updater's transient outputs without replacing capture or framing. Replay checks exact message metadata/body, directional state, ignored records, TCP gap, capacity closure and lifecycle release under all nine `PYTHONHASHSEED=1,29,503` / `TZ=UTC,Asia/Kolkata,America/New_York` combinations. No external-corpus validation or semantic TLS validity is claimed.
 
 Run `PYTHONPATH=src python3 -B -m unittest tests.test_tls_handshake_framing tests.test_tls_handshake_lifecycle` first, then existing TCP/TLS record, DNS, LDAP, IPv4/IPv6, UDP and system regressions, followed by the complete suite.
+
+
+## TLS handshake-message structural statistics
+
+`test_tls_handshake_statistics.py` verifies empty/default aggregates, zero-length messages, exact extrema/totals/Fraction means, recurring fractions, all 256 type bins, immutable directional separation and constructor/source invariants. It includes a maximum-sized message through existing framing, arbitrary-precision cumulative counters, long bounded reduction, no source graph retention and source dependency checks. Forged inconsistent observations exercise validation without modifying the framer or repairing bytes.
+
+`test_tls_handshake_statistics_lifecycle.py` exercises real coordinator/window/session accounting across TCP and TLS record segmentation, coalesced batches, partial suffixes, retransmissions, lower-layer failures, FIN/RST, closure/inactivity/capacity, publication/aggregation/construction retry, source release and directional wire order. Compatibility fixtures accommodate the appended aggregate field. The generic feature contract and all 49 projected values are compared with statistics reduction disabled.
+
+Synthetic IPv4/IPv6 traffic, bidirectional all-type distributions and cross-record messages pass through little-/big-endian microsecond/nanosecond PCAP sources and real sessions. Deterministic replay includes exact means, fixed bins, TCP failure, capacity closure and release results under all nine `PYTHONHASHSEED=1,29,503` / `TZ=UTC,Asia/Kolkata,America/New_York` combinations. No external corpus or semantic TLS analysis is claimed.
+
+Run `PYTHONPATH=src python3 -B -m unittest tests.test_tls_handshake_statistics tests.test_tls_handshake_statistics_lifecycle` first, then existing handshake/record framing, TCP, DNS, LDAP, IPv4/IPv6, UDP and system regressions, followed by the complete suite.

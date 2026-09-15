@@ -24,6 +24,7 @@ from analysis.ldap_correlation import LDAPCorrelationState, update_ldap_correlat
 from analysis.ldap_stream_framing import LDAPStreamState, update_ldap_stream_state
 from analysis.packet_analysis import PacketAnalysis
 from analysis.tcp_stream_observation import TCPStreamState, update_tcp_stream_state
+from analysis.tls_handshake_statistics import DirectionalTLSHandshakeStatistics, update_directional_tls_handshake_statistics
 from analysis.tls_handshake_framing import TLSHandshakeState, update_tls_handshake_state
 from analysis.tls_record_framing import TLSRecordState, update_tls_record_state
 from analysis.tcp_control_statistics import TCPControlStatistics, update_tcp_control_statistics
@@ -54,6 +55,7 @@ class CoordinatedFlowState:
     dns_stream_state: Optional[DNSStreamState] = None
     tls_record_state: Optional[TLSRecordState] = None
     tls_handshake_state: Optional[TLSHandshakeState] = None
+    tls_handshake_statistics: DirectionalTLSHandshakeStatistics = DirectionalTLSHandshakeStatistics()
 
     def __post_init__(self) -> None:
         for name, value, expected in (
@@ -76,6 +78,8 @@ class CoordinatedFlowState:
             raise TypeError("dns_message_flag_statistics must be exactly a DNSMessageFlagStatistics")
         if type(self.dns_edns_statistics) is not DNSEDNSStatistics:
             raise TypeError("dns_edns_statistics must be exactly a DNSEDNSStatistics")
+        if type(self.tls_handshake_statistics) is not DirectionalTLSHandshakeStatistics:
+            raise TypeError("tls_handshake_statistics must be exactly a DirectionalTLSHandshakeStatistics")
         dns = self.dns_correlation_state
         if dns is not None:
             if type(dns) is not DNSCorrelationState:
@@ -272,6 +276,10 @@ class FlowStateCoordinator:
         handshake_update = None if tls_update is None else update_tls_handshake_state(
             None if current is None else current.tls_handshake_state, tls_update,
         )
+        handshake_statistics = DirectionalTLSHandshakeStatistics() if current is None else current.tls_handshake_statistics
+        if handshake_update is not None:
+            for observation in handshake_update.forward_messages + handshake_update.reverse_messages:
+                handshake_statistics = update_directional_tls_handshake_statistics(handshake_statistics, observation)
         direction = flow_direction_from_packet(analysis, identity)
         if identity.protocol == 17:
             messages = ((direction, analysis.dns),)
@@ -306,7 +314,8 @@ class FlowStateCoordinator:
                                     dns_edns_statistics=dns_edns,
                                     dns_stream_state=None if dns_update is None else dns_update.state,
                                     tls_record_state=None if tls_update is None else tls_update.state,
-                                    tls_handshake_state=None if handshake_update is None else handshake_update.state)
+                                    tls_handshake_state=None if handshake_update is None else handshake_update.state,
+                                    tls_handshake_statistics=handshake_statistics)
 
     def _commit_record(self, state: CoordinatedFlowState) -> None:
         self._state = state

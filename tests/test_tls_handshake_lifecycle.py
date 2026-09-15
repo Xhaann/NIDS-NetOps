@@ -267,7 +267,7 @@ class TLSHandshakeLifecycleTests(unittest.TestCase):
             replace(state, tls_handshake_state={})
         with self.assertRaises(FlowCoordinationError):
             replace(state, tls_record_state=None)
-        values = tuple(getattr(state, field.name) for field in fields(state) if field.name != 'tls_handshake_state')
+        values = tuple(getattr(state, field.name) for field in fields(state) if field.name not in ('tls_handshake_state', 'tls_handshake_statistics'))
         self.assertIsNone(type(state)(*values).tls_handshake_state)
 
     def test_four_pcap_encodings_through_capture_session(self):

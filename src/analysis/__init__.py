@@ -1,3 +1,7 @@
+from analysis.tls_handshake_statistics import (
+    TLSHandshakeStatistics, DirectionalTLSHandshakeStatistics,
+    update_tls_handshake_statistics, update_directional_tls_handshake_statistics,
+)
 from analysis.tls_handshake_framing import (
     TLS_HANDSHAKE_MAX_MESSAGE_LENGTH, TLSHandshakeHeader, TLSHandshakeObservation, TLSHandshakeState,
     TLSHandshakeStatus, TLSHandshakeUpdate, update_tls_handshake_state,
@@ -164,6 +168,10 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "TLSHandshakeStatistics",
+    "DirectionalTLSHandshakeStatistics",
+    "update_tls_handshake_statistics",
+    "update_directional_tls_handshake_statistics",
     "TLS_HANDSHAKE_MAX_MESSAGE_LENGTH",
     "TLSHandshakeHeader",
     "TLSHandshakeObservation",

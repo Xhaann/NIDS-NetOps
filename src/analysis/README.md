@@ -1152,3 +1152,52 @@ At explicit flow close, inactivity, capacity eviction or capture end, incomplete
 Framing follows only the supplied record payload boundary and never scans for plausible headers. Midstream capture does not prove record or handshake alignment. An assumed origin can produce opaque complete framing without proving semantic validity; the layer does not guess missing bytes, recover gaps or resynchronize. No ClientHello/ServerHello/certificate parsing, SNI/ALPN/cipher interpretation, fingerprinting, decryption, cryptographic validation or detection is implemented. Features 12–23, `FlowFeatureSnapshot`, contract version `1` and the 49-value ML projection remain unchanged.
 
 Validation uses synthetic traffic through the existing real packet/capture/session path and four classic PCAP encodings. No external corpus, Authentication Header support beyond existing helpers, or submicrosecond capture-time preservation is claimed. Replay covers IPv4/IPv6, both directions, cross-record/segmented/coalesced messages, ignored records, TCP failure, capacity closure and weak-reference release under all nine required seed/timezone combinations.
+
+
+## TLS handshake-message structural statistics
+
+Feature 25 adds [tls_handshake_statistics.py](tls_handshake_statistics.py). The reducers consume completed `TLSHandshakeObservation` values from the existing Feature 24 batches. They use the decoded type, declared body length, exact payload length and existing `FlowDirection`; they do not parse headers, inspect payload contents, reconstruct messages or invent packet/timestamp relationships.
+
+### Public representation and arithmetic
+
+`TLSHandshakeStatistics` is a frozen, validated aggregate with these exact stored fields:
+
+| Field | Contract |
+| --- | --- |
+| `total_message_count` | Number of completed messages |
+| `zero_length_message_count` | Completed messages whose declared body length is zero |
+| `min_message_length` | Minimum body length; None when empty |
+| `max_message_length` | Maximum body length; None when empty |
+| `total_message_length_bytes` | Exact sum of declared body lengths, excluding four-byte headers |
+| `handshake_type_counts` | Exactly 256 immutable integer bins, indexed 0 through 255 |
+
+Empty counts/totals and every type bin are zero. `mean_message_length` is a derived property: None when empty, otherwise `Fraction(total_message_length_bytes, total_message_count)`. For lengths 0, 2 and 3, the total is 5 and mean is exactly `Fraction(5, 3)`. Zero-length messages contribute to total count, zero-length count and their type bin, and participate in the mean. All 256 types are opaque numeric observations without a recognized-type registry or security classification.
+
+Constructor validation requires exact nonnegative integers (not booleans), an exact tuple of 256 integer bins summing to the message count, ordered extrema within the existing 262,144-byte handshake body bound, consistent zero counts and an attainable length total. Empty aggregates require absent extrema and zero bytes. Totals and counters use arbitrary-precision integers; no float, Decimal, rounding or machine-word saturation is introduced.
+
+`DirectionalTLSHandshakeStatistics` is a frozen validated pair with exactly `forward` and `reverse`, both `TLSHandshakeStatistics` values defaulting to empty. There is no merged directional aggregate, identity field, timestamp or retained source reference. The existing flow/window owner supplies identity and lifecycle.
+
+The analysis package exports both representations and two focused reducers:
+
+- `update_tls_handshake_statistics(current: Optional[TLSHandshakeStatistics], observation: TLSHandshakeObservation) -> TLSHandshakeStatistics` updates one caller-owned aggregate.
+- `update_directional_tls_handshake_statistics(current: Optional[DirectionalTLSHandshakeStatistics], observation: TLSHandshakeObservation) -> DirectionalTLSHandshakeStatistics` selects exactly one aggregate using the observation's existing direction. The coordinator uses this directional reducer, preserving the other aggregate unchanged.
+
+Both reducers require a complete READY observation with a decoded header, empty prefix, no unavailable reason, exact immutable payload bytes, and `declared_length == len(payload)`. Type/length metadata must lie within framing bounds. Partial observations, empty READY framing boundaries without a message header, unavailable observations and inconsistent forged values raise TypeError/ValueError as appropriate. No bytes are truncated, padded, normalized or repaired. The existing framer already enforces complete body length by construction and remains unchanged.
+
+### Lifecycle and ownership
+
+`CoordinatedFlowState.tls_handshake_statistics` defaults to an empty directional pair on every flow, including ineligible/non-TLS flows. `FlowObservationWindow.tls_handshake_statistics` exposes that exact immutable result. After the existing handshake updater emits its transient batches, the coordinator reduces each message during preparation, in directional wire order, before publishing any candidate state. It does not retain those batches.
+
+For complete A, complete B and partial C, statistics count only A and B. A later completion counts C once. Empty updates, recognized retransmissions and non-handshake records emit no messages to count. Oversized or unavailable framing cannot fabricate a completed observation; earlier complete messages before a framing failure remain counted. Port 443 eligibility, LDAP 389/DNS 53 precedence, IPv4/IPv6 flow identity and directional ownership remain inherited from existing framing.
+
+No statistics-specific finalizer is needed. Explicit close, inactivity, capacity eviction and capture end preserve already reduced counters and exclude incomplete suffixes. Repeated finalization does not reduce old batches again; repeated explicit close retains the existing missing-active-window error. New windows start from empty aggregates. FIN/RST and capture failures retain established framing and closure behavior.
+
+Validation, aggregation, state-construction or publication exceptions abort the entire candidate. Previously published counters and lower-layer consumption remain intact; retry reproduces the same counts without loss or duplicate successful contribution. The standalone reducers are additive, so a caller that deliberately submits the same message twice counts it twice. Exactly-once lifecycle accounting comes from the existing incremental framing/publication boundary, not an added deduplication cache. Arbitrary external consumer side effects are outside this state-atomicity guarantee.
+
+Per direction, retained statistics contain five scalar fields and one fixed 256-bin tuple. The directional pair therefore holds ten scalar fields and 512 type counters, with fixed object/container structure. Optional extrema are None only when empty. Mean fractions are computed on access and retain no source. There are no messages, payload bytes, TLS records, TCP observations, packets, certificates, graphs, predecessor states, unbounded dictionaries or histories in these aggregates. Integer storage grows with counter magnitude; total process memory also depends on the existing framing bounds, active-window capacity and caller-retained snapshots.
+
+### Scope and validation limits
+
+These are body-length/type measurements of completed framing, not TLS semantic validity, handshake state-machine interpretation or proof of attack. No ClientHello/ServerHello/certificate parsing, SNI/ALPN/cipher/extension analysis, fingerprints, JA3/JA4, decryption, detection, scoring or ML is implemented. Features 12–24, `FlowFeatureSnapshot`, `flow-feature-snapshot` version `1` and all 49 projected values remain unchanged. No generic statistics framework or shared DNS/LDAP refactor is introduced.
+
+Validation uses synthetic traffic through the existing real packet/capture/session path, all four classic PCAP encodings and all nine required hash-seed/timezone combinations. Replay includes exact means, all 256 type bins, both directions, IPv4/IPv6, segmented/cross-record/coalesced messages, zero-length messages, TCP failure, capacity closure and lifecycle release. No external corpus, semantic TLS validity, midstream alignment recovery or submicrosecond timestamp preservation is claimed.
