@@ -130,11 +130,13 @@ class FlowStateCoordinatorTests(unittest.TestCase):
             self.assertIs(state.identity, state.flow_statistics.identity)
             for accumulator in state_components(state):
                 if (accumulator is not state.dns_transaction_statistics and accumulator is not state.dns_query_name_statistics
-                        and accumulator is not state.dns_resource_record_statistics):
+                        and accumulator is not state.dns_resource_record_statistics
+                        and accumulator is not state.dns_message_flag_statistics):
                     self.assertIs(accumulator.identity, state.identity)
             self.assertEqual(state.dns_transaction_statistics.total_transaction_count, 0)
             self.assertEqual(state.dns_query_name_statistics.query_name_count, 0)
             self.assertEqual(state.dns_resource_record_statistics.resource_record_count, 0)
+            self.assertEqual(state.dns_message_flag_statistics.message_count, 0)
             if state.identity.protocol == 6:
                 self.assertIs(type(state.tcp_control_statistics), TCPControlStatistics)
                 self.assertIs(state.tcp_control_statistics.identity, state.identity)
@@ -427,8 +429,8 @@ class FlowStateCoordinatorTests(unittest.TestCase):
         names = ("flow_statistics", "directional_flow_statistics", "flow_packet_size_statistics",
                  "flow_inter_arrival_statistics", "directional_inter_arrival_statistics",
                  "tcp_control_statistics")
-        self.assertEqual(tuple(field.name for field in fields(state)), names + ("ldap_statistics", "tcp_stream_state", "ldap_stream_state", "ldap_correlation_state", "dns_correlation_state", "dns_transaction_statistics", "dns_query_name_statistics", "dns_resource_record_statistics"))
-        self.assertEqual(tuple(vars(state)), names + ("ldap_statistics", "tcp_stream_state", "ldap_stream_state", "ldap_correlation_state", "dns_correlation_state", "dns_transaction_statistics", "dns_query_name_statistics", "dns_resource_record_statistics"))
+        self.assertEqual(tuple(field.name for field in fields(state)), names + ("ldap_statistics", "tcp_stream_state", "ldap_stream_state", "ldap_correlation_state", "dns_correlation_state", "dns_transaction_statistics", "dns_query_name_statistics", "dns_resource_record_statistics", "dns_message_flag_statistics"))
+        self.assertEqual(tuple(vars(state)), names + ("ldap_statistics", "tcp_stream_state", "ldap_stream_state", "ldap_correlation_state", "dns_correlation_state", "dns_transaction_statistics", "dns_query_name_statistics", "dns_resource_record_statistics", "dns_message_flag_statistics"))
         self.assertIsNone(state.ldap_statistics)
         other = replace(state.identity, source_port=12346)
         for name in names:

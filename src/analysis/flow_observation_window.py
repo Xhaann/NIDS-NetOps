@@ -7,6 +7,7 @@ from analysis.dns_correlation import DNSCorrelationState, DNSCorrelationStatus, 
 from analysis.dns_transaction_statistics import DNSTransactionStatistics, update_dns_transaction_statistics
 from analysis.dns_query_name_statistics import DNSQueryNameStatistics, update_dns_query_name_statistics
 from analysis.dns_resource_record_statistics import DNSResourceRecordStatistics, update_dns_resource_record_statistics
+from analysis.dns_message_flag_statistics import DNSMessageFlagStatistics, update_dns_message_flag_statistics
 from analysis.flow_identity import FlowIdentity, flow_identity_from_packet
 from analysis.flow_state_coordinator import CoordinatedFlowState, FlowStateCoordinator
 from analysis.packet_analysis import PacketAnalysis
@@ -75,16 +76,23 @@ class FlowObservationWindow:
                 statistics = self.coordinated_state.dns_transaction_statistics
                 names = self.coordinated_state.dns_query_name_statistics
                 records = self.coordinated_state.dns_resource_record_statistics
+                flags = self.coordinated_state.dns_message_flag_statistics
                 for observation in finalized.observations[retained_count:]:
                     statistics = update_dns_transaction_statistics(statistics, observation)
                     names = update_dns_query_name_statistics(names, observation)
                     records = update_dns_resource_record_statistics(records, observation)
+                    flags = update_dns_message_flag_statistics(flags, observation)
                 object.__setattr__(self, "coordinated_state", replace(
                     self.coordinated_state, dns_correlation_state=finalized,
                     dns_transaction_statistics=statistics,
                     dns_query_name_statistics=names,
                     dns_resource_record_statistics=records,
+                    dns_message_flag_statistics=flags,
                 ))
+
+    @property
+    def dns_message_flag_statistics(self) -> DNSMessageFlagStatistics:
+        return self.coordinated_state.dns_message_flag_statistics
 
     @property
     def dns_resource_record_statistics(self) -> DNSResourceRecordStatistics:
