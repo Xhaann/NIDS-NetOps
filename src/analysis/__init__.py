@@ -12,6 +12,16 @@ from analysis.tls_client_hello import (
     TLSClientHelloStatus,
     analyze_tls_client_hello,
 )
+from analysis.tls_client_hello_statistics import (
+    TLS_CLIENT_HELLO_VERSION_BINS,
+    TLS_CLIENT_HELLO_CIPHER_SUITE_BINS,
+    TLS_CLIENT_HELLO_EXTENSION_TYPE_BINS,
+    TLS_CLIENT_HELLO_COMPRESSION_METHOD_BINS,
+    TLSClientHelloStatistics,
+    DirectionalTLSClientHelloStatistics,
+    update_tls_client_hello_statistics,
+    update_directional_tls_client_hello_statistics,
+)
 from analysis.tls_handshake_statistics import (
     TLSHandshakeStatistics, DirectionalTLSHandshakeStatistics,
     update_tls_handshake_statistics, update_directional_tls_handshake_statistics,
@@ -194,6 +204,14 @@ __all__ = [
     "TLSClientHelloObservation",
     "TLSClientHelloStatus",
     "analyze_tls_client_hello",
+    "TLS_CLIENT_HELLO_VERSION_BINS",
+    "TLS_CLIENT_HELLO_CIPHER_SUITE_BINS",
+    "TLS_CLIENT_HELLO_EXTENSION_TYPE_BINS",
+    "TLS_CLIENT_HELLO_COMPRESSION_METHOD_BINS",
+    "TLSClientHelloStatistics",
+    "DirectionalTLSClientHelloStatistics",
+    "update_tls_client_hello_statistics",
+    "update_directional_tls_client_hello_statistics",
 
     "TLSHandshakeStatistics",
     "DirectionalTLSHandshakeStatistics",

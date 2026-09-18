@@ -208,3 +208,9 @@ Run `PYTHONPATH=src python3 -B -m unittest tests.test_tls_handshake_statistics t
 Four synthetic classic PCAP encodings (little-/big-endian microsecond/nanosecond) run through the actual capture/session path. A wrapper observes successful manager publication without replacing capture, framing or parsing. Replay includes exact random/session/extension bytes and selected tuples, IPv4/IPv6, both directions, coalesced/cross-record messages, malformed/incomplete inputs, duplicates, unknown extensions, TCP failure, capacity closure and release across all nine required hash-seed/timezone combinations. This is not external-corpus validation or proof of TLS semantic validity.
 
 Run `PYTHONPATH=src python3 -B -m unittest tests.test_tls_client_hello tests.test_tls_client_hello_lifecycle` first, then existing TLS statistics/handshake/record, TCP, DNS, LDAP, IPv4/IPv6, UDP, detection/evaluation/metrics/capture/CLI/system regressions and the complete suite.
+
+## TLS ClientHello structural statistics
+
+`test_tls_client_hello_statistics.py` verifies empty and populated immutable aggregates, exact extrema/totals, fixed distributions, duplicate and unknown extension occurrence semantics, selected-extension cardinalities, directional isolation, non-complete exclusion, lifecycle closure, source release and nine deterministic seed/timezone replays. The reducer is exercised through Feature 26 structural representations and the existing flow/window path.
+
+Run `PYTHONPATH=src python3 -B -m unittest tests.test_tls_client_hello_statistics` first, then the Feature 26 ClientHello tests and the complete suite.

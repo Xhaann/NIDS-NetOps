@@ -382,7 +382,8 @@ class TLSClientHelloLifecycleTests(unittest.TestCase):
             replace(state, tls_client_hellos=other.tls_client_hellos)
         with self.assertRaises(FlowCoordinationError):
             replace(state, tls_handshake_state=None)
-        legacy = tuple(getattr(state, member.name) for member in fields(state) if member.name != 'tls_client_hellos')
+        legacy = tuple(getattr(state, member.name) for member in fields(state)
+                       if member.name not in ('tls_client_hellos', 'tls_client_hello_statistics'))
         self.assertEqual(type(state)(*legacy).tls_client_hellos, ())
 
     def test_session_four_classic_pcap_encodings_publish_identical_results(self):

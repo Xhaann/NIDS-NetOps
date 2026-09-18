@@ -307,7 +307,7 @@ class TLSHandshakeStatisticsLifecycleTests(unittest.TestCase):
         state = FlowStateCoordinator().record(analyze_packet(packet(wire(message(b'A'), 22))))
         with self.assertRaises(TypeError):
             replace(state, tls_handshake_statistics={})
-        legacy = tuple(getattr(state, field.name) for field in fields(state) if field.name not in ('tls_handshake_statistics', 'tls_client_hellos'))
+        legacy = tuple(getattr(state, field.name) for field in fields(state) if field.name not in ('tls_handshake_statistics', 'tls_client_hellos', 'tls_client_hello_statistics'))
         self.assertEqual(type(state)(*legacy).tls_handshake_statistics, DirectionalTLSHandshakeStatistics())
 
     def test_four_classic_pcap_encodings_match_actual_session_statistics(self):
