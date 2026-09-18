@@ -29,6 +29,7 @@ from analysis.tls_client_hello_statistics import (
     DirectionalTLSClientHelloStatistics,
     update_directional_tls_client_hello_statistics,
 )
+from analysis.tls_server_hello import TLSServerHelloObservation, analyze_tls_server_hello
 from analysis.tls_handshake_statistics import DirectionalTLSHandshakeStatistics, update_directional_tls_handshake_statistics
 from analysis.tls_handshake_framing import TLSHandshakeState, update_tls_handshake_state
 from analysis.tls_record_framing import TLSRecordState, update_tls_record_state
@@ -63,6 +64,7 @@ class CoordinatedFlowState:
     tls_handshake_statistics: DirectionalTLSHandshakeStatistics = DirectionalTLSHandshakeStatistics()
     tls_client_hellos: tuple[TLSClientHelloObservation, ...] = ()
     tls_client_hello_statistics: DirectionalTLSClientHelloStatistics = DirectionalTLSClientHelloStatistics()
+    tls_server_hellos: tuple[TLSServerHelloObservation, ...] = ()
 
     def __post_init__(self) -> None:
         for name, value, expected in (
@@ -89,6 +91,8 @@ class CoordinatedFlowState:
             raise TypeError("tls_handshake_statistics must be exactly a DirectionalTLSHandshakeStatistics")
         if type(self.tls_client_hello_statistics) is not DirectionalTLSClientHelloStatistics:
             raise TypeError("tls_client_hello_statistics must be exactly a DirectionalTLSClientHelloStatistics")
+        if type(self.tls_server_hellos) is not tuple:
+            raise TypeError("tls_server_hellos must be exactly a tuple")
         if type(self.tls_client_hellos) is not tuple:
             raise TypeError("tls_client_hellos must be exactly a tuple")
         for hello in self.tls_client_hellos:
@@ -96,6 +100,11 @@ class CoordinatedFlowState:
                 raise TypeError("tls_client_hellos must contain exact TLSClientHelloObservation values")
             if self.tls_handshake_state is None or hello.identity != self.identity:
                 raise FlowCoordinationError("ClientHello observations must belong to the TLS handshake flow")
+        for hello in self.tls_server_hellos:
+            if type(hello) is not TLSServerHelloObservation:
+                raise TypeError("tls_server_hellos must contain exact TLSServerHelloObservation values")
+            if self.tls_handshake_state is None or hello.identity != self.identity:
+                raise FlowCoordinationError("ServerHello observations must belong to the TLS handshake flow")
         dns = self.dns_correlation_state
         if dns is not None:
             if type(dns) is not DNSCorrelationState:
@@ -297,6 +306,7 @@ class FlowStateCoordinator:
             DirectionalTLSClientHelloStatistics() if current is None else current.tls_client_hello_statistics
         )
         client_hellos = []
+        server_hellos = []
         if handshake_update is not None:
             for observation in handshake_update.forward_messages + handshake_update.reverse_messages:
                 handshake_statistics = update_directional_tls_handshake_statistics(handshake_statistics, observation)
@@ -307,6 +317,8 @@ class FlowStateCoordinator:
                         client_hello_statistics = update_directional_tls_client_hello_statistics(
                             client_hello_statistics, client_hello,
                         )
+                elif observation.header.handshake_type == 2:
+                    server_hellos.append(analyze_tls_server_hello(observation))
         direction = flow_direction_from_packet(analysis, identity)
         if identity.protocol == 17:
             messages = ((direction, analysis.dns),)
@@ -344,7 +356,8 @@ class FlowStateCoordinator:
                                     tls_handshake_state=None if handshake_update is None else handshake_update.state,
                                     tls_handshake_statistics=handshake_statistics,
                                     tls_client_hello_statistics=client_hello_statistics,
-                                    tls_client_hellos=tuple(client_hellos))
+                                    tls_client_hellos=tuple(client_hellos),
+                                    tls_server_hellos=tuple(server_hellos))
 
     def _commit_record(self, state: CoordinatedFlowState) -> None:
         self._state = state

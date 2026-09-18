@@ -311,7 +311,7 @@ class DNSTransactionStatisticsLifecycleTests(unittest.TestCase):
     def test_coordinator_default_and_statistic_type_validation(self):
         state = FlowStateCoordinator().record(analyze_packet(packet()))
         legacy = tuple(getattr(state, member.name) for member in fields(state)
-                       if member.name not in ('dns_transaction_statistics', 'dns_query_name_statistics', 'dns_resource_record_statistics', 'dns_message_flag_statistics', 'dns_edns_statistics', 'dns_stream_state', 'tls_record_state', 'tls_handshake_state', 'tls_handshake_statistics', 'tls_client_hellos', 'tls_client_hello_statistics'))
+                       if member.name not in ('dns_transaction_statistics', 'dns_query_name_statistics', 'dns_resource_record_statistics', 'dns_message_flag_statistics', 'dns_edns_statistics', 'dns_stream_state', 'tls_record_state', 'tls_handshake_state', 'tls_handshake_statistics', 'tls_client_hellos', 'tls_client_hello_statistics', 'tls_server_hellos'))
         self.assertEqual(type(state)(*legacy).dns_transaction_statistics, DNSTransactionStatistics())
         with self.assertRaises(TypeError):
             replace(state, dns_transaction_statistics={})

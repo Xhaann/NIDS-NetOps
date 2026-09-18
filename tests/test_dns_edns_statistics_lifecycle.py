@@ -296,7 +296,7 @@ class DNSEDNSStatisticsLifecycleTests(unittest.TestCase):
 
     def test_legacy_constructor_and_new_field_validation(self):
         state = FlowStateCoordinator().record(analyze_packet(packet()))
-        values = tuple(getattr(state, member.name) for member in fields(state) if member.name not in ('dns_edns_statistics', 'dns_stream_state', 'tls_record_state', 'tls_handshake_state', 'tls_handshake_statistics', 'tls_client_hellos', 'tls_client_hello_statistics'))
+        values = tuple(getattr(state, member.name) for member in fields(state) if member.name not in ('dns_edns_statistics', 'dns_stream_state', 'tls_record_state', 'tls_handshake_state', 'tls_handshake_statistics', 'tls_client_hellos', 'tls_client_hello_statistics', 'tls_server_hellos'))
         self.assertEqual(type(state)(*values).dns_edns_statistics, DNSEDNSStatistics())
         with self.assertRaises(TypeError):
             replace(state, dns_edns_statistics={})

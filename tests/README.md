@@ -214,3 +214,9 @@ Run `PYTHONPATH=src python3 -B -m unittest tests.test_tls_client_hello tests.tes
 `test_tls_client_hello_statistics.py` verifies empty and populated immutable aggregates, exact extrema/totals, fixed distributions, duplicate and unknown extension occurrence semantics, selected-extension cardinalities, directional isolation, non-complete exclusion, lifecycle closure, source release and nine deterministic seed/timezone replays. The reducer is exercised through Feature 26 structural representations and the existing flow/window path.
 
 Run `PYTHONPATH=src python3 -B -m unittest tests.test_tls_client_hello_statistics` first, then the Feature 26 ClientHello tests and the complete suite.
+
+## TLS ServerHello structural analysis
+
+`test_tls_server_hello.py` covers bounded ServerHello fields, optional and empty extension blocks, duplicate and unknown extensions, maximum values, truncation and malformed boundaries, unsupported handshake types, directional IPv4/IPv6 flow paths, ClientHello coexistence, current-batch publication, closure, retry atomicity, source release, four classic PCAP encodings and nine deterministic seed/timezone replays.
+
+Run `PYTHONPATH=src python3 -B -m unittest tests.test_tls_server_hello` first, then the TLS framing/ClientHello/statistics suites and the complete suite.
