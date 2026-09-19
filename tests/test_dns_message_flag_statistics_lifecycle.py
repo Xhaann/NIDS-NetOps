@@ -329,7 +329,7 @@ class DNSMessageFlagLifecycleTests(unittest.TestCase):
 
     def test_legacy_constructor_and_new_field_validation(self):
         state = FlowStateCoordinator().record(analyze_packet(packet()))
-        arguments = tuple(getattr(state, field.name) for field in fields(state) if field.name not in ('dns_message_flag_statistics', 'dns_edns_statistics', 'dns_stream_state', 'tls_record_state', 'tls_handshake_state', 'tls_handshake_statistics', 'tls_client_hellos', 'tls_client_hello_statistics', 'tls_server_hellos', 'tls_server_hello_statistics', 'ipv6_extension_header_statistics', 'tcp_option_statistics'))
+        arguments = tuple(getattr(state, field.name) for field in fields(state) if field.name not in ('dns_message_flag_statistics', 'dns_edns_statistics', 'dns_stream_state', 'tls_record_state', 'tls_handshake_state', 'tls_handshake_statistics', 'tls_client_hellos', 'tls_client_hello_statistics', 'tls_server_hellos', 'tls_server_hello_statistics', 'ipv6_extension_header_statistics', 'tcp_option_statistics', 'ip_hop_limit_statistics'))
         self.assertEqual(type(state)(*arguments).dns_message_flag_statistics, DNSMessageFlagStatistics())
         with self.assertRaises(TypeError):
             replace(state, dns_message_flag_statistics={})

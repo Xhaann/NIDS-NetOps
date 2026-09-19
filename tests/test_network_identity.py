@@ -33,7 +33,7 @@ def synthetic_window(identity):
     state = template.coordinated_state
     components = {}
     for field in fields(state):
-        if field.name in ("dns_transaction_statistics", "dns_query_name_statistics", "dns_resource_record_statistics", "dns_message_flag_statistics", "dns_edns_statistics", "tls_handshake_statistics", "tls_client_hellos", "tls_client_hello_statistics", "tls_server_hellos", "tls_server_hello_statistics", "ipv6_extension_header_statistics", "tcp_option_statistics"):
+        if field.name in ("dns_transaction_statistics", "dns_query_name_statistics", "dns_resource_record_statistics", "dns_message_flag_statistics", "dns_edns_statistics", "tls_handshake_statistics", "tls_client_hellos", "tls_client_hello_statistics", "tls_server_hellos", "tls_server_hello_statistics", "ipv6_extension_header_statistics", "tcp_option_statistics", "ip_hop_limit_statistics"):
             continue
         component = getattr(state, field.name)
         components[field.name] = (

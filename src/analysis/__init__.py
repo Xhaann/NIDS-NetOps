@@ -1,3 +1,9 @@
+from analysis.ip_hop_limit_statistics import (
+    IP_HOP_LIMIT_BINS,
+    IPHopLimitStatistics,
+    DirectionalIPHopLimitStatistics,
+    update_directional_ip_hop_limit_statistics,
+)
 from analysis.tcp_option_statistics import (
     TCP_OPTION_MAX_BYTES,
     TCP_OPTION_MAX_COUNT,
@@ -234,6 +240,10 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "IP_HOP_LIMIT_BINS",
+    "IPHopLimitStatistics",
+    "DirectionalIPHopLimitStatistics",
+    "update_directional_ip_hop_limit_statistics",
     "TCP_OPTION_MAX_BYTES",
     "TCP_OPTION_MAX_COUNT",
     "TCP_OPTION_KIND_BINS",

@@ -45,6 +45,10 @@ from analysis.tcp_option_statistics import (
     DirectionalTCPOptionStatistics,
     update_directional_tcp_option_statistics,
 )
+from analysis.ip_hop_limit_statistics import (
+    DirectionalIPHopLimitStatistics,
+    update_directional_ip_hop_limit_statistics,
+)
 from analysis.tcp_control_statistics import TCPControlStatistics, update_tcp_control_statistics
 
 
@@ -80,6 +84,7 @@ class CoordinatedFlowState:
     tls_server_hello_statistics: DirectionalTLSServerHelloStatistics = DirectionalTLSServerHelloStatistics()
     ipv6_extension_header_statistics: DirectionalIPv6ExtensionHeaderStatistics = DirectionalIPv6ExtensionHeaderStatistics()
     tcp_option_statistics: DirectionalTCPOptionStatistics = DirectionalTCPOptionStatistics()
+    ip_hop_limit_statistics: DirectionalIPHopLimitStatistics = DirectionalIPHopLimitStatistics()
 
     def __post_init__(self) -> None:
         for name, value, expected in (
@@ -114,6 +119,8 @@ class CoordinatedFlowState:
             )
         if type(self.tcp_option_statistics) is not DirectionalTCPOptionStatistics:
             raise TypeError("tcp_option_statistics must be exactly a DirectionalTCPOptionStatistics")
+        if type(self.ip_hop_limit_statistics) is not DirectionalIPHopLimitStatistics:
+            raise TypeError("ip_hop_limit_statistics must be exactly a DirectionalIPHopLimitStatistics")
         if type(self.tls_server_hellos) is not tuple:
             raise TypeError("tls_server_hellos must be exactly a tuple")
         if type(self.tls_client_hellos) is not tuple:
@@ -339,6 +346,9 @@ class FlowStateCoordinator:
         tcp_option_statistics = update_directional_tcp_option_statistics(
             None if current is None else current.tcp_option_statistics, analysis, identity,
         )
+        ip_hop_limit_statistics = update_directional_ip_hop_limit_statistics(
+            None if current is None else current.ip_hop_limit_statistics, analysis, identity,
+        )
         client_hellos = []
         server_hellos = []
         if handshake_update is not None:
@@ -399,7 +409,8 @@ class FlowStateCoordinator:
                                     tls_server_hellos=tuple(server_hellos),
                                     tls_server_hello_statistics=server_hello_statistics,
                                     ipv6_extension_header_statistics=ipv6_extension_header_statistics,
-                                    tcp_option_statistics=tcp_option_statistics)
+                                    tcp_option_statistics=tcp_option_statistics,
+                                    ip_hop_limit_statistics=ip_hop_limit_statistics)
 
     def _commit_record(self, state: CoordinatedFlowState) -> None:
         self._state = state

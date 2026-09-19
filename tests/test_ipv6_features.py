@@ -165,7 +165,7 @@ class IPv6FeatureParityTests(unittest.TestCase):
         self.assertNotEqual(v4_snapshot.identity, v6_snapshot.identity)
         self.assertEqual(snapshot_features(v4_snapshot), snapshot_features(v6_snapshot))
         for field in fields(v4_snapshot.coordinated_state):
-            if field.name in ("tcp_stream_state", "tls_record_state", "tls_handshake_state", "tls_client_hello_statistics", "tls_server_hellos", "tls_server_hello_statistics", "ipv6_extension_header_statistics", "tcp_option_statistics"):
+            if field.name in ("tcp_stream_state", "tls_record_state", "tls_handshake_state", "tls_client_hello_statistics", "tls_server_hellos", "tls_server_hello_statistics", "ipv6_extension_header_statistics", "tcp_option_statistics", "ip_hop_limit_statistics"):
                 continue
             left = getattr(v4_snapshot.coordinated_state, field.name)
             right = getattr(v6_snapshot.coordinated_state, field.name)
@@ -383,7 +383,7 @@ class IPv6FeatureParityTests(unittest.TestCase):
             snapshot = snapshot_from_packets(*feature_sequence(protocol))
             state = snapshot.coordinated_state
             models = (snapshot, snapshot.observation_window, state) + snapshot_features(snapshot)
-            models += tuple(getattr(state, field.name) for field in fields(state) if field.name not in ("tls_client_hellos", "tls_client_hello_statistics", "tls_server_hellos", "tls_server_hello_statistics", "ipv6_extension_header_statistics", "tcp_option_statistics"))
+            models += tuple(getattr(state, field.name) for field in fields(state) if field.name not in ("tls_client_hellos", "tls_client_hello_statistics", "tls_server_hellos", "tls_server_hello_statistics", "ipv6_extension_header_statistics", "tcp_option_statistics", "ip_hop_limit_statistics"))
             self.assertEqual(state.tls_client_hellos, ())
             for model in models:
                 if model is not None:

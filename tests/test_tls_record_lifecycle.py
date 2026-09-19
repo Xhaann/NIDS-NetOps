@@ -279,7 +279,7 @@ class TLSRecordLifecycleTests(unittest.TestCase):
             replace(state, tls_record_state={})
         with self.assertRaises(FlowCoordinationError):
             replace(state, tcp_stream_state=replace(state.tcp_stream_state))
-        legacy = tuple(getattr(state, field.name) for field in fields(state) if field.name not in ('tls_record_state', 'tls_handshake_state', 'tls_handshake_statistics', 'tls_client_hellos', 'tls_client_hello_statistics', 'tls_server_hellos', 'tls_server_hello_statistics', 'ipv6_extension_header_statistics', 'tcp_option_statistics'))
+        legacy = tuple(getattr(state, field.name) for field in fields(state) if field.name not in ('tls_record_state', 'tls_handshake_state', 'tls_handshake_statistics', 'tls_client_hellos', 'tls_client_hello_statistics', 'tls_server_hellos', 'tls_server_hello_statistics', 'ipv6_extension_header_statistics', 'tcp_option_statistics', 'ip_hop_limit_statistics'))
         self.assertIsNone(type(state)(*legacy).tls_record_state)
 
     def test_four_classic_pcap_encodings_through_real_capture_session(self):
