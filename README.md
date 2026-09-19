@@ -36,6 +36,8 @@ Capture → packet analysis → flow/features → detection → evaluation again
 
 [TLS ServerHello structural analysis](src/analysis/README.md#tls-serverhello-structural-analysis) parses completed handshake type 2 messages into bounded immutable structural observations after the existing TLS record and handshake framers. It preserves ordered opaque extensions and current-batch lifecycle behavior without role inference, negotiation classification, fingerprinting or detection.
 
+[TLS ServerHello structural statistics](src/analysis/README.md#tls-serverhello-structural-statistics) aggregate completed ServerHello observations by direction with bounded sparse version, cipher-suite, compression-method and extension-type distributions, bounded length extrema/totals, extension presence and duplicate counts. The aggregate retains no payload, parser object or message history and does not change the generic feature contract or detection behavior.
+
 Capture supplies immutable `PacketObservation` values. Analysis returns `PacketAnalysisOutcome`, including recognized failures. `run_detection_pipeline()` uses `DetectionSession` to produce ordered packet and closed-flow findings in `DetectionPipelineResult`.
 
 For incremental processing of large captures, [`run_detection_stream()`](src/application/README.md#incremental-detection-finding-delivery) delivers those findings to synchronous packet and flow consumers without accumulating a result history. The collecting pipeline uses this same lifecycle. Active analysis remains bounded by the window limit; consumer-retained findings can still retain packet/window evidence. Delivery adds no persistent archival, output queue, or serialization. The CLI and end-to-end reporting APIs continue to collect complete results.

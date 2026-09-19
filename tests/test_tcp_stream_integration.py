@@ -257,7 +257,7 @@ class TCPStreamIntegrationTests(unittest.TestCase):
         with self.assertRaises(FlowCoordinationError):
             replace(state, tcp_stream_state=other.tcp_stream_state)
         arguments = tuple(getattr(state, field.name) for field in fields(state)
-                          if field.name not in ('tcp_stream_state', 'dns_transaction_statistics', 'dns_query_name_statistics', 'dns_resource_record_statistics', 'dns_message_flag_statistics', 'dns_edns_statistics', 'dns_stream_state', 'tls_record_state', 'tls_handshake_state', 'tls_handshake_statistics', 'tls_client_hellos', 'tls_client_hello_statistics', 'tls_server_hellos'))
+                          if field.name not in ('tcp_stream_state', 'dns_transaction_statistics', 'dns_query_name_statistics', 'dns_resource_record_statistics', 'dns_message_flag_statistics', 'dns_edns_statistics', 'dns_stream_state', 'tls_record_state', 'tls_handshake_state', 'tls_handshake_statistics', 'tls_client_hellos', 'tls_client_hello_statistics', 'tls_server_hellos', 'tls_server_hello_statistics'))
         self.assertIsNone(type(state)(*arguments).tcp_stream_state)
         udp = analyze_packet(observation(frame(17, transport(17, b'udp')), 0))
         udp_state = FlowStateCoordinator().record(udp)

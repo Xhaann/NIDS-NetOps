@@ -13,6 +13,7 @@ from analysis.dns_stream_framing import DNSStreamState
 from analysis.tls_client_hello import TLSClientHelloObservation
 from analysis.tls_client_hello_statistics import DirectionalTLSClientHelloStatistics
 from analysis.tls_server_hello import TLSServerHelloObservation
+from analysis.tls_server_hello_statistics import DirectionalTLSServerHelloStatistics
 from analysis.tls_record_framing import TLSRecordState
 from analysis.tls_handshake_framing import TLSHandshakeState
 from analysis.tls_handshake_statistics import DirectionalTLSHandshakeStatistics
@@ -116,6 +117,10 @@ class FlowObservationWindow:
     @property
     def tls_server_hellos(self) -> tuple[TLSServerHelloObservation, ...]:
         return self.coordinated_state.tls_server_hellos
+
+    @property
+    def tls_server_hello_statistics(self) -> DirectionalTLSServerHelloStatistics:
+        return self.coordinated_state.tls_server_hello_statistics
 
     @property
     def tls_handshake_state(self) -> Optional[TLSHandshakeState]:

@@ -220,3 +220,9 @@ Run `PYTHONPATH=src python3 -B -m unittest tests.test_tls_client_hello_statistic
 `test_tls_server_hello.py` covers bounded ServerHello fields, optional and empty extension blocks, duplicate and unknown extensions, maximum values, truncation and malformed boundaries, unsupported handshake types, directional IPv4/IPv6 flow paths, ClientHello coexistence, current-batch publication, closure, retry atomicity, source release, four classic PCAP encodings and nine deterministic seed/timezone replays.
 
 Run `PYTHONPATH=src python3 -B -m unittest tests.test_tls_server_hello` first, then the TLS framing/ClientHello/statistics suites and the complete suite.
+
+## TLS ServerHello structural statistics
+
+`test_tls_server_hello_statistics.py` verifies empty and populated immutable aggregates, ordered sparse wire-domain distributions, exact length extrema/totals, extension presence and duplicate semantics, directional isolation, non-complete exclusion, boundary rejection, lifecycle closure, retransmission suppression, publication retry atomicity, source release, four classic PCAP encodings and nine deterministic seed/timezone replays.
+
+Run `PYTHONPATH=src python3 -B -m unittest tests.test_tls_server_hello_statistics` first, then the ServerHello analysis and TLS framing/statistics suites followed by the complete suite.
