@@ -1,3 +1,14 @@
+from analysis.tcp_option_statistics import (
+    TCP_OPTION_MAX_BYTES,
+    TCP_OPTION_MAX_COUNT,
+    TCP_OPTION_KIND_BINS,
+    TCP_OPTION_MSS_BINS,
+    TCP_OPTION_WINDOW_SCALE_BINS,
+    TCP_OPTION_MAX_SACK_BLOCKS,
+    TCPOptionStatistics,
+    DirectionalTCPOptionStatistics,
+    update_directional_tcp_option_statistics,
+)
 from analysis.tls_client_hello import (
     TLS_CLIENT_HELLO_MAX_BODY_BYTES,
     TLS_CLIENT_HELLO_MAX_SESSION_ID_BYTES,
@@ -223,6 +234,15 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "TCP_OPTION_MAX_BYTES",
+    "TCP_OPTION_MAX_COUNT",
+    "TCP_OPTION_KIND_BINS",
+    "TCP_OPTION_MSS_BINS",
+    "TCP_OPTION_WINDOW_SCALE_BINS",
+    "TCP_OPTION_MAX_SACK_BLOCKS",
+    "TCPOptionStatistics",
+    "DirectionalTCPOptionStatistics",
+    "update_directional_tcp_option_statistics",
     "TLS_CLIENT_HELLO_MAX_BODY_BYTES",
     "TLS_CLIENT_HELLO_MAX_SESSION_ID_BYTES",
     "TLS_CLIENT_HELLO_MAX_CIPHER_SUITE_BYTES",

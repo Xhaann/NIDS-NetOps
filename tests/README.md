@@ -232,3 +232,9 @@ Run `PYTHONPATH=src python3 -B -m unittest tests.test_tls_server_hello_statistic
 `test_ipv6_extension_header_statistics.py` verifies empty and populated immutable aggregates, empty and duplicate chains, directional isolation, IPv4 compatibility, sparse 8-bit distributions, chain and metadata bounds, lifecycle closure, inactivity and capacity boundaries, publication retry atomicity, source release, four classic PCAP encodings and nine deterministic seed/timezone replays.
 
 Run `PYTHONPATH=src python3 -B -m unittest tests.test_ipv6_extension_header_statistics` first, then the IPv6 packet/flow, capture/session and complete suites.
+
+## TCP option structural statistics
+
+`test_tcp_option_statistics.py` exercises real IPv4/IPv6 packet decoding and directional flow observation, EOL/NOP and unknown options, MSS/window-scale extrema and complete wire-domain distributions, SACK block bounds, duplicate kinds, invalid known lengths with atomic prefix exclusion, malformed envelopes, truncated headers, fragments, invalid metadata, immutability and source release. It also checks repeated observations, failed candidate/publication retries, all closure reasons, replacement failures, capture/consumer failure cleanup, DNS/LDAP/TLS coexistence, actual flow-session parity across four classic PCAP encodings, and the established nine seed/timezone replay combinations. Successful repeated packet observations count again; failed publication attempts do not.
+
+Run `PYTHONPATH=src python3 -B -m unittest tests.test_tcp_option_statistics` first, then TCP options/transport, flow lifecycle, affected constructor/field-list regressions, existing replay invariants and the full suite. Compatibility changes to older fixtures only accommodate the appended scalar aggregate; no detector or feature-vector definitions change.
