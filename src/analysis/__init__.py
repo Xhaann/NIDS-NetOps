@@ -159,6 +159,15 @@ from analysis.ipv6_extension_headers import (
     IPv6ExtensionHeaderChain,
     validate_ipv6_extension_headers,
 )
+from analysis.ipv6_extension_header_statistics import (
+    IPV6_EXTENSION_HEADER_MAX_COUNT,
+    IPV6_EXTENSION_HEADER_TYPE_BINS,
+    IPV6_TERMINAL_NEXT_HEADER_BINS,
+    IPv6ExtensionHeaderStatistics,
+    DirectionalIPv6ExtensionHeaderStatistics,
+    update_ipv6_extension_header_statistics,
+    update_directional_ipv6_extension_header_statistics,
+)
 from analysis.ipv6_fragmentation import IPv6FragmentHeader, IPv6Fragmentation, analyze_ipv6_fragmentation
 from analysis.ldap import (
     LDAP_MAX_MESSAGES,
@@ -252,6 +261,13 @@ __all__ = [
     "DirectionalTLSServerHelloStatistics",
     "update_tls_server_hello_statistics",
     "update_directional_tls_server_hello_statistics",
+    "IPV6_EXTENSION_HEADER_MAX_COUNT",
+    "IPV6_EXTENSION_HEADER_TYPE_BINS",
+    "IPV6_TERMINAL_NEXT_HEADER_BINS",
+    "IPv6ExtensionHeaderStatistics",
+    "DirectionalIPv6ExtensionHeaderStatistics",
+    "update_ipv6_extension_header_statistics",
+    "update_directional_ipv6_extension_header_statistics",
 
     "TLSHandshakeStatistics",
     "DirectionalTLSHandshakeStatistics",

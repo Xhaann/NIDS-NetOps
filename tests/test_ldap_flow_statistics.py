@@ -184,7 +184,7 @@ class LDAPFlowTests(unittest.TestCase):
                 update_ldap_flow_statistics(*args)
         legacy = type(state)(*(getattr(state, field.name) for field in fields(state)
                                if field.name not in ('ldap_statistics', 'tcp_stream_state', 'ldap_stream_state',
-                                                     'ldap_correlation_state', 'dns_transaction_statistics', 'dns_query_name_statistics', 'dns_resource_record_statistics', 'dns_message_flag_statistics', 'dns_edns_statistics', 'dns_stream_state', 'tls_record_state', 'tls_handshake_state', 'tls_handshake_statistics', 'tls_client_hellos', 'tls_client_hello_statistics', 'tls_server_hellos', 'tls_server_hello_statistics')))
+                                                     'ldap_correlation_state', 'dns_transaction_statistics', 'dns_query_name_statistics', 'dns_resource_record_statistics', 'dns_message_flag_statistics', 'dns_edns_statistics', 'dns_stream_state', 'tls_record_state', 'tls_handshake_state', 'tls_handshake_statistics', 'tls_client_hellos', 'tls_client_hello_statistics', 'tls_server_hellos', 'tls_server_hello_statistics', 'ipv6_extension_header_statistics')))
         self.assertIsNone(legacy.ldap_statistics)
 
     def test_detection_evaluation_and_pcap_do_not_classify_ldap_parse_failures(self):

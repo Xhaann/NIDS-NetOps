@@ -226,3 +226,9 @@ Run `PYTHONPATH=src python3 -B -m unittest tests.test_tls_server_hello` first, t
 `test_tls_server_hello_statistics.py` verifies empty and populated immutable aggregates, ordered sparse wire-domain distributions, exact length extrema/totals, extension presence and duplicate semantics, directional isolation, non-complete exclusion, boundary rejection, lifecycle closure, retransmission suppression, publication retry atomicity, source release, four classic PCAP encodings and nine deterministic seed/timezone replays.
 
 Run `PYTHONPATH=src python3 -B -m unittest tests.test_tls_server_hello_statistics` first, then the ServerHello analysis and TLS framing/statistics suites followed by the complete suite.
+
+## IPv6 extension-header structural statistics
+
+`test_ipv6_extension_header_statistics.py` verifies empty and populated immutable aggregates, empty and duplicate chains, directional isolation, IPv4 compatibility, sparse 8-bit distributions, chain and metadata bounds, lifecycle closure, inactivity and capacity boundaries, publication retry atomicity, source release, four classic PCAP encodings and nine deterministic seed/timezone replays.
+
+Run `PYTHONPATH=src python3 -B -m unittest tests.test_ipv6_extension_header_statistics` first, then the IPv6 packet/flow, capture/session and complete suites.

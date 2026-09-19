@@ -34,6 +34,10 @@ from analysis.tls_server_hello_statistics import (
     DirectionalTLSServerHelloStatistics,
     update_directional_tls_server_hello_statistics,
 )
+from analysis.ipv6_extension_header_statistics import (
+    DirectionalIPv6ExtensionHeaderStatistics,
+    update_directional_ipv6_extension_header_statistics,
+)
 from analysis.tls_handshake_statistics import DirectionalTLSHandshakeStatistics, update_directional_tls_handshake_statistics
 from analysis.tls_handshake_framing import TLSHandshakeState, update_tls_handshake_state
 from analysis.tls_record_framing import TLSRecordState, update_tls_record_state
@@ -70,6 +74,7 @@ class CoordinatedFlowState:
     tls_client_hello_statistics: DirectionalTLSClientHelloStatistics = DirectionalTLSClientHelloStatistics()
     tls_server_hellos: tuple[TLSServerHelloObservation, ...] = ()
     tls_server_hello_statistics: DirectionalTLSServerHelloStatistics = DirectionalTLSServerHelloStatistics()
+    ipv6_extension_header_statistics: DirectionalIPv6ExtensionHeaderStatistics = DirectionalIPv6ExtensionHeaderStatistics()
 
     def __post_init__(self) -> None:
         for name, value, expected in (
@@ -98,6 +103,10 @@ class CoordinatedFlowState:
             raise TypeError("tls_client_hello_statistics must be exactly a DirectionalTLSClientHelloStatistics")
         if type(self.tls_server_hello_statistics) is not DirectionalTLSServerHelloStatistics:
             raise TypeError("tls_server_hello_statistics must be exactly a DirectionalTLSServerHelloStatistics")
+        if type(self.ipv6_extension_header_statistics) is not DirectionalIPv6ExtensionHeaderStatistics:
+            raise TypeError(
+                "ipv6_extension_header_statistics must be exactly a DirectionalIPv6ExtensionHeaderStatistics"
+            )
         if type(self.tls_server_hellos) is not tuple:
             raise TypeError("tls_server_hellos must be exactly a tuple")
         if type(self.tls_client_hellos) is not tuple:
@@ -315,6 +324,11 @@ class FlowStateCoordinator:
         server_hello_statistics = (
             DirectionalTLSServerHelloStatistics() if current is None else current.tls_server_hello_statistics
         )
+        ipv6_extension_header_statistics = update_directional_ipv6_extension_header_statistics(
+            None if current is None else current.ipv6_extension_header_statistics,
+            analysis,
+            identity,
+        )
         client_hellos = []
         server_hellos = []
         if handshake_update is not None:
@@ -373,7 +387,8 @@ class FlowStateCoordinator:
                                     tls_client_hello_statistics=client_hello_statistics,
                                     tls_client_hellos=tuple(client_hellos),
                                     tls_server_hellos=tuple(server_hellos),
-                                    tls_server_hello_statistics=server_hello_statistics)
+                                    tls_server_hello_statistics=server_hello_statistics,
+                                    ipv6_extension_header_statistics=ipv6_extension_header_statistics)
 
     def _commit_record(self, state: CoordinatedFlowState) -> None:
         self._state = state
