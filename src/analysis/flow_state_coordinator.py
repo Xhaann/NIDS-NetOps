@@ -53,6 +53,7 @@ from analysis.ipv6_fragmentation_statistics import (
     DirectionalIPv6FragmentationStatistics,
     update_directional_ipv6_fragmentation_statistics,
 )
+from analysis.icmp_statistics import DirectionalICMPStatistics, update_directional_icmp_statistics
 from analysis.tcp_control_statistics import TCPControlStatistics, update_tcp_control_statistics
 
 
@@ -90,6 +91,7 @@ class CoordinatedFlowState:
     tcp_option_statistics: DirectionalTCPOptionStatistics = DirectionalTCPOptionStatistics()
     ip_hop_limit_statistics: DirectionalIPHopLimitStatistics = DirectionalIPHopLimitStatistics()
     ipv6_fragmentation_statistics: DirectionalIPv6FragmentationStatistics = DirectionalIPv6FragmentationStatistics()
+    icmp_statistics: DirectionalICMPStatistics = DirectionalICMPStatistics()
 
     def __post_init__(self) -> None:
         for name, value, expected in (
@@ -130,6 +132,8 @@ class CoordinatedFlowState:
             raise TypeError(
                 "ipv6_fragmentation_statistics must be exactly a DirectionalIPv6FragmentationStatistics"
             )
+        if type(self.icmp_statistics) is not DirectionalICMPStatistics:
+            raise TypeError("icmp_statistics must be exactly a DirectionalICMPStatistics")
         if type(self.tls_server_hellos) is not tuple:
             raise TypeError("tls_server_hellos must be exactly a tuple")
         if type(self.tls_client_hellos) is not tuple:
@@ -361,6 +365,9 @@ class FlowStateCoordinator:
         ipv6_fragmentation_statistics = update_directional_ipv6_fragmentation_statistics(
             None if current is None else current.ipv6_fragmentation_statistics, analysis, identity,
         )
+        icmp_statistics = update_directional_icmp_statistics(
+            None if current is None else current.icmp_statistics, analysis, identity,
+        )
         client_hellos = []
         server_hellos = []
         if handshake_update is not None:
@@ -423,7 +430,8 @@ class FlowStateCoordinator:
                                     ipv6_extension_header_statistics=ipv6_extension_header_statistics,
                                     tcp_option_statistics=tcp_option_statistics,
                                     ip_hop_limit_statistics=ip_hop_limit_statistics,
-                                    ipv6_fragmentation_statistics=ipv6_fragmentation_statistics)
+                                    ipv6_fragmentation_statistics=ipv6_fragmentation_statistics,
+                                    icmp_statistics=icmp_statistics)
 
     def _commit_record(self, state: CoordinatedFlowState) -> None:
         self._state = state

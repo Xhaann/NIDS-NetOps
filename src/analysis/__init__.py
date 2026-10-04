@@ -1,3 +1,9 @@
+from analysis.icmp_statistics import (
+    ICMP_TYPE_CODE_BINS,
+    ICMPStatistics,
+    DirectionalICMPStatistics,
+    update_directional_icmp_statistics,
+)
 from analysis.ipv6_fragmentation_statistics import (
     IPV6_FRAGMENT_HEADER_MAX_COUNT,
     IPv6FragmentationStatistics,
@@ -246,6 +252,10 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "ICMP_TYPE_CODE_BINS",
+    "ICMPStatistics",
+    "DirectionalICMPStatistics",
+    "update_directional_icmp_statistics",
     "IPV6_FRAGMENT_HEADER_MAX_COUNT",
     "IPv6FragmentationStatistics",
     "DirectionalIPv6FragmentationStatistics",

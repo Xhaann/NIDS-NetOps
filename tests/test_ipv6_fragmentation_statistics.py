@@ -297,10 +297,11 @@ class IPv6FragmentationStatisticsTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             replace(state, ipv6_fragmentation_statistics=IPv6FragmentationStatistics())
         legacy = tuple(getattr(state, member.name)
-                       for member in fields(CoordinatedFlowState) if member.name != 'ipv6_fragmentation_statistics')
+                       for member in fields(CoordinatedFlowState)
+                       if member.name not in ('ipv6_fragmentation_statistics', 'icmp_statistics'))
         self.assertEqual(CoordinatedFlowState(*legacy).ipv6_fragmentation_statistics, DirectionalIPv6FragmentationStatistics())
-        self.assertEqual(tuple(member.name for member in fields(CoordinatedFlowState))[-2:],
-                         ('ip_hop_limit_statistics', 'ipv6_fragmentation_statistics'))
+        names = tuple(member.name for member in fields(CoordinatedFlowState))
+        self.assertEqual(names.index('ipv6_fragmentation_statistics'), names.index('ip_hop_limit_statistics') + 1)
 
     def test_ipv4_traffic_including_fragments_cannot_contaminate(self):
         current = update(None, packet(6, headers=(FIRST,)))

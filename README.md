@@ -46,6 +46,8 @@ Capture → packet analysis → flow/features → detection → evaluation again
 
 [ICMP flow admission](src/analysis/README.md#icmp-flow-admission) admits decoded ICMPv4 and ICMPv6 into the existing flow lifecycle. An ICMP flow is keyed by its canonical address pair, protocol and, for Echo messages only, the Echo identifier; it carries no ports, sequence numbers or message types. TCP/UDP identities, closed-flow detectors and their findings are unchanged, and ICMP flows produce no flow findings.
 
+[ICMP structural statistics](src/analysis/README.md#icmp-structural-statistics) aggregate decoded ICMPv4/ICMPv6 Type and Code values of admitted ICMP flows by direction as a sorted sparse type-scoped distribution tagged with its protocol. Each direction holds at most 65,536 bins and no packets, payloads or models; the measurements create no findings and change no detector or evaluation behavior.
+
 Capture supplies immutable `PacketObservation` values. Analysis returns `PacketAnalysisOutcome`, including recognized failures. `run_detection_pipeline()` uses `DetectionSession` to produce ordered packet and closed-flow findings in `DetectionPipelineResult`.
 
 For incremental processing of large captures, [`run_detection_stream()`](src/application/README.md#incremental-detection-finding-delivery) delivers those findings to synchronous packet and flow consumers without accumulating a result history. The collecting pipeline uses this same lifecycle. Active analysis remains bounded by the window limit; consumer-retained findings can still retain packet/window evidence. Delivery adds no persistent archival, output queue, or serialization. The CLI and end-to-end reporting APIs continue to collect complete results.
