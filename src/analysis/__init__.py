@@ -1,3 +1,9 @@
+from analysis.udp_statistics import (
+    UDP_MAX_PAYLOAD_LENGTH,
+    UDPStatistics,
+    DirectionalUDPStatistics,
+    update_directional_udp_statistics,
+)
 from analysis.icmp_statistics import (
     ICMP_TYPE_CODE_BINS,
     ICMPStatistics,
@@ -252,6 +258,10 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "UDP_MAX_PAYLOAD_LENGTH",
+    "UDPStatistics",
+    "DirectionalUDPStatistics",
+    "update_directional_udp_statistics",
     "ICMP_TYPE_CODE_BINS",
     "ICMPStatistics",
     "DirectionalICMPStatistics",

@@ -1379,3 +1379,26 @@ Each `ICMPStatistics` stores one sorted sparse `type_code_counts` tuple of `(typ
 Bounds: per direction at most 65,536 occupied bins and per flow 131,072; per packet one binary search and one bounded tuple rebuild of at most 65,536 entries. No dictionary, set, packet, observation, model, payload, identifier or history is retained. Counter magnitude grows with observation count, following existing exact statistics conventions; active-flow memory remains subject to the existing window capacity.
 
 The coordinator prepares the aggregate with the other candidates and publishes it atomically. Failed preparation or publication does not count; a successful retry counts once, and a repeated successful observation counts again. All closure reasons preserve the published aggregate, replacement windows start empty, and frozen snapshots keep their values. ICMP identity, admission, detectors, findings, evaluation and the feature contract are unchanged. Checksum validity is not measured because only ICMPv4 has a validator and integrity failures already stop pipeline admission; message sizes remain covered by the existing packet-size statistics.
+
+## UDP structural statistics
+
+`CoordinatedFlowState.udp_statistics` and `FlowObservationWindow.udp_statistics` expose a frozen `DirectionalUDPStatistics` with `forward` and `reverse` `UDPStatistics` values. Ports are not measured: a UDP flow identity already fixes one port pair, so per-flow port distributions would restate the identity.
+
+| Field | Meaning |
+| --- | --- |
+| `datagram_count` | Admitted UDP datagrams in this direction. |
+| `empty_payload_datagram_count` | Datagrams whose UDP Length is exactly 8. |
+| `min_payload_length` / `max_payload_length` | Extrema of UDP Length minus 8; `None` while empty. |
+| `total_payload_length` | Sum of UDP Length minus 8. |
+| `trailing_surplus_datagram_count` | Datagrams whose IP payload continues beyond the UDP Length. |
+| `total_trailing_surplus_length` | Sum of those trailing bytes. |
+
+`nonempty_payload_datagram_count` is derived. Construction requires exact non-negative integers and rejects booleans, extrema present without datagrams or absent with them, extrema outside 0–`UDP_MAX_PAYLOAD_LENGTH` (65,527), totals outside `count × minimum` through `count × maximum`, class counts above the datagram count, an empty-datagram count that disagrees with a zero minimum, all-empty datagrams with a nonzero maximum, and surplus totals outside one through 65,527 bytes per surplus datagram.
+
+`update_directional_udp_statistics(current, analysis, identity)` consumes the exact decoded `UDPPacket.length` selected by the existing flow identity (`udp` for IPv4, `ipv6_udp` for IPv6). The IP payload length comes from decoded scalars only: IPv4 `total_length − header_length`, and IPv6 `payload_length` less the extent of the exact retained extension-header chain. The decoder keeps only `UDP Length − 8` payload bytes and silently excludes any remainder; this statistic exposes that remainder without reading it. IPv4 options, IPv6 extension headers, Fragment Headers and Ethernet padding are not surplus. A UDP Length beyond the IP payload, out-of-domain values, a detached chain, a missing model or a UDP model on a non-UDP flow is rejected. The reducer reads no payload bytes, reruns no decoder or checksum validator and validates its structure before delegating direction to the existing flow contract.
+
+Checksum fields and checksum results are not measured, preserving the existing coordinator contract that flow state is independent of checksum values and validation results. No port, application, reassembly or attack meaning is inferred.
+
+Bounds: seven integer fields per direction and fourteen per flow; each update is constant time with no collection, sorting or copying. No packet, observation, model, payload, chain or history is retained. Counter magnitude grows with observation count, following existing exact statistics conventions; active-flow memory remains subject to the existing window capacity. TCP and ICMP flows keep the empty aggregate.
+
+The coordinator prepares the aggregate with the other candidates and publishes it atomically. Failed preparation or publication does not count; a successful retry counts once, and a repeated successful observation counts again. All closure reasons preserve the published aggregate, replacement windows start empty, and frozen snapshots keep their values. UDP identity, admission, detectors, findings, evaluation and the feature contract are unchanged.
