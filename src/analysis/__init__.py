@@ -1,3 +1,11 @@
+from analysis.ipv4_header_statistics import (
+    IPV4_DSCP_BINS,
+    IPV4_ECN_BINS,
+    IPV4_MAX_OPTIONS_LENGTH,
+    IPv4HeaderStatistics,
+    DirectionalIPv4HeaderStatistics,
+    update_directional_ipv4_header_statistics,
+)
 from analysis.udp_statistics import (
     UDP_MAX_PAYLOAD_LENGTH,
     UDPStatistics,
@@ -258,6 +266,12 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "IPV4_DSCP_BINS",
+    "IPV4_ECN_BINS",
+    "IPV4_MAX_OPTIONS_LENGTH",
+    "IPv4HeaderStatistics",
+    "DirectionalIPv4HeaderStatistics",
+    "update_directional_ipv4_header_statistics",
     "UDP_MAX_PAYLOAD_LENGTH",
     "UDPStatistics",
     "DirectionalUDPStatistics",

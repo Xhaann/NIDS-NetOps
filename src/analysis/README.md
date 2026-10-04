@@ -1402,3 +1402,27 @@ Checksum fields and checksum results are not measured, preserving the existing c
 Bounds: seven integer fields per direction and fourteen per flow; each update is constant time with no collection, sorting or copying. No packet, observation, model, payload, chain or history is retained. Counter magnitude grows with observation count, following existing exact statistics conventions; active-flow memory remains subject to the existing window capacity. TCP and ICMP flows keep the empty aggregate.
 
 The coordinator prepares the aggregate with the other candidates and publishes it atomically. Failed preparation or publication does not count; a successful retry counts once, and a repeated successful observation counts again. All closure reasons preserve the published aggregate, replacement windows start empty, and frozen snapshots keep their values. UDP identity, admission, detectors, findings, evaluation and the feature contract are unchanged.
+
+## IPv4 header structural statistics
+
+`CoordinatedFlowState.ipv4_header_statistics` and `FlowObservationWindow.ipv4_header_statistics` expose a frozen `DirectionalIPv4HeaderStatistics` with `forward` and `reverse` `IPv4HeaderStatistics` values. IPv6 flows keep the empty aggregate; IPv6 Traffic Class is not measured here.
+
+| Field | Meaning |
+| --- | --- |
+| `dscp_counts` | Sorted sparse `(dscp, count)` tuple over the six-bit DSCP domain, at most 64 bins. |
+| `ecn_counts` | Sorted sparse `(ecn, count)` tuple over the two-bit ECN domain, at most 4 bins. |
+| `dont_fragment_packet_count` | Packets with the DF flag set. |
+| `more_fragments_packet_count` | Packets with the MF flag set; within flows these are admitted first fragments. |
+| `reserved_flag_packet_count` | Packets with the reserved flag bit set. |
+| `options_packet_count` | Packets whose IHL exceeds 5. |
+| `total_options_length` | Sum of option-area lengths, `(IHL − 5) × 4` bytes per packet. |
+
+`packet_count`, `options_absent_packet_count`, `ecn_capable_packet_count` (ECN 1 or 2) and `congestion_experienced_packet_count` (ECN 3) are derived. Construction rejects non-tuples, more bins than the wire domain before iteration, unsorted or duplicate values, nonpositive or non-exact counts, DSCP and ECN distributions that count different packets, flag or option counts above the packet count, and option totals that are not multiples of four between 4 and 40 bytes per options packet.
+
+`update_directional_ipv4_header_statistics(current, analysis, identity)` consumes the exact decoded `IPv4Packet` `version`, `ihl`, `dscp`, `ecn`, `flags` and `fragment_offset` fields for IPv4 flows. Option-area length derives from IHL, so option bytes are never read; `IPv4Packet` exposes options only as validated raw bytes, and option kinds would require a second option parser. The reducer reads no payload, options, checksum or checksum result, reruns no decoder or envelope validator and validates its structure before delegating direction to the existing flow contract. An IPv4 model on an IPv6 flow or alongside an IPv6 model is rejected.
+
+The existing TCP, UDP and ICMP decoders reject non-initial IPv4 fragments, so every admitted IPv4 packet has fragment offset zero; the reducer enforces this independently and stores no offset, identification or fragment history. Nothing is reassembled. Checksums are excluded to preserve the coordinator contract that flow state is independent of checksum values and validation results. No QoS policy, congestion, fingerprint or attack meaning is inferred.
+
+Bounds: per direction at most 64 DSCP and 4 ECN bins plus five integer counters; each update scans at most 68 bins and rebuilds two tuples of at most 64 and 4 entries. No packet, observation, model, option byte, payload or history is retained. Counter magnitude grows with observation count, following existing exact statistics conventions; active-flow memory remains subject to the existing window capacity.
+
+The coordinator prepares the aggregate with the other candidates and publishes it atomically. Failed preparation or publication does not count; a successful retry counts once, and a repeated successful observation counts again. All closure reasons preserve the published aggregate, replacement windows start empty, and frozen snapshots keep their values. IPv4 parsing, identity, admission, detectors, findings, evaluation and the feature contract are unchanged.
