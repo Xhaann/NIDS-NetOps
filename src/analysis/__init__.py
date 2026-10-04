@@ -1,3 +1,9 @@
+from analysis.ipv6_fragmentation_statistics import (
+    IPV6_FRAGMENT_HEADER_MAX_COUNT,
+    IPv6FragmentationStatistics,
+    DirectionalIPv6FragmentationStatistics,
+    update_directional_ipv6_fragmentation_statistics,
+)
 from analysis.ip_hop_limit_statistics import (
     IP_HOP_LIMIT_BINS,
     IPHopLimitStatistics,
@@ -240,6 +246,10 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "IPV6_FRAGMENT_HEADER_MAX_COUNT",
+    "IPv6FragmentationStatistics",
+    "DirectionalIPv6FragmentationStatistics",
+    "update_directional_ipv6_fragmentation_statistics",
     "IP_HOP_LIMIT_BINS",
     "IPHopLimitStatistics",
     "DirectionalIPHopLimitStatistics",

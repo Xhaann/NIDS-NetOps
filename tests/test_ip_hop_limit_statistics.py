@@ -178,7 +178,8 @@ class IPHopLimitStatisticsTests(unittest.TestCase):
             replace(FlowStateCoordinator().record(source), ip_hop_limit_statistics={})
         state = FlowStateCoordinator().record(source)
         legacy = tuple(getattr(state, member.name)
-                       for member in fields(CoordinatedFlowState) if member.name != 'ip_hop_limit_statistics')
+                       for member in fields(CoordinatedFlowState)
+                       if member.name not in ('ip_hop_limit_statistics', 'ipv6_fragmentation_statistics'))
         self.assertEqual(CoordinatedFlowState(*legacy).ip_hop_limit_statistics, DirectionalIPHopLimitStatistics())
 
     def test_invalid_wire_values_and_network_metadata_cannot_publish(self):

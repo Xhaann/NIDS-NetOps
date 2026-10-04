@@ -16,6 +16,7 @@ from analysis.tls_server_hello import TLSServerHelloObservation
 from analysis.tls_server_hello_statistics import DirectionalTLSServerHelloStatistics
 from analysis.ipv6_extension_header_statistics import DirectionalIPv6ExtensionHeaderStatistics
 from analysis.ip_hop_limit_statistics import DirectionalIPHopLimitStatistics
+from analysis.ipv6_fragmentation_statistics import DirectionalIPv6FragmentationStatistics
 from analysis.tcp_option_statistics import DirectionalTCPOptionStatistics
 from analysis.tls_record_framing import TLSRecordState
 from analysis.tls_handshake_framing import TLSHandshakeState
@@ -136,6 +137,10 @@ class FlowObservationWindow:
     @property
     def ip_hop_limit_statistics(self) -> DirectionalIPHopLimitStatistics:
         return self.coordinated_state.ip_hop_limit_statistics
+
+    @property
+    def ipv6_fragmentation_statistics(self) -> DirectionalIPv6FragmentationStatistics:
+        return self.coordinated_state.ipv6_fragmentation_statistics
 
     @property
     def tls_handshake_state(self) -> Optional[TLSHandshakeState]:
