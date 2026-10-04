@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Optional
 
 from analysis.ipv6 import IPv6DecodeError, IPv6Packet
 from analysis.ipv6_extension_headers import IPv6ExtensionHeaderChain
@@ -46,6 +47,12 @@ class ICMPv6Packet:
     @property
     def is_informational_message(self) -> bool:
         return self.icmp_type >= 128
+
+    @property
+    def echo_identifier(self) -> Optional[int]:
+        if self.icmp_type not in (128, 129) or len(self.body) < 4:
+            return None
+        return int.from_bytes(self.body[:2], byteorder="big")
 
 
 def decode_icmpv6(extension_headers: IPv6ExtensionHeaderChain) -> ICMPv6Packet:

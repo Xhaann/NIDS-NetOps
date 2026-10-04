@@ -283,8 +283,9 @@ class IPv6FlowDetectionTests(unittest.TestCase):
 
     def test_missing_transport_icmpv6_and_unsupported_protocols_cannot_supply_flow_detection(self):
         packets = [replace(packet_at(protocol), ipv6_tcp=None, ipv6_udp=None) for protocol in (6, 17)]
+        packets.append(replace(analyze_packet(observation_for(58, bytes.fromhex("80001234"))), ipv6_icmpv6=None))
         packets += [analyze_packet(observation_for(protocol, bytes.fromhex("80001234")))
-                    for protocol in (58, 59, 50, 51, 132, 33, 47, 253)]
+                    for protocol in (59, 50, 51, 132, 33, 47, 253)]
         manager = FlowObservationWindowManager("unsupported", timedelta(seconds=10))
         for packet in packets:
             with self.assertRaises(FlowIdentityError):

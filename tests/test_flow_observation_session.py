@@ -517,8 +517,8 @@ class FlowObservationSessionTests(unittest.TestCase):
                     1,
                 )
 
-    def test_icmp_identity_failure_propagates_and_finalizes_prior_state(self) -> None:
-        source = MemoryPacketSource((observation_at(0), observation_at(1, protocol=1)))
+    def test_icmp_admission_and_unsupported_identity_failure_finalize_prior_state(self) -> None:
+        source = MemoryPacketSource((observation_at(0), observation_at(1, protocol=1), observation_at(2, protocol=253)))
         windows = []
         with self.assertRaises(FlowIdentityError):
             run_flow_observation_session(
@@ -527,8 +527,10 @@ class FlowObservationSessionTests(unittest.TestCase):
                 inactivity_timeout=timedelta(seconds=10),
                 closed_window_consumer=windows.append,
             )
-        self.assertEqual(len(windows), 1)
-        self.assertEqual(windows[0].coordinated_state.flow_statistics.packet_count, 1)
+        self.assertEqual([window.identity.protocol for window in windows], [6, 1])
+        self.assertEqual([window.coordinated_state.flow_statistics.packet_count for window in windows], [1, 1])
+        self.assertEqual(windows[1].identity.icmp_echo_identifier, 0)
+        self.assertIsNone(windows[1].coordinated_state.tcp_control_statistics)
 
     def test_timestamp_regression_rejects_packet_and_finalizes_prior_state(self) -> None:
         source = MemoryPacketSource(

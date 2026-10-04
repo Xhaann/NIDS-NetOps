@@ -170,8 +170,9 @@ class FlowDirectionTests(unittest.TestCase):
             replace(UDP_ANALYSIS, tcp=TCP_PACKET),
             replace(TCP_ANALYSIS, icmp=ICMPMessage(0, 0, 0, bytes(4), b"")),
             replace(UDP_ANALYSIS, icmp=ICMPMessage(0, 0, 0, bytes(4), b"")),
-            replace(TCP_ANALYSIS, ipv4=replace(IPV4_PACKET, protocol=1), tcp=None,
+            replace(TCP_ANALYSIS, ipv4=replace(IPV4_PACKET, protocol=1),
                     icmp=ICMPMessage(0, 0, 0, bytes(4), b"")),
+            replace(TCP_ANALYSIS, ipv4=replace(IPV4_PACKET, protocol=1), tcp=None),
             replace(TCP_ANALYSIS, ipv4=replace(IPV4_PACKET, protocol=253), tcp=None),
         )
         identity = flow_identity_from_packet(TCP_ANALYSIS)

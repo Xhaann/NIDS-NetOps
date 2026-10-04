@@ -93,7 +93,7 @@ Orchestration owns applicability and order, not capture, analysis, features, or 
 
 Each finite iterable is consumed synchronously in caller order. Results are flat tuples of the exact findings; empty input returns `()`. No sorting/deduplication occurs. Calls retain configurations and evidence, buffer findings locally, and execute independently on repetition. Iterables and their cleanup remain caller-owned.
 
-Orchestration owns validation, applicability, ordering, and finding normalization. Flow calls accept closed snapshots, not bare windows. Active windows, missing TCP configuration/state, and malformed inputs retain their errors. IPv4/IPv6 TCP runs volume then TCP control; UDP runs volume only. Non-first fragments lacking transport cannot enter flows; packet-integrity semantics remain separate. No ICMPv6 detector is added.
+Orchestration owns validation, applicability, ordering, and finding normalization. Flow calls accept closed snapshots, not bare windows. Active windows, missing TCP configuration/state, and malformed inputs retain their errors. IPv4/IPv6 TCP runs volume then TCP control; UDP runs volume only; closed ICMPv4/ICMPv6 snapshots run no flow detector. Non-first fragments lacking transport cannot enter flows; packet-integrity semantics remain separate. No ICMPv6 detector is added.
 
 Iteration/orchestration failures propagate before the next input, with no retry or partial tuple. Earlier evaluations are not rolled back, but their local findings are not published. Sessions do not capture, parse, repeat analysis, build/close flows, extract snapshots, or reconstruct findings. `run_flow_observation_session()` still emits closed windows for consumers to extract and detect separately.
 
@@ -103,7 +103,7 @@ Iteration/orchestration failures propagate before the next input, with no retry 
 
 A private lifecycle runner shared with `run_flow_observation_session()` owns the window manager, admission, and finalization. The standalone session keeps `analyze_packet()`; the pipeline calls `run_capture_execution()` once. Each outcome reaches `DetectionSession.run_packets()` before its analysis enters flow admission. Detection neither receives raw bytes nor repeats analysis.
 
-Recognized analysis failures become packet findings and contribute no flow observation. Escaping exceptions propagate. Successful unsupported transports—including ICMPv6, unsupported protocols, and non-first IPv6 fragments—raise admission errors rather than being skipped or given fabricated transport state. First/whole fragments enter only when transport admission succeeds.
+Recognized analysis failures become packet findings and contribute no flow observation. Escaping exceptions propagate. Successful unsupported transports—including undecoded ICMPv6 fragments, unsupported protocols, and non-first IPv6 fragments—raise admission errors rather than being skipped or given fabricated transport state. First/whole fragments enter only when transport admission succeeds.
 
 Every delivered closed window gets one `extract_flow_feature_snapshot()` call, then `DetectionSession.run_closed_flows()` receives that snapshot. Active windows are never delivered. IPv4/IPv6 share the volume-then-TCP-control path for TCP and volume-only path for UDP.
 
@@ -177,7 +177,7 @@ Delivery is synchronous and at most once, providing backpressure. A failed consu
 
 Source, decoding, analysis, identity, coordination, lifecycle, and consumer errors propagate unchanged. Finalization is attempted after cleanup even if startup, iteration, processing, lifecycle, or stop fails. Stop, finalization, and final-delivery failures follow normal Python exception precedence/context.
 
-TCP/UDP share lifecycle rules: TCP flags do not close windows, UDP has no transaction inference or TCP-control state. ICMP analysis exists but flow admission rejects it. Skipping invalid/unsupported packets is **UNDEFINED POLICY**.
+TCP/UDP share lifecycle rules: TCP flags do not close windows, UDP has no transaction inference or TCP-control state. ICMPv4 and decoded ICMPv6 enter flows under the ICMP identity policy without TCP-control or UDP-specific state. Skipping invalid/unsupported packets is **UNDEFINED POLICY**.
 
 Consumers receive exact `FlowObservationWindow` objects and may extract features separately; extraction retains the window as provenance. Analysis also accepts active windows as provisional extraction inputs. This layer provides no explicit segmentation during a running source, durable delivery, retries, rejected-packet routing, live capture, loss accounting, ML vectorization, or serialization.
 

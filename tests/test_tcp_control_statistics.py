@@ -311,9 +311,12 @@ class TCPControlStatisticsTests(unittest.TestCase):
             OBSERVATION, ipv4=replace(IPV4, protocol=1, total_length=28, payload=bytes(8)),
             icmp=ICMPMessage(8, 0, 0, bytes(4), b""),
         )
-        for analysis in (missing, icmp):
-            with self.assertRaises(FlowIdentityError):
-                update_tcp_control_statistics(None, analysis, IDENTITY)
+        with self.assertRaises(FlowIdentityError):
+            update_tcp_control_statistics(None, missing, IDENTITY)
+        with self.assertRaises(TCPControlStatisticsError):
+            update_tcp_control_statistics(None, icmp, IDENTITY)
+        with self.assertRaises(TCPControlStatisticsError):
+            update_tcp_control_statistics(None, icmp, flow_identity_from_packet(icmp))
 
     def test_direct_model_enforces_types_ranges_and_count_relationships(self) -> None:
         self.assertTrue(issubclass(TCPControlStatisticsError, ValueError))

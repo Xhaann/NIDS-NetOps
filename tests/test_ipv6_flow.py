@@ -366,7 +366,11 @@ class IPv6FlowAdmissionBoundaryTests(unittest.TestCase):
         for protocol in (58, 59, 50, 51, 132, 33, 47, 253, 255):
             with self.subTest(protocol=protocol):
                 observation = observation_for(protocol, bytes.fromhex("80001234"), bytes((protocol, 0)) + bytes(6), 43)
-                self.assert_rejected(analyze_packet(observation))
+                analysis = analyze_packet(observation)
+                if protocol == 58:
+                    self.assertEqual(flow_identity_from_packet(analysis).protocol, 58)
+                    analysis = replace(analysis, ipv6_icmpv6=None)
+                self.assert_rejected(analysis)
 
     def test_non_first_fragments_never_enter_state_or_correlate(self):
         for protocol in (6, 17):

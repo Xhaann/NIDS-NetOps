@@ -303,8 +303,9 @@ class IPv6FeatureParityTests(unittest.TestCase):
     def test_missing_transport_icmpv6_and_unsupported_protocols_do_not_publish_features(self):
         packets = [replace(packet_at(protocol, fragment=(0, False)), ipv6_tcp=None, ipv6_udp=None)
                    for protocol in (6, 17)]
+        packets.append(replace(analyze_packet(observation_for(58, bytes.fromhex("80001234"))), ipv6_icmpv6=None))
         packets.extend(analyze_packet(observation_for(protocol, bytes.fromhex("80001234")))
-                       for protocol in (58, 59, 50, 51, 132, 33, 47, 253))
+                       for protocol in (59, 50, 51, 132, 33, 47, 253))
         manager, window = active_window_from_packets(packet_at(6))
         before = extract_flow_feature_snapshot(window)
         for packet in packets:

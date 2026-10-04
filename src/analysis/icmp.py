@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Optional
 
 from analysis.ipv4 import IPv4Packet
 
@@ -31,6 +32,12 @@ class ICMPMessage:
             raise ValueError("rest_of_header must contain exactly 4 bytes")
         if not isinstance(self.payload, bytes):
             raise TypeError("payload must be immutable bytes")
+
+    @property
+    def echo_identifier(self) -> Optional[int]:
+        if self.icmp_type not in (0, 8):
+            return None
+        return int.from_bytes(self.rest_of_header[:2], byteorder="big")
 
 
 def decode_icmp(packet: IPv4Packet) -> ICMPMessage:

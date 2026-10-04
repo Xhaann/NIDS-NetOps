@@ -193,7 +193,8 @@ class FlowTrackerTests(unittest.TestCase):
                     replace(TCP_ANALYSIS, tcp=None),
                     replace(TCP_ANALYSIS, ipv4=replace(IPV4_PACKET, protocol=253)),
                     replace(TCP_ANALYSIS, ipv4=replace(IPV4_PACKET, protocol=1),
-                            tcp=None, icmp=ICMPMessage(0, 0, 0, bytes(4), b"")),
+                            icmp=ICMPMessage(0, 0, 0, bytes(4), b"")),
+                    replace(TCP_ANALYSIS, ipv4=replace(IPV4_PACKET, protocol=1), tcp=None),
                 ):
                     with self.assertRaises(FlowIdentityError):
                         tracker.record(invalid)

@@ -375,9 +375,9 @@ class DetectorOrchestrationTests(unittest.TestCase):
 
     def test_unsupported_flow_protocol_is_rejected_at_identity_construction(self) -> None:
         identity = self.window.identity
-        for protocol in (1, 99):
+        for protocol, message in ((1, "must not carry transport ports"), (99, "protocol must be 6, 17, 1 or 58")):
             with self.subTest(protocol=protocol):
-                with self.assertRaisesRegex(ValueError, "protocol must be 6 or 17"):
+                with self.assertRaisesRegex(ValueError, message):
                     FlowIdentity(
                         source_address=identity.source_address,
                         destination_address=identity.destination_address,

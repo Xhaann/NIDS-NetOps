@@ -337,7 +337,7 @@ class PcapScenarioTests(unittest.TestCase):
                 self.assertEqual(snapshot.flow_duration_features.duration_seconds, 0.4)
                 self.assertIsNone(snapshot.coordinated_state.tcp_control_statistics)
 
-    def test_ipv4_icmp_checksum_success_still_stops_flow_admission(self):
+    def test_ipv4_icmp_checksum_success_enters_flow_admission_without_flow_detectors(self):
         message = bytes.fromhex('0800000012340001') + b'echo'
         message = message[:2] + checksum(message).to_bytes(2, 'big') + message[4:]
         packets = ((1000000, frame(1, message)), (1100000, udp_exchange()[0][1]))
@@ -353,14 +353,20 @@ class PcapScenarioTests(unittest.TestCase):
         with patch.object(capture_execution, 'analyze_packet_outcome', wraps=capture_execution.analyze_packet_outcome) as analyze, \
              patch.object(detector_orchestration, 'evaluate_packet_integrity', wraps=detector_orchestration.evaluate_packet_integrity) as detect, \
              patch.object(detection_pipeline, 'extract_flow_feature_snapshot', wraps=detection_pipeline.extract_flow_feature_snapshot) as extract, \
-             patch.object(end_to_end_validation, 'evaluate_detection_result') as evaluate:
-            with self.assertRaisesRegex(FlowIdentityError, 'supports only IPv4 TCP'):
-                self.execute(PcapPacketSource(path, source=SOURCE))
-            analyze.assert_called_once()
-            detect.assert_called_once()
-            extract.assert_not_called()
-            evaluate.assert_not_called()
-            self.assertTrue(detect.call_args.args[0].succeeded)
+             patch.object(detector_orchestration, 'evaluate_flow_volume_threshold', wraps=detector_orchestration.evaluate_flow_volume_threshold) as volume, \
+             patch.object(detector_orchestration, 'evaluate_tcp_control_threshold', wraps=detector_orchestration.evaluate_tcp_control_threshold) as control, \
+             patch.object(end_to_end_validation, 'evaluate_detection_result', wraps=end_to_end_validation.evaluate_detection_result) as evaluate:
+            result = self.execute(PcapPacketSource(path, source=SOURCE))
+            self.assertEqual((analyze.call_count, detect.call_count, extract.call_count), (2, 2, 2))
+            self.assertTrue(all(call.args[0].succeeded for call in detect.call_args_list))
+            windows = sorted((call.args[0] for call in extract.call_args_list), key=lambda window: window.identity.protocol)
+            self.assertEqual([(window.identity.protocol, window.identity.icmp_echo_identifier) for window in windows],
+                             [(1, 0x1234), (17, None)])
+            volume.assert_called_once()
+            self.assertEqual(volume.call_args.args[0].identity.protocol, 17)
+            control.assert_not_called()
+            evaluate.assert_called_once()
+        self.assertEqual([finding.raw_evidence.snapshot.identity.protocol for finding in result.pipeline_result.flow_findings], [17])
 
     def test_failed_icmp_messages_between_udp_packets_never_create_flows(self):
         message = bytes.fromhex('0800000012340001') + b'echo'

@@ -210,7 +210,7 @@ class DetectionPipelineTests(unittest.TestCase):
         self.assertEqual(result.flow_findings[0].raw_evidence.observed_value, 1)
 
     def test_unsupported_flow_protocols_and_non_first_fragments_preserve_admission_errors(self):
-        observations = [observation_for(protocol, bytes.fromhex("80001234")) for protocol in (58, 59, 50, 51, 132, 253)]
+        observations = [observation_for(protocol, bytes.fromhex("80001234")) for protocol in (59, 50, 51, 132, 253)]
         observations += [observation_at(protocol, fragment=(1, False)) for protocol in (6, 17)]
         for observation in observations:
             source = MemoryPacketSource((observation, observation_at()))

@@ -201,7 +201,7 @@ class SystemRegressionTests(unittest.TestCase):
             self.assertEqual(entry.actual_index, index)
             self.assertIs(entry.finding, finding)
 
-    def test_icmpv6_analysis_success_remains_distinct_from_flow_admission_failure(self):
+    def test_icmpv6_flow_admission_remains_distinct_from_unsupported_admission_failure(self):
         observation = observation_for(58, bytes.fromhex('80000000'))
         outcomes = []
         run_capture_execution(self.source((observation,)), outcomes.append)
@@ -209,6 +209,13 @@ class SystemRegressionTests(unittest.TestCase):
         self.assertIsNone(outcomes[0].failure_classification)
         self.assertEqual(outcomes[0].analysis.ipv6_icmpv6.icmp_type, 128)
         source = self.source((observation, wire(True, 17)))
+        with patch.object(end_to_end_validation, 'evaluate_detection_result',
+                          wraps=end_to_end_validation.evaluate_detection_result) as evaluation:
+            result = self.execute(source)
+            evaluation.assert_called_once()
+        self.assertEqual([finding.raw_evidence.snapshot.identity.protocol
+                          for finding in result.pipeline_result.flow_findings], [17])
+        source = self.source((observation_for(253, bytes(8)), wire(True, 17)))
         with patch.object(capture_execution, 'analyze_packet_outcome', wraps=capture_execution.analyze_packet_outcome) as analyze, \
              patch.object(end_to_end_validation, 'evaluate_detection_result') as evaluation, \
              patch.object(source, 'stop', wraps=source.stop) as stop:

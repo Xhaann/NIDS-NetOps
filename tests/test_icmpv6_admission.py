@@ -34,15 +34,22 @@ class ICMPv6AdmissionTests(unittest.TestCase):
                     else:
                         self.assertTrue(outcome.succeeded)
                         self.assertEqual(outcome.analysis.ipv6_icmpv6 is not None, offset == 0 and not more)
-                        with self.assertRaises(FlowIdentityError):
-                            manager.record(outcome.analysis)
+                        if offset or more:
+                            with self.assertRaises(FlowIdentityError):
+                                manager.record(outcome.analysis)
                     self.assertEqual(manager.active_windows(), (before,))
                     later = replace(valid, captured_at=valid.captured_at + timedelta(seconds=1))
                     update = manager.record(analyze_packet_outcome(later).analysis)
                     self.assertEqual(update.closed_windows, ())
                     self.assertEqual(update.active_window.key, before.key)
                     self.assertEqual(update.active_window.coordinated_state.flow_statistics.packet_count, 2)
-                    self.assertEqual(len(manager.end_capture_session()), 1)
+                    admitted = offset == 0 and not more and length >= 4
+                    if admitted:
+                        whole = replace(partial, captured_at=later.captured_at + timedelta(seconds=1))
+                        icmp = manager.record(analyze_packet_outcome(whole).analysis).active_window
+                        self.assertEqual((icmp.identity.protocol, icmp.identity.icmp_echo_identifier), (58, None))
+                        self.assertNotEqual(icmp.key, before.key)
+                    self.assertEqual(len(manager.end_capture_session()), 2 if admitted else 1)
 
     def test_uninterpreted_type_code_and_checksum_do_not_invent_structural_failures(self):
         for message in (bytes(4), b'\x80\xff\xff\xff', b'\xff\xff\x00\x00'):
@@ -51,9 +58,10 @@ class ICMPv6AdmissionTests(unittest.TestCase):
             self.assertTrue(outcome.succeeded)
             self.assertEqual(outcome.analysis.ipv6_icmpv6.raw_bytes, message)
             manager = FlowObservationWindowManager('icmpv6', timedelta(seconds=5))
-            with self.assertRaises(FlowIdentityError):
-                manager.record(outcome.analysis)
-            self.assertEqual(manager.end_capture_session(), ())
+            window = manager.record(outcome.analysis).active_window
+            self.assertEqual((window.identity.protocol, window.identity.icmp_echo_identifier), (58, None))
+            self.assertIsNone(window.coordinated_state.tcp_control_statistics)
+            self.assertEqual(len(manager.end_capture_session()), 1)
 
     def test_truncated_messages_between_valid_datagrams_preserve_packet_findings_and_windows(self):
         prefix, base = extension_chain(58, ((60, 16), (43, 24), (60, 8)))

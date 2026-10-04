@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 from ipaddress import ip_address
+from typing import Optional
 
+from analysis.icmp import ICMPMessage
+from analysis.icmpv6 import ICMPv6Packet
 from analysis.packet_analysis import PacketAnalysis
 
 
@@ -12,9 +15,10 @@ class FlowIdentityError(ValueError):
 class FlowIdentity:
     source_address: bytes
     destination_address: bytes
-    source_port: int
-    destination_port: int
+    source_port: Optional[int]
+    destination_port: Optional[int]
     protocol: int
+    icmp_echo_identifier: Optional[int] = None
 
     def __post_init__(self) -> None:
         for name, address in (
@@ -27,6 +31,11 @@ class FlowIdentity:
                 raise ValueError(f"{name} must contain exactly 4 or 16 bytes")
         if len(self.source_address) != len(self.destination_address):
             raise ValueError("source and destination addresses must use the same IP version")
+        if type(self.protocol) is int and self.protocol in (1, 58):
+            self._validate_icmp()
+            return
+        if self.icmp_echo_identifier is not None:
+            raise ValueError("only ICMP flow identities carry an echo identifier")
         for name, value in (
             ("source_port", self.source_port),
             ("destination_port", self.destination_port),
@@ -39,7 +48,7 @@ class FlowIdentity:
         if not 0 <= self.destination_port <= 65535:
             raise ValueError("destination_port must be between 0 and 65535")
         if self.protocol not in (6, 17):
-            raise ValueError("protocol must be 6 or 17")
+            raise ValueError("protocol must be 6, 17, 1 or 58")
         source = (self.source_address, self.source_port)
         destination = (self.destination_address, self.destination_port)
         if destination < source:
@@ -47,6 +56,28 @@ class FlowIdentity:
             object.__setattr__(self, "source_port", destination[1])
             object.__setattr__(self, "destination_address", source[0])
             object.__setattr__(self, "destination_port", source[1])
+
+    def __hash__(self) -> int:
+        values = (self.source_address, self.destination_address, self.source_port, self.destination_port, self.protocol)
+        if self.icmp_echo_identifier is None:
+            return hash(values)
+        return hash(values + (self.icmp_echo_identifier,))
+
+    def _validate_icmp(self) -> None:
+        if self.source_port is not None or self.destination_port is not None:
+            raise ValueError("ICMP flow identities must not carry transport ports")
+        if len(self.source_address) != (4 if self.protocol == 1 else 16):
+            raise ValueError("ICMP protocol must match the IP address family")
+        identifier = self.icmp_echo_identifier
+        if identifier is not None:
+            if type(identifier) is not int:
+                raise TypeError("icmp_echo_identifier must be an integer or None")
+            if not 0 <= identifier <= 65535:
+                raise ValueError("icmp_echo_identifier must be between 0 and 65535")
+        if self.destination_address < self.source_address:
+            source = self.source_address
+            object.__setattr__(self, "source_address", self.destination_address)
+            object.__setattr__(self, "destination_address", source)
 
     @property
     def ip_version(self) -> int:
@@ -78,7 +109,9 @@ def flow_identity_from_addresses(
     )
 
 
-def _flow_packet_endpoints(analysis: PacketAnalysis) -> tuple[bytes, bytes, int, int, int]:
+def _flow_packet_endpoints(
+    analysis: PacketAnalysis,
+) -> tuple[bytes, bytes, Optional[int], Optional[int], int, Optional[int]]:
     if not isinstance(analysis, PacketAnalysis):
         raise TypeError("analysis must be a PacketAnalysis")
     network = analysis.ipv4
@@ -121,11 +154,24 @@ def _flow_packet_endpoints(analysis: PacketAnalysis) -> tuple[bytes, bytes, int,
         if tcp is not None or icmp is not None:
             raise FlowIdentityError("UDP flow identity requires only the UDP transport model")
         transport = udp
+    elif protocol == (1 if analysis.ipv6 is None else 58):
+        expected = ICMPMessage if analysis.ipv6 is None else ICMPv6Packet
+        if type(icmp) is not expected:
+            raise FlowIdentityError(f"ICMP flow identity requires a decoded {expected.__name__}")
+        if tcp is not None or udp is not None:
+            raise FlowIdentityError("ICMP flow identity requires only the ICMP model")
+        return (
+            network.source_address, network.destination_address,
+            None, None, protocol, icmp.echo_identifier,
+        )
     else:
-        raise FlowIdentityError(f"Flow identity supports only IPv{network.version} TCP (6) and UDP (17)")
+        message = "ICMP (1)" if analysis.ipv6 is None else "ICMPv6 (58)"
+        raise FlowIdentityError(
+            f"Flow identity supports only IPv{network.version} TCP (6), UDP (17) and {message}"
+        )
     return (
         network.source_address, network.destination_address,
-        transport.source_port, transport.destination_port, protocol,
+        transport.source_port, transport.destination_port, protocol, None,
     )
 
 

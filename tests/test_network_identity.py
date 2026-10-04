@@ -189,8 +189,11 @@ class CanonicalNetworkIdentityTests(unittest.TestCase):
                 if protocol in (6, 17):
                     identity = flow_identity_from_addresses("::1", "::2", 1, 2, protocol)
                     self.assertEqual(identity.protocol, protocol)
+                elif protocol in (1, 58):
+                    with self.assertRaisesRegex(ValueError, "must not carry transport ports"):
+                        flow_identity_from_addresses("::1", "::2", 1, 2, protocol)
                 else:
-                    with self.assertRaisesRegex(ValueError, "protocol must be 6 or 17"):
+                    with self.assertRaisesRegex(ValueError, "protocol must be 6, 17, 1 or 58"):
                         flow_identity_from_addresses("::1", "::2", 1, 2, protocol)
 
     def test_ipv6_integer_types_and_port_bounds_remain_strict(self) -> None:
@@ -226,6 +229,7 @@ class CanonicalNetworkIdentityTests(unittest.TestCase):
                     self.assertEqual(hash(identity), hash(repeated))
                 self.assertEqual(tuple(field.name for field in fields(identity)), (
                     "source_address", "destination_address", "source_port", "destination_port", "protocol",
+                    "icmp_echo_identifier",
                 ))
                 for name in tuple(field.name for field in fields(identity)) + ("ip_version",):
                     with self.assertRaises(FrozenInstanceError):

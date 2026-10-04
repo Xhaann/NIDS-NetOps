@@ -41,6 +41,10 @@ def run_closed_flow_detectors(
             "tcp_control_configuration must be exactly a "
             "TCPControlThresholdConfiguration or None"
         )
+    if type(snapshot) is FlowFeatureSnapshot and snapshot.identity.protocol in (1, 58):
+        if snapshot.observation_window.closure_reason is None:
+            raise ValueError("snapshot observation window must be closed")
+        return ()
     volume_evaluation = evaluate_flow_volume_threshold(
         snapshot, flow_volume_configuration
     )

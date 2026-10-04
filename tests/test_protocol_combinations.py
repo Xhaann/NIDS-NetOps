@@ -128,7 +128,7 @@ class ProtocolCombinationTests(unittest.TestCase):
         for group in protocol_flows():
             manager.record(analyze_packet_outcome(group[0]).analysis)
         before = manager.active_windows()
-        for observation in (observation_for(58, bytes(4)), observation_for(253, bytes(32)),
+        for observation in (observation_for(58, bytes(4), fragment_header(58, more=True), 44), observation_for(253, bytes(32)),
                             observation_for(6, bytes(32), fragment_header(6, offset=1), 44)):
             analysis = analyze_packet_outcome(observation).analysis
             self.assertIsNotNone(analysis)

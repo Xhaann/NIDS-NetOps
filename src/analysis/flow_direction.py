@@ -21,9 +21,12 @@ def flow_direction_from_packet(
         raise TypeError("analysis must be a PacketAnalysis")
     if not isinstance(identity, FlowIdentity):
         raise TypeError("identity must be a FlowIdentity")
-    source_address, destination_address, source_port, destination_port, protocol = _flow_packet_endpoints(analysis)
+    endpoints = _flow_packet_endpoints(analysis)
+    source_address, destination_address, source_port, destination_port, protocol, identifier = endpoints
     if protocol != identity.protocol:
         raise FlowDirectionError("packet protocol must match the supplied identity")
+    if identifier != identity.icmp_echo_identifier:
+        raise FlowDirectionError("packet ICMP echo identifier must match the supplied identity")
     source = (source_address, source_port)
     destination = (destination_address, destination_port)
     first = (identity.source_address, identity.source_port)
