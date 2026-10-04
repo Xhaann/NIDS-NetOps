@@ -52,6 +52,8 @@ Capture → packet analysis → flow/features → detection → evaluation again
 
 [IPv4 header structural statistics](src/analysis/README.md#ipv4-header-structural-statistics) aggregate decoded IPv4 DSCP and ECN values, DF/MF/reserved flag bits and option presence and length of admitted IPv4 flows by direction. Sparse distributions hold at most 64 DSCP and 4 ECN bins, option bytes and checksums are not read, and nothing is reassembled or classified.
 
+[IPv6 Traffic Class structural statistics](src/analysis/README.md#ipv6-traffic-class-structural-statistics) aggregate the decoded 8-bit IPv6 Traffic Class of admitted IPv6 flows by direction as a sparse distribution of at most 256 bins. The raw value is preserved and not split into DSCP/ECN or equated with IPv4 fields; nothing is classified, and detectors and evaluation are unchanged.
+
 Capture supplies immutable `PacketObservation` values. Analysis returns `PacketAnalysisOutcome`, including recognized failures. `run_detection_pipeline()` uses `DetectionSession` to produce ordered packet and closed-flow findings in `DetectionPipelineResult`.
 
 For incremental processing of large captures, [`run_detection_stream()`](src/application/README.md#incremental-detection-finding-delivery) delivers those findings to synchronous packet and flow consumers without accumulating a result history. The collecting pipeline uses this same lifecycle. Active analysis remains bounded by the window limit; consumer-retained findings can still retain packet/window evidence. Delivery adds no persistent archival, output queue, or serialization. The CLI and end-to-end reporting APIs continue to collect complete results.

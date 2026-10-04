@@ -20,6 +20,7 @@ from analysis.ipv6_fragmentation_statistics import DirectionalIPv6FragmentationS
 from analysis.icmp_statistics import DirectionalICMPStatistics
 from analysis.udp_statistics import DirectionalUDPStatistics
 from analysis.ipv4_header_statistics import DirectionalIPv4HeaderStatistics
+from analysis.ipv6_traffic_class_statistics import DirectionalIPv6TrafficClassStatistics
 from analysis.tcp_option_statistics import DirectionalTCPOptionStatistics
 from analysis.tls_record_framing import TLSRecordState
 from analysis.tls_handshake_framing import TLSHandshakeState
@@ -156,6 +157,10 @@ class FlowObservationWindow:
     @property
     def ipv4_header_statistics(self) -> DirectionalIPv4HeaderStatistics:
         return self.coordinated_state.ipv4_header_statistics
+
+    @property
+    def ipv6_traffic_class_statistics(self) -> DirectionalIPv6TrafficClassStatistics:
+        return self.coordinated_state.ipv6_traffic_class_statistics
 
     @property
     def tls_handshake_state(self) -> Optional[TLSHandshakeState]:

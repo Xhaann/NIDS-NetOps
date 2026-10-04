@@ -298,7 +298,7 @@ class IPv6FragmentationStatisticsTests(unittest.TestCase):
             replace(state, ipv6_fragmentation_statistics=IPv6FragmentationStatistics())
         legacy = tuple(getattr(state, member.name)
                        for member in fields(CoordinatedFlowState)
-                       if member.name not in ('ipv6_fragmentation_statistics', 'icmp_statistics', 'udp_statistics', 'ipv4_header_statistics'))
+                       if member.name not in ('ipv6_fragmentation_statistics', 'icmp_statistics', 'udp_statistics', 'ipv4_header_statistics', 'ipv6_traffic_class_statistics'))
         self.assertEqual(CoordinatedFlowState(*legacy).ipv6_fragmentation_statistics, DirectionalIPv6FragmentationStatistics())
         names = tuple(member.name for member in fields(CoordinatedFlowState))
         self.assertEqual(names.index('ipv6_fragmentation_statistics'), names.index('ip_hop_limit_statistics') + 1)

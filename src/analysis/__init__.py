@@ -1,3 +1,9 @@
+from analysis.ipv6_traffic_class_statistics import (
+    IPV6_TRAFFIC_CLASS_BINS,
+    IPv6TrafficClassStatistics,
+    DirectionalIPv6TrafficClassStatistics,
+    update_directional_ipv6_traffic_class_statistics,
+)
 from analysis.ipv4_header_statistics import (
     IPV4_DSCP_BINS,
     IPV4_ECN_BINS,
@@ -266,6 +272,10 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "IPV6_TRAFFIC_CLASS_BINS",
+    "IPv6TrafficClassStatistics",
+    "DirectionalIPv6TrafficClassStatistics",
+    "update_directional_ipv6_traffic_class_statistics",
     "IPV4_DSCP_BINS",
     "IPV4_ECN_BINS",
     "IPV4_MAX_OPTIONS_LENGTH",

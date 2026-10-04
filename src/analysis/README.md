@@ -1426,3 +1426,21 @@ The existing TCP, UDP and ICMP decoders reject non-initial IPv4 fragments, so ev
 Bounds: per direction at most 64 DSCP and 4 ECN bins plus five integer counters; each update scans at most 68 bins and rebuilds two tuples of at most 64 and 4 entries. No packet, observation, model, option byte, payload or history is retained. Counter magnitude grows with observation count, following existing exact statistics conventions; active-flow memory remains subject to the existing window capacity.
 
 The coordinator prepares the aggregate with the other candidates and publishes it atomically. Failed preparation or publication does not count; a successful retry counts once, and a repeated successful observation counts again. All closure reasons preserve the published aggregate, replacement windows start empty, and frozen snapshots keep their values. IPv4 parsing, identity, admission, detectors, findings, evaluation and the feature contract are unchanged.
+
+## IPv6 Traffic Class structural statistics
+
+`CoordinatedFlowState.ipv6_traffic_class_statistics` and `FlowObservationWindow.ipv6_traffic_class_statistics` expose a frozen `DirectionalIPv6TrafficClassStatistics` with `forward` and `reverse` `IPv6TrafficClassStatistics` values. IPv4 flows keep the empty aggregate; IPv4 DSCP and ECN remain in the IPv4 header statistics.
+
+| Field | Meaning |
+| --- | --- |
+| `traffic_class_counts` | Sorted sparse `(traffic_class, count)` tuple over the eight-bit Traffic Class domain, at most 256 bins. |
+
+`packet_count` is derived. Construction rejects non-tuples, more bins than the wire domain before iteration, unsorted or duplicate values, values outside 0 through 255, and nonpositive or non-exact counts.
+
+The complete observed Traffic Class byte is preserved. It is not split into DSCP and ECN, mapped to a QoS class, or treated as equivalent to the IPv4 field of the same numeric value.
+
+`update_directional_ipv6_traffic_class_statistics(current, analysis, identity)` consumes the exact decoded `IPv6Packet` `version` and `traffic_class` for IPv6 flows. It reads no raw bytes, payload, extension headers or checksums, reruns no decoder and validates its structure before delegating direction to the existing flow contract. An IPv6 model on an IPv4 flow or alongside an IPv4 model is rejected. Fragmentation, admission and checksum behavior are unchanged.
+
+Bounds: per direction at most 256 bins; each update scans at most 256 bins and rebuilds one tuple of at most 256 entries. No packet, observation, model, payload or history is retained. Counter magnitude grows with observation count, following existing exact statistics conventions; active-flow memory remains subject to the existing window capacity.
+
+The coordinator prepares the aggregate with the other candidates and publishes it atomically. Failed preparation or publication does not count; a successful retry counts once, and a repeated successful observation counts again. All closure reasons preserve the published aggregate, replacement windows start empty, and frozen snapshots keep their values. IPv6 identity, admission, detectors, findings, evaluation and the feature contract are unchanged.
