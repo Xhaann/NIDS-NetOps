@@ -63,6 +63,10 @@ from analysis.ipv6_traffic_class_statistics import (
     DirectionalIPv6TrafficClassStatistics,
     update_directional_ipv6_traffic_class_statistics,
 )
+from analysis.ipv6_flow_label_statistics import (
+    DirectionalIPv6FlowLabelStatistics,
+    update_directional_ipv6_flow_label_statistics,
+)
 from analysis.tcp_control_statistics import TCPControlStatistics, update_tcp_control_statistics
 
 
@@ -104,6 +108,7 @@ class CoordinatedFlowState:
     udp_statistics: DirectionalUDPStatistics = DirectionalUDPStatistics()
     ipv4_header_statistics: DirectionalIPv4HeaderStatistics = DirectionalIPv4HeaderStatistics()
     ipv6_traffic_class_statistics: DirectionalIPv6TrafficClassStatistics = DirectionalIPv6TrafficClassStatistics()
+    ipv6_flow_label_statistics: DirectionalIPv6FlowLabelStatistics = DirectionalIPv6FlowLabelStatistics()
 
     def __post_init__(self) -> None:
         for name, value, expected in (
@@ -152,6 +157,8 @@ class CoordinatedFlowState:
             raise TypeError("ipv4_header_statistics must be exactly a DirectionalIPv4HeaderStatistics")
         if type(self.ipv6_traffic_class_statistics) is not DirectionalIPv6TrafficClassStatistics:
             raise TypeError("ipv6_traffic_class_statistics must be exactly a DirectionalIPv6TrafficClassStatistics")
+        if type(self.ipv6_flow_label_statistics) is not DirectionalIPv6FlowLabelStatistics:
+            raise TypeError("ipv6_flow_label_statistics must be exactly a DirectionalIPv6FlowLabelStatistics")
         if type(self.tls_server_hellos) is not tuple:
             raise TypeError("tls_server_hellos must be exactly a tuple")
         if type(self.tls_client_hellos) is not tuple:
@@ -395,6 +402,9 @@ class FlowStateCoordinator:
         ipv6_traffic_class_statistics = update_directional_ipv6_traffic_class_statistics(
             None if current is None else current.ipv6_traffic_class_statistics, analysis, identity,
         )
+        ipv6_flow_label_statistics = update_directional_ipv6_flow_label_statistics(
+            None if current is None else current.ipv6_flow_label_statistics, analysis, identity,
+        )
         client_hellos = []
         server_hellos = []
         if handshake_update is not None:
@@ -461,7 +471,8 @@ class FlowStateCoordinator:
                                     icmp_statistics=icmp_statistics,
                                     udp_statistics=udp_statistics,
                                     ipv4_header_statistics=ipv4_header_statistics,
-                                    ipv6_traffic_class_statistics=ipv6_traffic_class_statistics)
+                                    ipv6_traffic_class_statistics=ipv6_traffic_class_statistics,
+                                    ipv6_flow_label_statistics=ipv6_flow_label_statistics)
 
     def _commit_record(self, state: CoordinatedFlowState) -> None:
         self._state = state

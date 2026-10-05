@@ -1444,3 +1444,24 @@ The complete observed Traffic Class byte is preserved. It is not split into DSCP
 Bounds: per direction at most 256 bins; each update scans at most 256 bins and rebuilds one tuple of at most 256 entries. No packet, observation, model, payload or history is retained. Counter magnitude grows with observation count, following existing exact statistics conventions; active-flow memory remains subject to the existing window capacity.
 
 The coordinator prepares the aggregate with the other candidates and publishes it atomically. Failed preparation or publication does not count; a successful retry counts once, and a repeated successful observation counts again. All closure reasons preserve the published aggregate, replacement windows start empty, and frozen snapshots keep their values. IPv6 identity, admission, detectors, findings, evaluation and the feature contract are unchanged.
+
+## IPv6 Flow Label structural statistics
+
+`CoordinatedFlowState.ipv6_flow_label_statistics` and `FlowObservationWindow.ipv6_flow_label_statistics` expose a frozen `DirectionalIPv6FlowLabelStatistics` with `forward` and `reverse` `IPv6FlowLabelStatistics` values. IPv4 flows keep the empty aggregate; no IPv4 field is interpreted as a Flow Label.
+
+| Field | Meaning |
+| --- | --- |
+| `flow_label_counts` | Exact sorted sparse `(flow_label, count)` tuple over the 20-bit domain 0 through 1,048,575, at most 256 distinct values. Empty once saturated. |
+| `saturated_packet_count` | Zero unless saturated. When saturated, the total number of packets observed in that direction, always greater than 256. |
+
+Each direction is in exactly one of three states. **Empty**: no bins and zero packets. **Exact**: one to 256 bins whose counts are the observed distribution. **Saturated**: more than 256 distinct values were observed, the exact distribution is intentionally unavailable, and only the packet total remains. `saturated` and `packet_count` are derived. Construction rejects non-tuples, more than 256 bins before iteration, unsorted or duplicate values, values outside the domain, nonpositive or non-exact counts, a saturated aggregate that retains bins, and a saturated total that does not exceed 256.
+
+The complete observed 20-bit value is preserved while exact. Zero is an ordinary observed value, distinct from an empty aggregate, and 1,048,575 is accepted. The value is not interpreted as an application, security or QoS identifier, hash or fingerprint, and it is not part of flow identity.
+
+Saturation is triggered by the arrival of the 257th distinct value in a direction. The existing bins are discarded, not kept as a partial sample, and no count of the discarded or later values by label is retained. Saturation is permanent for the window: later repeated or new values only increment the packet total and never recreate bins. Whether a direction is saturated depends only on whether its observations contain more than 256 distinct values, and the packet total depends only on how many were observed, so the published aggregate is a function of the multiset of Flow Labels and is independent of arrival order. After saturation the aggregate is not a distribution, and the identity and distinct count of the values observed are not recoverable.
+
+`update_directional_ipv6_flow_label_statistics(current, analysis, identity)` consumes the exact decoded `IPv6Packet` `version` and `flow_label` for IPv6 flows. It reads no raw bytes, payload, extension headers or checksums, reruns no decoder and validates its structure before delegating direction to the existing flow contract. An IPv6 model on an IPv4 flow or alongside an IPv4 model is rejected.
+
+Bounds: per direction at most 256 bins plus one integer; no million-entry table is allocated for the 2^20 domain, each update scans at most 256 bins and rebuilds one tuple of at most 256 entries, and the bins are released on saturation. No packet, observation, model, payload or history is retained. Counter magnitude grows with observation count, following existing exact statistics conventions; active-flow memory remains subject to the existing window capacity.
+
+The coordinator prepares the aggregate with the other candidates and publishes it atomically, including the saturation transition: failed preparation or publication leaves the previous exact bins in place, and a successful retry counts once. A repeated successful observation counts again. All closure reasons preserve the published aggregate, replacement windows start empty, and frozen snapshots keep their values. Identity, admission, detectors, findings, evaluation and the feature contract are unchanged.

@@ -1,3 +1,10 @@
+from analysis.ipv6_flow_label_statistics import (
+    IPV6_FLOW_LABEL_MAX_BINS,
+    IPV6_FLOW_LABEL_VALUES,
+    IPv6FlowLabelStatistics,
+    DirectionalIPv6FlowLabelStatistics,
+    update_directional_ipv6_flow_label_statistics,
+)
 from analysis.ipv6_traffic_class_statistics import (
     IPV6_TRAFFIC_CLASS_BINS,
     IPv6TrafficClassStatistics,
@@ -272,6 +279,11 @@ from analysis.udp import UDPDecodeError, UDPPacket, decode_udp
 from analysis.udp_checksum import UDPChecksumValidationError, validate_udp_checksum
 
 __all__ = [
+    "IPV6_FLOW_LABEL_MAX_BINS",
+    "IPV6_FLOW_LABEL_VALUES",
+    "IPv6FlowLabelStatistics",
+    "DirectionalIPv6FlowLabelStatistics",
+    "update_directional_ipv6_flow_label_statistics",
     "IPV6_TRAFFIC_CLASS_BINS",
     "IPv6TrafficClassStatistics",
     "DirectionalIPv6TrafficClassStatistics",
