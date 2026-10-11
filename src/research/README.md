@@ -21,7 +21,7 @@ Direct `ResearchExample` construction accepts only an already-created projection
 
 The example is a frozen dataclass containing only immutable values. It retains the exact projection, truth, and optional window objects, with no caller-owned mutable container. Changing truth requires constructing another example; the original example and its projection are unchanged.
 
-There is no generated identity, timestamp, or row number. Equality includes projection, truth, and the full optional window value. Existing calls with no context keep their projection/truth equality; different window values distinguish examples even when projections and truth are equal. Equal examples and repeated references remain representable. Construction never sorts, samples, or deduplicates.
+There is no generated identity, timestamp, or row number. Equality includes projection, truth, the full optional window value, and provenance. Projection equality compares only its contract and values, so examples without context compare by projection values and truth alone. Different windows or provenance distinguish examples even when projections and truth are equal. Equal examples and repeated references remain representable. Construction never sorts, samples, or deduplicates.
 
 ## Observation association
 
@@ -59,6 +59,13 @@ Every projection records the provenance of the snapshot it was produced from (`p
 `dataclasses.replace()` re-runs the same validation, so clearing `provenance` while substituting another window, or substituting other provenance, is rejected. Dropping `observation_window` keeps the verified provenance; restoring the source window is accepted. Provenance participates in example equality.
 
 The guarantee is that an example's window and provenance agree with the snapshot its projection was produced from in this process. It is not cryptographic authentication: window keys are caller-scoped, provenance is in-memory metadata, and equal feature values are never used to infer origin.
+
+### Compatibility and trust boundaries
+
+- **Equality and deduplication.** Projections with equal values compare and hash equal even when their provenance differs, and so do examples without window or provenance. A set, dictionary key, or other equality-based deduplication keeps one object and loses the other source. When source identity matters, keep `projection.provenance` (or examples carrying provenance) alongside the values instead of relying on equality.
+- **`dataclasses.asdict()`.** It recursively converts every declared field, including `projection.provenance` and an example's window. The result contains the window key, timestamps, and flow identity endpoint metadata (packed addresses, ports, protocol); with a window it also contains coordinated state. It is not a redaction or public-export boundary.
+- **Window relabeling.** Binding is to the window object used during extraction. Replacing a window's public `key` before extraction yields a projection whose provenance matches the relabeled window; the original projection still cannot be paired with it. Arbitrary caller-constructed window metadata is a caller trust boundary, not authenticated capture origin.
+- **Copy and pickle.** `copy.copy()`, `copy.deepcopy()`, and pickle round trips of trusted in-process objects preserve provenance. Unpickling restores stored attributes without re-running `project_flow_features()` or `ResearchExample` validation, so a pickled object is only as trustworthy as its source. Never unpickle untrusted data; pickle can execute arbitrary code and is not a safe interchange format.
 
 ## Direct construction from a window
 

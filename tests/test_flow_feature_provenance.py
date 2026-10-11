@@ -1,14 +1,17 @@
+import copy
 import gc
 import os
+import pickle
 import subprocess
 import sys
 import unittest
 import weakref
-from dataclasses import FrozenInstanceError, fields, replace
+from dataclasses import FrozenInstanceError, asdict, fields, replace
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from analysis import (
     FeatureContractVersion,
@@ -352,6 +355,85 @@ class ResearchExampleProvenanceTests(unittest.TestCase):
         del example
         gc.collect()
         self.assertTrue(all(first() is None and second() is None for first, second in references))
+
+
+class ProvenanceCompatibilityTests(unittest.TestCase):
+    def setUp(self):
+        self.alpha, = closed_windows(packet_at(0), packet_at(2, True), session="alpha")
+        self.beta, = closed_windows(packet_at(0), packet_at(2, True), session="beta")
+        self.first, self.second = (project_flow_features(extract_flow_feature_snapshot(window))
+                                   for window in (self.alpha, self.beta))
+
+    def test_equality_based_collections_keep_one_source(self):
+        self.assertEqual(self.first, self.second)
+        self.assertEqual(len({self.first, self.second}), 1)
+        keyed = {self.first: "alpha", self.second: "beta"}
+        self.assertEqual(len(keyed), 1)
+        kept, = keyed
+        self.assertIs(kept, self.first)
+        self.assertEqual(keyed[kept], "beta")
+        self.assertEqual(kept.provenance.window_key.capture_session_id, "alpha")
+        unassociated = (ResearchExample(self.first), ResearchExample(self.second))
+        self.assertEqual(unassociated[0], unassociated[1])
+        self.assertEqual(len(set(unassociated)), 1)
+        replace(unassociated[0], observation_window=self.alpha)
+        with self.assertRaisesRegex(ValueError, "projection source window"):
+            replace(unassociated[1], observation_window=self.alpha)
+        sourced = tuple(ResearchExample(projection, provenance=projection.provenance)
+                        for projection in (self.first, self.second))
+        self.assertEqual(len(set(sourced)), 2)
+        by_source = {projection.provenance: projection for projection in (self.first, self.second)}
+        self.assertEqual({key.window_key.capture_session_id for key in by_source}, {"alpha", "beta"})
+
+    def test_asdict_recursively_exports_provenance_metadata(self):
+        exported = asdict(self.first)
+        self.assertEqual(tuple(exported), ("feature_contract", "values", "provenance"))
+        self.assertEqual(exported["values"], self.first.values)
+        self.assertEqual(exported["feature_contract"], {"contract_id": "flow-feature-snapshot", "contract_version": "1"})
+        self.assertEqual(exported["provenance"], asdict(self.first.provenance))
+        identity = self.first.provenance.flow_identity
+        self.assertEqual(exported["provenance"]["flow_identity"], {
+            "source_address": identity.source_address, "destination_address": identity.destination_address,
+            "source_port": identity.source_port, "destination_port": identity.destination_port,
+            "protocol": identity.protocol, "icmp_echo_identifier": None,
+        })
+        self.assertEqual(exported["provenance"]["window_key"], {"capture_session_id": "alpha", "sequence_number": 0})
+        self.assertIs(exported["provenance"]["closure_reason"], FlowObservationWindowClosureReason.CAPTURE_SESSION_END)
+        self.assertEqual(exported["provenance"]["last_captured_at"], self.alpha.last_captured_at)
+        detached = asdict(ResearchExample(self.first, provenance=self.first.provenance))
+        self.assertIsNone(detached["observation_window"])
+        self.assertEqual(detached["provenance"], exported["provenance"])
+        attached = asdict(ResearchExample(self.first, observation_window=self.alpha))
+        self.assertEqual(attached["observation_window"]["key"], exported["provenance"]["window_key"])
+        self.assertIn("coordinated_state", attached["observation_window"])
+
+    def test_copy_and_trusted_pickle_preserve_provenance_without_revalidation(self):
+        shallow, deep = copy.copy(self.first), copy.deepcopy(self.first)
+        restored = pickle.loads(pickle.dumps(self.first))
+        for value in (shallow, deep, restored):
+            self.assertEqual(value, self.first)
+            self.assertEqual(value.provenance, self.first.provenance)
+            self.assertEqual(ResearchExample(value, None, self.alpha).provenance, self.first.provenance)
+            with self.assertRaisesRegex(ValueError, "projection source window"):
+                ResearchExample(value, None, self.beta)
+        self.assertIs(shallow.provenance, self.first.provenance)
+        example = ResearchExample(self.first, "truth", self.alpha)
+        payload = pickle.dumps(example)
+        with patch("ml.feature_projection.project_flow_features", side_effect=AssertionError("projection rerun")), \
+             patch("research.research_example.flow_feature_provenance_from_window",
+                   side_effect=AssertionError("validation rerun")):
+            self.assertEqual(pickle.loads(payload), example)
+
+    def test_relabeled_window_key_is_a_caller_trust_boundary(self):
+        relabeled = replace(self.alpha, key=FlowObservationWindowKey("alpha-relabeled", 0))
+        projection = project_flow_features(extract_flow_feature_snapshot(relabeled))
+        self.assertEqual(projection, self.first)
+        self.assertEqual(projection.provenance.window_key, relabeled.key)
+        self.assertEqual(projection.provenance.flow_identity, self.first.provenance.flow_identity)
+        self.assertEqual(ResearchExample(projection, None, relabeled).provenance, projection.provenance)
+        for value, window in ((self.first, relabeled), (projection, self.alpha)):
+            with self.subTest(window=window.key), self.assertRaisesRegex(ValueError, "projection source window"):
+                ResearchExample(value, None, window)
 
 
 if __name__ == "__main__":
