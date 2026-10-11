@@ -21,20 +21,23 @@ class ResearchExample:
         _validate_ground_truth(self.ground_truth)
         if self.observation_window is not None:
             _validate_observation_window(self.observation_window)
+        source = getattr(self.projection, "provenance", None)
+        if type(source) is not FlowFeatureProvenance:
+            raise TypeError("projection provenance must be exactly a FlowFeatureProvenance")
+        if self.observation_window is not None and source != flow_feature_provenance_from_window(
+            self.observation_window, self.projection.feature_contract,
+        ):
+            raise ValueError("observation window must be the projection source window")
         if self.provenance is None:
             if self.observation_window is not None:
-                object.__setattr__(self, "provenance", flow_feature_provenance_from_window(
-                    self.observation_window, self.projection.feature_contract,
-                ))
+                object.__setattr__(self, "provenance", source)
             return
         if type(self.provenance) is not FlowFeatureProvenance:
             raise TypeError("provenance must be exactly a FlowFeatureProvenance or None")
         if self.provenance.feature_contract != self.projection.feature_contract:
             raise ValueError("provenance feature contract must match the projection feature contract")
-        if self.observation_window is not None and self.provenance != flow_feature_provenance_from_window(
-            self.observation_window, self.projection.feature_contract,
-        ):
-            raise ValueError("provenance must match the observation window")
+        if self.provenance != source:
+            raise ValueError("provenance must match the projection source provenance")
 
 
 def research_example_from_window(

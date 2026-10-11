@@ -1,7 +1,9 @@
+import gc
 import os
 import subprocess
 import sys
 import unittest
+import weakref
 from dataclasses import FrozenInstanceError, fields, replace
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
@@ -170,16 +172,20 @@ class FlowFeatureProvenanceTests(unittest.TestCase):
         self.assertNotEqual(first, second)
 
     def test_provenance_never_enters_numerical_projection(self):
-        window, = closed_windows(packet_at(0), packet_at(2, True))
-        snapshot = extract_flow_feature_snapshot(window)
-        projection = project_flow_features(snapshot)
-        self.assertEqual(projection.feature_names, EXPECTED_NAMES)
-        self.assertEqual(len(projection.values), 49)
-        self.assertEqual(tuple(field.name for field in fields(projection)), ("feature_contract", "values"))
-        for value in projection.values:
-            self.assertIn(type(value), (int, float, type(None)))
-        self.assertFalse(hasattr(projection, "provenance"))
-        self.assertEqual(snapshot.provenance.feature_contract, projection.feature_contract)
+        alpha, = closed_windows(packet_at(0), packet_at(2, True), session="alpha")
+        beta, = closed_windows(packet_at(0), packet_at(2, True), session="beta")
+        first, second = (project_flow_features(extract_flow_feature_snapshot(window)) for window in (alpha, beta))
+        for projection, window in ((first, alpha), (second, beta)):
+            self.assertEqual(projection.feature_names, EXPECTED_NAMES)
+            self.assertEqual(len(projection.values), 49)
+            for value in projection.values:
+                self.assertIn(type(value), (int, float, type(None)))
+            self.assertEqual(projection.provenance, flow_feature_provenance_from_window(window, CONTRACT))
+            self.assertNotIn("provenance", repr(projection))
+        self.assertEqual(first, second)
+        self.assertEqual(hash(first), hash(second))
+        self.assertNotEqual(first.provenance, second.provenance)
+        self.assertEqual(tuple(field.name for field in fields(first) if field.compare), ("feature_contract", "values"))
 
     def test_invalid_fields_are_rejected(self):
         identity = flow_identity_from_packet(packet_at(0))
@@ -240,54 +246,112 @@ class FlowFeatureProvenanceTests(unittest.TestCase):
 
 
 class ResearchExampleProvenanceTests(unittest.TestCase):
-    def test_window_context_supplies_matching_provenance(self):
-        window, = closed_windows(packet_at(0), packet_at(2, True))
-        snapshot = extract_flow_feature_snapshot(window)
-        projection = project_flow_features(snapshot)
-        derived = research_example_from_window(window, "truth")
-        self.assertEqual(derived.provenance, snapshot.provenance)
-        self.assertEqual(derived, ResearchExample(projection, "truth", window))
-        self.assertEqual(derived, ResearchExample(projection, "truth", window, snapshot.provenance))
-        self.assertIsNone(ResearchExample(projection).provenance)
+    def setUp(self):
+        self.window, = closed_windows(packet_at(0), packet_at(2, True), session="alpha")
+        self.other, = closed_windows(packet_at(0), packet_at(2, True), session="beta")
+        self.snapshot = extract_flow_feature_snapshot(self.window)
+        self.projection = project_flow_features(self.snapshot)
+        self.example = ResearchExample(self.projection, "truth", self.window)
 
-    def test_payload_free_provenance_can_replace_window_context(self):
-        window, = closed_windows(packet_at(0), packet_at(2, True))
-        snapshot = extract_flow_feature_snapshot(window)
-        projection = project_flow_features(snapshot)
-        supplied = snapshot.provenance
-        example = ResearchExample(projection, provenance=supplied)
-        self.assertIsNone(example.observation_window)
-        self.assertIs(example.provenance, supplied)
-        self.assertNotEqual(example, ResearchExample(projection))
-        other, = closed_windows(packet_at(0), packet_at(2, True), session="other")
-        moved = ResearchExample(projection, provenance=extract_flow_feature_snapshot(other).provenance)
-        self.assertNotEqual(ResearchDataset((example,)), ResearchDataset((moved,)))
+    def test_window_context_supplies_the_projection_source_provenance(self):
+        derived = research_example_from_window(self.window, "truth")
+        self.assertEqual(derived.provenance, self.snapshot.provenance)
+        self.assertEqual(derived.provenance, derived.projection.provenance)
+        self.assertEqual(derived, self.example)
+        self.assertIs(self.example.provenance, self.projection.provenance)
+        self.assertEqual(derived, ResearchExample(self.projection, "truth", self.window, self.snapshot.provenance))
+        self.assertIsNone(ResearchExample(self.projection).provenance)
 
-    def test_mismatched_schema_or_window_is_rejected(self):
-        window, = closed_windows(packet_at(0), packet_at(2, True))
-        other, = closed_windows(packet_at(0), packet_at(2, True), session="other")
-        snapshot = extract_flow_feature_snapshot(window)
-        projection = project_flow_features(snapshot)
-        for value in (
-            replace(snapshot.provenance, feature_contract=FeatureContractVersion("flow-feature-snapshot", "2")),
-            replace(snapshot.provenance, feature_contract=FeatureContractVersion("other", "1")),
+    def test_projection_from_another_window_cannot_be_attributed_to_it(self):
+        expired, renewed = closed_windows(packet_at(0), packet_at(10))
+        renewed_projection = project_flow_features(extract_flow_feature_snapshot(renewed))
+        manager, active = active_window_from_packets(packet_at(0), packet_at(2, True), capture_session_id="alpha")
+        provisional = project_flow_features(extract_flow_feature_snapshot(active))
+        closed, = manager.end_capture_session()
+        for projection, window in ((self.projection, self.other), (renewed_projection, expired),
+                                   (provisional, closed)):
+            with self.subTest(window=window.key), self.assertRaisesRegex(ValueError, "projection source window"):
+                ResearchExample(projection, None, window)
+            with self.subTest(window=window.key), self.assertRaisesRegex(ValueError, "projection source provenance"):
+                ResearchExample(projection, provenance=flow_feature_provenance_from_window(window, CONTRACT))
+        self.assertEqual(ResearchExample(provisional, provenance=provisional.provenance).provenance.closure_reason, None)
+
+    def test_replace_cannot_relabel_a_projection(self):
+        other = flow_feature_provenance_from_window(self.other, CONTRACT)
+        for changes in (
+            {"observation_window": self.other},
+            {"provenance": None, "observation_window": self.other},
         ):
-            with self.subTest(contract=value.feature_contract), self.assertRaisesRegex(ValueError, "feature contract"):
-                ResearchExample(projection, provenance=value)
-        for value in (
-            extract_flow_feature_snapshot(other).provenance,
-            replace(snapshot.provenance, closure_reason=None),
-            replace(snapshot.provenance, last_captured_at=TIMESTAMP + timedelta(seconds=3)),
-            replace(snapshot.provenance, flow_identity=FlowIdentity(b"\x0a\x00\x00\x01", b"\x0a\x00\x00\x03", 12345, 443, 17)),
+            with self.subTest(changes=changes), self.assertRaisesRegex(ValueError, "projection source window"):
+                replace(self.example, **changes)
+        for changes in (
+            {"provenance": other},
+            {"provenance": other, "observation_window": None},
+            {"provenance": replace(other, window_key=self.window.key, closure_reason=None)},
         ):
-            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "observation window"):
-                ResearchExample(projection, None, window, value)
-        example = ResearchExample(projection, None, window)
-        with self.assertRaisesRegex(ValueError, "observation window"):
-            replace(example, observation_window=other)
-        for value in (object(), (), snapshot):
+            with self.subTest(changes=changes), self.assertRaisesRegex(ValueError, "projection source provenance"):
+                replace(self.example, **changes)
+        with self.assertRaises(TypeError):
+            replace(self.projection, provenance=other)
+
+    def test_supported_replacements_keep_the_verified_source(self):
+        detached = replace(self.example, observation_window=None)
+        self.assertIsNone(detached.observation_window)
+        self.assertIs(detached.provenance, self.projection.provenance)
+        self.assertEqual(replace(self.example), self.example)
+        self.assertEqual(replace(self.example, provenance=None), self.example)
+        self.assertEqual(replace(detached, observation_window=self.window), self.example)
+        self.assertEqual(replace(self.example, ground_truth="other").provenance, self.example.provenance)
+        unassociated = replace(self.example, provenance=None, observation_window=None)
+        self.assertIsNone(unassociated.provenance)
+        self.assertEqual(unassociated, ResearchExample(self.projection, "truth"))
+        self.assertNotEqual(detached, unassociated)
+        with self.assertRaises(FrozenInstanceError):
+            detached.provenance = None
+
+    def test_schema_and_type_mismatches_are_rejected(self):
+        for contract in (FeatureContractVersion("flow-feature-snapshot", "2"), FeatureContractVersion("other", "1")):
+            value = replace(self.projection.provenance, feature_contract=contract)
+            with self.subTest(contract=contract), self.assertRaisesRegex(ValueError, "feature contract"):
+                ResearchExample(self.projection, provenance=value)
+        for value in (object(), (), self.snapshot):
             with self.subTest(value=type(value)), self.assertRaises(TypeError):
-                ResearchExample(projection, provenance=value)
+                ResearchExample(self.projection, provenance=value)
+        unbound = object.__new__(type(self.projection))
+        object.__setattr__(unbound, "feature_contract", self.projection.feature_contract)
+        object.__setattr__(unbound, "values", self.projection.values)
+        with self.assertRaisesRegex(TypeError, "projection provenance"):
+            ResearchExample(unbound)
+
+    def test_provenance_only_examples_release_windows_and_capture_state(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "provenance.pcap"
+            path.write_bytes(pcap_bytes(capture_packets()))
+            collected = []
+            source = PcapPacketSource(path)
+            run_flow_observation_session(source, capture_session_id="release", inactivity_timeout=timedelta(seconds=60),
+                                         closed_window_consumer=collected.append)
+        tcp = next(window for window in collected if window.coordinated_state.tcp_stream_state is not None)
+        stream = tcp.coordinated_state.tcp_stream_state.forward
+        self.assertIn(b"abc", stream.payload)
+        snapshot = extract_flow_feature_snapshot(tcp)
+        example = ResearchExample(project_flow_features(snapshot), "truth", provenance=snapshot.provenance)
+        references = tuple(weakref.ref(value) for value in (tcp, tcp.coordinated_state, stream, snapshot))
+        del collected, tcp, stream, snapshot, source
+        gc.collect()
+        self.assertTrue(all(reference() is None for reference in references))
+        self.assertIsNone(example.observation_window)
+        self.assertEqual(example.provenance, example.projection.provenance)
+        self.assertEqual(example.provenance.window_key.capture_session_id, "release")
+
+    def test_repeated_construction_retains_no_examples(self):
+        references = []
+        for _ in range(64):
+            example = research_example_from_window(self.window)
+            references.append((weakref.ref(example), weakref.ref(example.projection)))
+        del example
+        gc.collect()
+        self.assertTrue(all(first() is None and second() is None for first, second in references))
 
 
 if __name__ == "__main__":

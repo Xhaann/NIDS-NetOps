@@ -1,7 +1,8 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Union
 
 from analysis.feature_contract_version import FeatureContractVersion
+from analysis.flow_feature_provenance import FlowFeatureProvenance
 from analysis.flow_feature_snapshot import FlowFeatureSnapshot
 
 
@@ -53,6 +54,7 @@ _FEATURE_NAMES = tuple(
 class MLFeatureProjection:
     feature_contract: FeatureContractVersion
     values: tuple[Optional[Union[int, float]], ...]
+    provenance: FlowFeatureProvenance = field(compare=False, repr=False)
 
     def __init__(self) -> None:
         raise TypeError("use project_flow_features(snapshot)")
@@ -70,6 +72,11 @@ def project_flow_features(snapshot: FlowFeatureSnapshot) -> MLFeatureProjection:
         raise TypeError("snapshot feature contract must be exactly a FeatureContractVersion")
     if contract != _SUPPORTED_FEATURE_CONTRACT:
         raise ValueError("unsupported snapshot feature contract")
+    provenance = snapshot.provenance
+    if type(provenance) is not FlowFeatureProvenance:
+        raise TypeError("snapshot provenance must be exactly a FlowFeatureProvenance")
+    if provenance.feature_contract != contract:
+        raise ValueError("snapshot provenance must use the snapshot feature contract")
     values = []
     for group, names in _FEATURE_GROUPS:
         features = getattr(snapshot, group)
@@ -80,4 +87,5 @@ def project_flow_features(snapshot: FlowFeatureSnapshot) -> MLFeatureProjection:
     projection = object.__new__(MLFeatureProjection)
     object.__setattr__(projection, "feature_contract", contract)
     object.__setattr__(projection, "values", tuple(values))
+    object.__setattr__(projection, "provenance", provenance)
     return projection

@@ -41,7 +41,7 @@ Wrong context types, including subclasses, raise `TypeError`; active windows rai
 
 After the closure check, retained timestamps must follow `PacketObservation`: exact built-in `datetime`, exact built-in `datetime.timezone`, and zero UTC offset. This covers first/last timestamps in flow statistics, flow inter-arrival statistics, and directional inter-arrival statistics, plus both directional last-packet timestamps when present. Datetime subclasses raise `TypeError`; missing, custom, or nonzero-offset timezones raise `ValueError`. Named fixed UTC timezones and absent optional directional timestamps remain valid. Validation neither copies nor normalizes timestamps.
 
-Direct `ResearchExample` construction is a caller-declared association, not proof that the projection came from the window. Construction cannot recover origin from equal values and does not re-extract or compare features to infer it. Supply projection and context from the same snapshot. Calls that omit context still accept existing projections, including those derived from active snapshots; they do not claim a finalized observation association.
+Direct `ResearchExample` construction accepts a window only when it is the source window recorded on the projection, as described in [Feature provenance](#feature-provenance). Construction never infers origin from equal values and does not re-extract or compare features. Supply projection and context from the same snapshot. Calls that omit context still accept existing projections, including those derived from active snapshots; they do not claim a finalized observation association.
 
 Window keys are scoped to caller-declared replay/session context, not globally unique or authenticated. A retained window does not identify the source recording, certify outcome-based admission or successful replay, or record the processing event when closure became available. Keep recording/procedure and annotation context separately. Grouping, leakage checks, retrospective-horizon selection, and one-row-per-selected-window discipline remain study responsibilities; neither the example nor dataset enforces them.
 
@@ -49,7 +49,16 @@ Window keys are scoped to caller-declared replay/session context, not globally u
 
 `provenance` identifies the feature contract, capture-session window key, canonical flow identity, closure reason, and first/last capture timestamps behind the projection without retaining packets or payload bytes. Supplying `provenance` without `observation_window` keeps that association when the window, and the application bytes it may retain, should not be kept.
 
-Validation runs after projection, truth and window validation. A non-`FlowFeatureProvenance` value raises `TypeError`. A provenance contract different from `projection.feature_contract` raises `ValueError`, so a vector is never labeled with another schema. When a window is also present, provenance must equal the value derived from that window; a mismatched session, sequence number, identity, closure reason or timestamp raises `ValueError`, including through `dataclasses.replace()` with a different window. Provenance participates in equality, so equal projections from different flows or sessions remain distinct examples. As with window context, a directly supplied provenance is a validated declaration, not proof that the values were extracted from that flow.
+Every projection records the provenance of the snapshot it was produced from (`projection.provenance`). Examples are checked against that source, not against caller-supplied context alone:
+
+- A supplied window must derive exactly the projection's source provenance; otherwise `ValueError` reports that the window is not the projection source window. This covers other sessions, other windows of the same identity in one session, and the closed form of the window a provisional (active) projection came from, whose closure reason and horizon differ.
+- A supplied `provenance` must equal the projection's source provenance; a different contract raises `ValueError` naming the feature contract, and any other difference raises `ValueError` naming the projection source provenance. Matching metadata therefore cannot relabel values.
+- With a window and no `provenance`, the example takes the projection's source provenance. Without either, `provenance` stays `None`, an explicitly unassociated example.
+- A projection without a bound `FlowFeatureProvenance`, which only bypassing the factory can produce, raises `TypeError`.
+
+`dataclasses.replace()` re-runs the same validation, so clearing `provenance` while substituting another window, or substituting other provenance, is rejected. Dropping `observation_window` keeps the verified provenance; restoring the source window is accepted. Provenance participates in example equality.
+
+The guarantee is that an example's window and provenance agree with the snapshot its projection was produced from in this process. It is not cryptographic authentication: window keys are caller-scoped, provenance is in-memory metadata, and equal feature values are never used to infer origin.
 
 ## Direct construction from a window
 

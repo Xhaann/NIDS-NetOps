@@ -112,6 +112,7 @@ class MLFeatureProjectionTests(unittest.TestCase):
         source_values = tuple(getattr(getattr(snapshot, family), name)
                               for family, name in (value.split('.') for value in EXPECTED_NAMES))
         contract = snapshot.feature_contract
+        provenance = snapshot.provenance
         with ExitStack() as stack:
             for name in ('extract_flow_feature_snapshot', 'flow_feature_input_from_statistics',
                          'extract_flow_volume_features', 'extract_packet_size_features',
@@ -124,9 +125,13 @@ class MLFeatureProjectionTests(unittest.TestCase):
                     new_callable=PropertyMock, side_effect=AssertionError('provenance access')))
             version = stack.enter_context(patch.object(FlowFeatureSnapshot, 'feature_contract',
                 new_callable=PropertyMock, return_value=contract))
+            source = stack.enter_context(patch.object(FlowFeatureSnapshot, 'provenance',
+                new_callable=PropertyMock, return_value=provenance))
             projection = project_flow_features(snapshot)
             version.assert_called_once_with()
+            source.assert_called_once_with()
         self.assertIs(projection.feature_contract, contract)
+        self.assertIs(projection.provenance, provenance)
         for actual, original in zip(projection.values, source_values):
             self.assertIs(actual, original)
 
@@ -168,11 +173,14 @@ class MLFeatureProjectionTests(unittest.TestCase):
     def test_factory_only_immutable_contract_rejects_other_inputs(self):
         snapshot = representative_snapshot()
         projection = project_flow_features(snapshot)
-        self.assertEqual(tuple(field.name for field in fields(projection)), ('feature_contract', 'values'))
-        self.assertEqual(tuple(vars(projection)), ('feature_contract', 'values'))
+        self.assertEqual(tuple(field.name for field in fields(projection)), ('feature_contract', 'values', 'provenance'))
+        self.assertEqual(tuple(field.name for field in fields(projection) if field.compare), ('feature_contract', 'values'))
+        self.assertEqual(tuple(vars(projection)), ('feature_contract', 'values', 'provenance'))
+        self.assertEqual(projection.provenance, snapshot.provenance)
+        self.assertNotIn('provenance', repr(projection))
         self.assertIs(type(projection.values), tuple)
         self.assertTrue(all(type(value) in (int, float, type(None)) for value in projection.values))
-        for name in ('feature_contract', 'values', 'feature_names', 'label', 'decision'):
+        for name in ('feature_contract', 'values', 'provenance', 'feature_names', 'label', 'decision'):
             with self.assertRaises(FrozenInstanceError):
                 setattr(projection, name, None)
         with self.assertRaises(TypeError):

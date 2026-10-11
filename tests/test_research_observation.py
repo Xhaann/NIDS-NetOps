@@ -44,7 +44,8 @@ class ResearchObservationTests(unittest.TestCase):
         self.assertEqual(len(projection.values), 49)
         self.assertIn(None, projection.values)
         self.assertIn(0.0, projection.values)
-        self.assertEqual(tuple(field.name for field in fields(MLFeatureProjection)), ('feature_contract', 'values'))
+        self.assertEqual(tuple(field.name for field in fields(MLFeatureProjection)), ('feature_contract', 'values', 'provenance'))
+        self.assertIs(example.provenance, projection.provenance)
         self.assertTrue(all(value is None or type(value) in (int, float) for value in projection.values))
         self.assertEqual(repr((snapshot, projection, projection.feature_names)), before)
 
