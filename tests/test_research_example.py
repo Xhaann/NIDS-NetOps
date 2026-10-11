@@ -34,8 +34,9 @@ class ResearchExampleTests(unittest.TestCase):
             self.assertIn(0.0, example.projection.values)
             self.assertEqual(repr(projection), before)
             self.assertEqual(tuple(field.name for field in fields(example)),
-                             ('projection', 'ground_truth', 'observation_window'))
+                             ('projection', 'ground_truth', 'observation_window', 'provenance'))
             self.assertIsNone(example.observation_window)
+            self.assertIsNone(example.provenance)
         manager.end_capture_session()
 
     def test_truth_is_optional_explicit_and_preserved_without_a_fixed_vocabulary(self):

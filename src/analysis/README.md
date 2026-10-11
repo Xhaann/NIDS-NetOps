@@ -559,6 +559,24 @@ Detector versions identify detector implementations, detector configurations hol
 
 Construction and inspection perform no capture, parsing, analysis, feature extraction, detection, evaluation, metrics, benchmarking, experiment execution, external access, timing, or randomness. Feature Contract Versioning supplies representation/provenance only: no registry, schema discovery, loading, migration, serialization, storage, reporting, performance measurement, or ML infrastructure is introduced.
 
+## Flow feature provenance
+
+[flow_feature_provenance.py](flow_feature_provenance.py) exports `FlowFeatureProvenance`, `FlowFeatureProvenanceError(ValueError)`, and `flow_feature_provenance_from_window(window, feature_contract)`. The frozen value records which feature definition, observation scope, flow, and observation horizon produced a feature set, without retaining the window, coordinated state, packets, or payload bytes.
+
+| Field | Meaning |
+| --- | --- |
+| `feature_contract` | Exact `FeatureContractVersion` naming the schema the features were produced under. |
+| `window_key` | Exact `FlowObservationWindowKey`: caller-declared capture-session ID and session-scoped window sequence number. |
+| `flow_identity` | Exact canonical `FlowIdentity` of the window. |
+| `closure_reason` | Exact `FlowObservationWindowClosureReason`, or `None` for an active (provisional) window. |
+| `first_captured_at`, `last_captured_at` | First and last admitted capture timestamps of the window at extraction time; exact `datetime` with fixed UTC `timezone`. |
+
+`FlowFeatureSnapshot.provenance` is a read-only projection built from the retained window and `feature_contract` on each access. It adds no stored snapshot field, so snapshot equality, the seven snapshot fields, and the version-1 contract are unchanged. Repeated extraction from one window yields equal provenance; equal values and hashes follow dataclass equality over all six fields.
+
+The flow identity defines an endpoint/protocol equivalence class, while `window_key` scopes one lifetime of it. Identical tuples in different capture sessions, after inactivity closure, after capacity eviction, or after explicit segmentation therefore produce different provenance even when every numerical feature is equal. Two snapshots of the same active window differ by `last_captured_at`, so a provisional feature set records the horizon it was extracted at. Reversed packets and arrival order do not change the canonical identity.
+
+Wrong field types, including subclasses, raise `TypeError`; nonzero UTC offsets or a last timestamp before the first raise `FlowFeatureProvenanceError`. `flow_feature_provenance_from_window()` requires exactly a `FlowObservationWindow` and copies only references to its key, identity, closure reason and timestamps. Provenance is never a numerical feature: the 49-value ML projection, its names and its order are unchanged. No serialization, generated identifier, hashing scheme, registry, or persistence is introduced; window keys remain caller-scoped rather than globally unique or authenticated.
+
 
 ## LDAP protocol observations
 

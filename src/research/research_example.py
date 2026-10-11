@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from analysis.flow_feature_provenance import FlowFeatureProvenance, flow_feature_provenance_from_window
 from analysis.flow_feature_snapshot import extract_flow_feature_snapshot
 from analysis.flow_observation_window import FlowObservationWindow
 from ml.feature_projection import MLFeatureProjection, project_flow_features
@@ -12,6 +13,7 @@ class ResearchExample:
     projection: MLFeatureProjection
     ground_truth: Optional[str] = None
     observation_window: Optional[FlowObservationWindow] = None
+    provenance: Optional[FlowFeatureProvenance] = None
 
     def __post_init__(self) -> None:
         if type(self.projection) is not MLFeatureProjection:
@@ -19,6 +21,20 @@ class ResearchExample:
         _validate_ground_truth(self.ground_truth)
         if self.observation_window is not None:
             _validate_observation_window(self.observation_window)
+        if self.provenance is None:
+            if self.observation_window is not None:
+                object.__setattr__(self, "provenance", flow_feature_provenance_from_window(
+                    self.observation_window, self.projection.feature_contract,
+                ))
+            return
+        if type(self.provenance) is not FlowFeatureProvenance:
+            raise TypeError("provenance must be exactly a FlowFeatureProvenance or None")
+        if self.provenance.feature_contract != self.projection.feature_contract:
+            raise ValueError("provenance feature contract must match the projection feature contract")
+        if self.observation_window is not None and self.provenance != flow_feature_provenance_from_window(
+            self.observation_window, self.projection.feature_contract,
+        ):
+            raise ValueError("provenance must match the observation window")
 
 
 def research_example_from_window(
@@ -31,7 +47,7 @@ def research_example_from_window(
     _validate_observation_window(window)
     snapshot = extract_flow_feature_snapshot(window)
     projection = project_flow_features(snapshot)
-    return ResearchExample(projection, ground_truth, window)
+    return ResearchExample(projection, ground_truth, window, snapshot.provenance)
 
 
 def _validate_ground_truth(ground_truth: Optional[str]) -> None:

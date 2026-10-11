@@ -168,6 +168,11 @@ from analysis.flow_direction import FlowDirection, FlowDirectionError, flow_dire
 from analysis.feature_contract_version import FeatureContractVersion
 from analysis.flow_duration_features import FlowDurationFeatures, FlowDurationFeaturesError, extract_flow_duration_features
 from analysis.flow_feature_input import FlowFeatureInput, FlowFeatureInputError, flow_feature_input_from_statistics
+from analysis.flow_feature_provenance import (
+    FlowFeatureProvenance,
+    FlowFeatureProvenanceError,
+    flow_feature_provenance_from_window,
+)
 from analysis.flow_feature_snapshot import FlowFeatureSnapshot, FlowFeatureSnapshotError, extract_flow_feature_snapshot
 from analysis.flow_identity import (
     FlowIdentity,
@@ -471,6 +476,8 @@ __all__ = [
     "FlowDurationFeaturesError",
     "FlowFeatureInput",
     "FlowFeatureInputError",
+    "FlowFeatureProvenance",
+    "FlowFeatureProvenanceError",
     "FlowFeatureSnapshot",
     "FlowFeatureSnapshotError",
     "FlowIdentity",
@@ -546,6 +553,7 @@ __all__ = [
     "flow_identity_from_packet",
     "flow_direction_from_packet",
     "flow_feature_input_from_statistics",
+    "flow_feature_provenance_from_window",
     "update_flow_statistics",
     "update_flow_inter_arrival_statistics",
     "update_flow_packet_size_statistics",

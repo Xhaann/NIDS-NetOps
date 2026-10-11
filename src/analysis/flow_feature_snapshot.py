@@ -8,6 +8,7 @@ from analysis.directional_inter_arrival_features import (
 from analysis.flow_duration_features import FlowDurationFeatures, extract_flow_duration_features
 from analysis.feature_contract_version import FeatureContractVersion
 from analysis.flow_feature_input import flow_feature_input_from_statistics
+from analysis.flow_feature_provenance import FlowFeatureProvenance, flow_feature_provenance_from_window
 from analysis.flow_identity import FlowIdentity
 from analysis.flow_observation_window import FlowObservationWindow
 from analysis.flow_rate_features import FlowRateFeatures, extract_flow_rate_features
@@ -50,6 +51,10 @@ class FlowFeatureSnapshot:
     @property
     def feature_contract(self) -> FeatureContractVersion:
         return FeatureContractVersion("flow-feature-snapshot", "1")
+
+    @property
+    def provenance(self) -> FlowFeatureProvenance:
+        return flow_feature_provenance_from_window(self.observation_window, self.feature_contract)
 
 
 def extract_flow_feature_snapshot(window: FlowObservationWindow) -> FlowFeatureSnapshot:

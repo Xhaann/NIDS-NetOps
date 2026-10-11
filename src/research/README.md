@@ -9,6 +9,7 @@
 | `projection` | Exactly an existing `MLFeatureProjection`, retained by reference. Its feature contract, ordered names, and values remain authoritative. |
 | `ground_truth` | An optional exact built-in nonblank string supplied by the caller. `None` means truth was not supplied. |
 | `observation_window` | An optional exact closed `FlowObservationWindow`, retained by reference. `None` means no observation association was supplied. |
+| `provenance` | An optional exact [FlowFeatureProvenance](../analysis/README.md#flow-feature-provenance). When omitted with a window, it is derived from that window and the projection's feature contract; when omitted without a window, it stays `None`. |
 
 Truth is opaque text with caller-defined meaning, not a built-in binary label or attack vocabulary. Case, Unicode, and surrounding whitespace are preserved; entirely blank strings are rejected. No category encoding or conversion is performed. Booleans, numeric targets, collections, string subclasses, detector decisions, and evaluation truth records are not accepted as truth. There is no implicit conversion of these values to strings. Richer or numerical research targets would require a separate explicit contract decision.
 
@@ -44,9 +45,15 @@ Direct `ResearchExample` construction is a caller-declared association, not proo
 
 Window keys are scoped to caller-declared replay/session context, not globally unique or authenticated. A retained window does not identify the source recording, certify outcome-based admission or successful replay, or record the processing event when closure became available. Keep recording/procedure and annotation context separately. Grouping, leakage checks, retrospective-horizon selection, and one-row-per-selected-window discipline remain study responsibilities; neither the example nor dataset enforces them.
 
+## Feature provenance
+
+`provenance` identifies the feature contract, capture-session window key, canonical flow identity, closure reason, and first/last capture timestamps behind the projection without retaining packets or payload bytes. Supplying `provenance` without `observation_window` keeps that association when the window, and the application bytes it may retain, should not be kept.
+
+Validation runs after projection, truth and window validation. A non-`FlowFeatureProvenance` value raises `TypeError`. A provenance contract different from `projection.feature_contract` raises `ValueError`, so a vector is never labeled with another schema. When a window is also present, provenance must equal the value derived from that window; a mismatched session, sequence number, identity, closure reason or timestamp raises `ValueError`, including through `dataclasses.replace()` with a different window. Provenance participates in equality, so equal projections from different flows or sessions remain distinct examples. As with window context, a directly supplied provenance is a validated declaration, not proof that the values were extracted from that flow.
+
 ## Direct construction from a window
 
-`research_example_from_window(window, ground_truth=None)` is exported by `research`. It derives a snapshot from the exact closed window, projects that snapshot through the existing 49-value contract, and returns a `ResearchExample` retaining the same window object. Callers cannot supply a separate projection through this path.
+`research_example_from_window(window, ground_truth=None)` is exported by `research`. It derives a snapshot from the exact closed window, projects that snapshot through the existing 49-value contract, and returns a `ResearchExample` retaining the same window object. Callers cannot supply a separate projection through this path. The example's `provenance` is the snapshot's provenance.
 
 ```python
 example = research_example_from_window(window, ground_truth=research_truth)

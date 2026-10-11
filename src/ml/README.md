@@ -13,7 +13,7 @@ values = projection.values
 
 `values` is the model-input representation: an immutable tuple of 49 existing integers, floats, or `None`. `names` is a fixed tuple of 49 unique qualified names in matching order. Keep the contract and names alongside values when defining future consumers; a bare tuple does not carry schema provenance. No array library, serialization format, dataset construction, or model is introduced.
 
-The frozen projection stores only `feature_contract` and `values`; `feature_names` is a read-only schema projection. Construction is restricted to `project_flow_features()` following the existing snapshot factory convention. Direct construction and inputs such as observations, windows, findings, truth, datasets, mappings, or arbitrary vectors raise `TypeError`. No snapshot, flow identity, timestamp, source identifier, closure reason, raw state, or source-object graph is retained.
+The frozen projection stores only `feature_contract` and `values`; `feature_names` is a read-only schema projection. Construction is restricted to `project_flow_features()` following the existing snapshot factory convention. Direct construction and inputs such as observations, windows, findings, truth, datasets, mappings, or arbitrary vectors raise `TypeError`. No snapshot, flow identity, timestamp, source identifier, closure reason, raw state, or source-object graph is retained. Keep [`snapshot.provenance`](../analysis/README.md#flow-feature-provenance) alongside the projection, or in a [ResearchExample](../research/README.md#feature-provenance), to trace values back to their flow and observation window.
 
 ## Canonical columns
 
