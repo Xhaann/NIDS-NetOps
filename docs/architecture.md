@@ -66,7 +66,7 @@ Explicit GroundTruth -> expectations -> evaluate_detection_result
 | Family or boundary | Current behavior and limits |
 | --- | --- |
 | Ethernet II | Packet analysis requires `LinkType(1)` and dispatches IPv4/IPv6 EtherTypes after up to two 802.1Q/802.1ad VLAN tags, retained as packet-local metadata outside flow identity. Other link formats, deeper tag stacks, and VLAN-based filtering are not implemented. |
-| IPv4 | Header/declared-length validation, TCP/UDP/ICMPv4 structural decoding, IPv4 and supported transport checksum validation. Unknown IP protocols retain network-layer analysis without a transport model. |
+| IPv4 | Header/declared-length validation, TCP/UDP/ICMPv4 structural decoding, IPv4 and supported transport checksum validation. Unknown IP protocols retain network-layer analysis without a transport model. Non-initial fragments are not admitted to flows; a capture-wide fixed-counter aggregate counts them without reassembly or flow association. |
 | IPv6 | Fixed 40-byte header and declared payload bounds; packed 16-byte addresses. Zero Payload Length is literal; jumbogram interpretation is absent. |
 | IPv6 extension headers | Bounded traversal of Hop-by-Hop Options (0), Routing (43), Destination Options (60), and Fragment (44), retaining order, bytes, offsets, and Next Header links. Option bodies/routing semantics are not interpreted. AH/ESP are not parsed; No Next Header (59) terminates traversal. |
 | IPv6 extension-header statistics | Admitted IPv6 TCP/UDP packets contribute directional packet counts, chain cardinality, sparse 8-bit extension and terminal Next Header distributions, and repeated-type counts. The immutable aggregate bounds each chain at 8,191 entries and retains no packet or payload history. |

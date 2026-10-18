@@ -270,6 +270,10 @@ The capture/session test compares closed windows across little-/big-endian micro
 
 The capture/session test compares closed windows across little-/big-endian microsecond/nanosecond PCAP encodings. Replay serializes stored and derived values through flow churn and all closure reasons, then compares SHA-256 across `PYTHONHASHSEED=1,29,503` and `TZ=UTC,Asia/Kolkata,America/New_York`. Older constructor and field-list fixtures only accommodate the appended aggregate.
 
+## IPv4 fragmentation structural statistics
+
+`test_ipv4_fragmentation_statistics.py` covers category and DF/MF/reserved counting for TCP, UDP, ICMP and other IPv4 protocols, non-initial fragments counted although transport rejects them, rejection of corrupt, truncated and non-IPv4 packets, VLAN-tagged equivalence, invalid aggregates, fixed-size state under 2000 varying offsets, and the capture runner: empty captures, in-memory and all four PCAP encodings, fresh state per run, source release, repeated close and capture failure. IPv4 reassembly, identification tracking and detection are not covered because they are not implemented.
+
 ## IPv4 header structural statistics
 
 `test_ipv4_header_statistics.py` builds real IPv4 TCP, UDP and ICMP frames with recomputed header checksums and checks directional DSCP distributions across all 64 values, ECN across all four values with derived ECN-capable and congestion-experienced counts, all eight flag-bit combinations, admitted MF first fragments, option presence and IHL-derived lengths up to 40 bytes independent of option content, construction invariants, empty aggregates for IPv6 flows, malformed fields, non-initial offsets, family mixing and identity mismatches, no payload/option/decoder/envelope/checksum access, checksum independence, immutability, bounded state after 2,049 packets, snapshot stability and source release. Lifecycle checks cover failed candidates, publication retries, allocation failure, all closure reasons, replacement windows and finalization retry; detection findings and evaluation metrics equal a run without IPv4 header statistics.

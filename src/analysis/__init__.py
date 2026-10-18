@@ -11,6 +11,10 @@ from analysis.ipv6_traffic_class_statistics import (
     DirectionalIPv6TrafficClassStatistics,
     update_directional_ipv6_traffic_class_statistics,
 )
+from analysis.ipv4_fragmentation_statistics import (
+    IPv4FragmentationStatistics,
+    update_ipv4_fragmentation_statistics,
+)
 from analysis.ipv4_header_statistics import (
     IPV4_DSCP_BINS,
     IPV4_ECN_BINS,
@@ -296,6 +300,8 @@ __all__ = [
     "IPV4_DSCP_BINS",
     "IPV4_ECN_BINS",
     "IPV4_MAX_OPTIONS_LENGTH",
+    "IPv4FragmentationStatistics",
+    "update_ipv4_fragmentation_statistics",
     "IPv4HeaderStatistics",
     "DirectionalIPv4HeaderStatistics",
     "update_directional_ipv4_header_statistics",

@@ -61,6 +61,8 @@ Equivalent PCAP observations/configurations yield equivalent output, with no his
 
 [capture_execution.py](capture_execution.py) exports `run_capture_execution(source: PacketSource, consumer: Callable[[PacketAnalysisOutcome], None]) -> None`. Through `consume()`, it starts the source, analyzes each observation once with `analyze_packet_outcome()`, delivers that exact outcome, and attempts cleanup. Observations, bytes, timestamps, lengths, and link types are unchanged; empty sources deliver nothing.
 
+[capture_fragmentation.py](capture_fragmentation.py) exports `run_capture_fragmentation_statistics(source: PacketSource) -> IPv4FragmentationStatistics`. It runs one source through `run_capture_execution()`, folds each outcome into a fresh capture-wide [IPv4 fragmentation aggregate](../analysis/README.md#ipv4-fragmentation-structural-statistics), and returns it. Source failures propagate and the source is released as in `run_capture_execution()`. It is independent of flow windows, detection, evaluation, reporting and the CLI.
+
 The consumer runs before the next observation is requested, inside the cleanup guarantee. Success and recognized failure outcomes are delivered alike, with no filtering or reclassification. There is no source-wide buffer or retained history; consumers may collect results. No lazy iterator with a separate cleanup contract is exposed.
 
 Acquisition, unexpected analysis, and consumer errors stop delivery and propagate without retry. `consume()` attempts cleanup once, even after startup failure; cleanup errors follow Python exception precedence/context. Earlier deliveries are not rolled back or replaced with synthetic results.
