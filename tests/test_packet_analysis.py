@@ -96,7 +96,7 @@ class PacketAnalysisTests(unittest.TestCase):
                 with self.subTest(value=value):
                     with self.assertRaises(TypeError):
                         analyze_packet(cast(PacketObservation, value))
-            for link_type in (None, LinkType(0), LinkType(101)):
+            for link_type in (None, LinkType(0), LinkType(65001)):
                 with self.subTest(link_type=link_type):
                     with self.assertRaisesRegex(PacketAnalysisError, "LinkType"):
                         analyze_packet(replace(observation, link_type=link_type))

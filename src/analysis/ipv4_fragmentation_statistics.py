@@ -4,7 +4,9 @@ from typing import Optional
 from analysis.ethernet import EthernetDecodeError, decode_ethernet
 from analysis.ipv4 import IPv4DecodeError, IPv4Packet, decode_ipv4
 from analysis.ipv4_checksum import validate_ipv4_checksum
+from analysis.link_layer import LinkLayerDecodeError, decode_link_layer
 from analysis.packet_analysis_outcome import PacketAnalysisFailureClassification, PacketAnalysisOutcome
+from capture.packet_observation import LinkType
 
 
 _TRANSPORT_PROTOCOLS = (1, 6, 17)
@@ -80,8 +82,11 @@ def _non_initial_fragment(outcome: PacketAnalysisOutcome) -> Optional[IPv4Packet
     if outcome.failure_classification is not PacketAnalysisFailureClassification.UNSUPPORTED:
         return None
     try:
-        packet = decode_ipv4(decode_ethernet(outcome.observation))
-    except (EthernetDecodeError, IPv4DecodeError):
+        if outcome.observation.link_type == LinkType(1):
+            packet = decode_ipv4(decode_ethernet(outcome.observation))
+        else:
+            packet = decode_ipv4(decode_link_layer(outcome.observation))
+    except (EthernetDecodeError, LinkLayerDecodeError, IPv4DecodeError):
         return None
     if (
         packet.fragment_offset == 0

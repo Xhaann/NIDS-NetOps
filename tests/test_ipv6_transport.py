@@ -420,7 +420,7 @@ class IPv6TransportContractTests(unittest.TestCase):
             "ipv4_checksum_valid", "tcp_checksum_valid", "udp_checksum_valid", "icmp_checksum_valid",
             "ipv6", "ipv6_extension_headers", "ipv6_fragmentation", "ipv6_icmpv6",
         )
-        self.assertEqual(tuple(field.name for field in fields(PacketAnalysis)), old_names + ("ipv6_tcp", "ipv6_udp"))
+        self.assertEqual(tuple(field.name for field in fields(PacketAnalysis)), old_names + ("ipv6_tcp", "ipv6_udp", "link_layer"))
         for protocol, payload in ((6, TCP_BYTES), (17, UDP_BYTES)):
             result = analyze_packet(make_observation(protocol, payload))
             self.assertEqual(PacketAnalysis(*(getattr(result, name) for name in old_names)), result)

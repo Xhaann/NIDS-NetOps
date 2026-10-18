@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Optional
 
 from analysis.ethernet import EthernetDecodeError
+from analysis.link_layer import LinkLayerDecodeError
 from analysis.icmp import ICMPDecodeError
 from analysis.ipv4 import IPv4DecodeError
 from analysis.ipv6 import IPv6DecodeError
@@ -71,13 +72,18 @@ class PacketAnalysisOutcome:
 
 
 _PACKET_ANALYSIS_UNSUPPORTED_MESSAGES = (
-    "Packet analysis requires Ethernet LinkType(1)",
+    "Packet analysis requires LinkType 1, 101 or 113",
     "Packet analysis requires IPv4 EtherType 0x0800 or IPv6 EtherType 0x86DD",
 )
 
 _ETHERNET_UNSUPPORTED_MESSAGES = (
     "Ethernet decoding requires LinkType(1)",
     "Ethernet frame exceeds the supported VLAN tag depth",
+)
+
+_LINK_LAYER_UNSUPPORTED_MESSAGES = (
+    "Raw IP version must be 4 or 6",
+    "Link layer decoding requires LinkType(101) or LinkType(113)",
 )
 
 _IPV4_UNSUPPORTED_MESSAGES = (
@@ -173,6 +179,7 @@ def _classify_known_failure(
     unsupported = (
         (PacketAnalysisError, _PACKET_ANALYSIS_UNSUPPORTED_MESSAGES),
         (EthernetDecodeError, _ETHERNET_UNSUPPORTED_MESSAGES),
+        (LinkLayerDecodeError, _LINK_LAYER_UNSUPPORTED_MESSAGES),
         (IPv4DecodeError, _IPV4_UNSUPPORTED_MESSAGES),
         (IPv6DecodeError, _IPV6_UNSUPPORTED_MESSAGES),
         (TCPDecodeError, _TCP_UNSUPPORTED_MESSAGES),
@@ -201,6 +208,11 @@ def _classify_known_failure(
     if type(error) is EthernetDecodeError and message.startswith((
         "Ethernet frame is too short: expected at least 14 bytes, got ",
         "Ethernet VLAN tag is too short: expected at least ",
+    )):
+        return PacketAnalysisFailureClassification.INCOMPLETE
+    if type(error) is LinkLayerDecodeError and message.startswith((
+        "Raw IP packet is too short: expected at least 1 byte, got ",
+        "Linux cooked frame is too short: expected at least 16 bytes, got ",
     )):
         return PacketAnalysisFailureClassification.INCOMPLETE
     return None
@@ -233,6 +245,7 @@ def analyze_packet_outcome(observation: PacketObservation) -> PacketAnalysisOutc
     except (
         PacketAnalysisError,
         EthernetDecodeError,
+        LinkLayerDecodeError,
         IPv4DecodeError,
         IPv6DecodeError,
         TCPDecodeError,

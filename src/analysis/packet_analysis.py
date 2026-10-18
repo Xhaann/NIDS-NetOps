@@ -11,6 +11,7 @@ from analysis.ipv4_checksum import validate_ipv4_checksum
 from analysis.ipv6 import IPv6Packet, decode_ipv6
 from analysis.ipv6_extension_headers import IPv6ExtensionHeaderChain, validate_ipv6_extension_headers
 from analysis.ipv6_fragmentation import IPv6Fragmentation, analyze_ipv6_fragmentation
+from analysis.link_layer import LINUX_COOKED_LINK_TYPE, RAW_IP_LINK_TYPE, LinkLayerFrame, decode_link_layer
 from analysis.ldap import LDAPPayloadObservation, analyze_ldap_payload
 from analysis.tcp import TCPPacket, _validate_tcp_options, decode_tcp
 from analysis.tcp_checksum import validate_tcp_checksum
@@ -41,12 +42,14 @@ class PacketAnalysis:
     ipv6_icmpv6: Optional[ICMPv6Packet] = None
     ipv6_tcp: Optional[TCPPacket] = None
     ipv6_udp: Optional[UDPPacket] = None
+    link_layer: Optional[LinkLayerFrame] = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.observation, PacketObservation):
             raise TypeError("observation must be a PacketObservation")
         for name, value, model in (
             ("ethernet", self.ethernet, EthernetFrame),
+            ("link_layer", self.link_layer, LinkLayerFrame),
             ("ipv4", self.ipv4, IPv4Packet),
             ("ipv6", self.ipv6, IPv6Packet),
             ("ipv6_extension_headers", self.ipv6_extension_headers, IPv6ExtensionHeaderChain),
@@ -60,6 +63,8 @@ class PacketAnalysis:
         ):
             if value is not None and not isinstance(value, model):
                 raise TypeError(f"{name} must be a {model.__name__} or None")
+        if self.ethernet is not None and self.link_layer is not None:
+            raise PacketAnalysisError("Ethernet and link-layer frames are mutually exclusive")
         if self.ipv6_extension_headers is not None:
             if self.ipv6_extension_headers.packet is not self.ipv6:
                 raise PacketAnalysisError("IPv6 extension headers must retain the exact IPv6 packet")
@@ -125,11 +130,16 @@ class PacketAnalysis:
 def analyze_packet(observation: PacketObservation) -> PacketAnalysis:
     if not isinstance(observation, PacketObservation):
         raise TypeError("observation must be a PacketObservation")
-    if observation.link_type != LinkType(1):
-        raise PacketAnalysisError("Packet analysis requires Ethernet LinkType(1)")
-    ethernet = decode_ethernet(observation)
-    if ethernet.ether_type == 0x86DD:
-        ipv6 = decode_ipv6(ethernet)
+    ethernet = None
+    link_layer = None
+    if observation.link_type == LinkType(1):
+        ethernet = frame = decode_ethernet(observation)
+    elif observation.link_type in (LinkType(RAW_IP_LINK_TYPE), LinkType(LINUX_COOKED_LINK_TYPE)):
+        link_layer = frame = decode_link_layer(observation)
+    else:
+        raise PacketAnalysisError("Packet analysis requires LinkType 1, 101 or 113")
+    if frame.ether_type == 0x86DD:
+        ipv6 = decode_ipv6(frame)
         extensions = validate_ipv6_extension_headers(ipv6)
         fragmentation = analyze_ipv6_fragmentation(extensions) if any(
             header.header_type == 44 for header in extensions.headers
@@ -152,16 +162,16 @@ def analyze_packet(observation: PacketObservation) -> PacketAnalysis:
         ):
             icmpv6 = decode_icmpv6(extensions)
         return PacketAnalysis(
-            observation=observation, ethernet=ethernet, ipv6=ipv6,
+            observation=observation, ethernet=ethernet, link_layer=link_layer, ipv6=ipv6,
             ipv6_extension_headers=extensions,
             ipv6_fragmentation=fragmentation,
             ipv6_icmpv6=icmpv6,
             ipv6_tcp=tcp,
             ipv6_udp=udp,
         )
-    if ethernet.ether_type != 0x0800:
+    if frame.ether_type != 0x0800:
         raise PacketAnalysisError("Packet analysis requires IPv4 EtherType 0x0800 or IPv6 EtherType 0x86DD")
-    ipv4 = decode_ipv4(ethernet)
+    ipv4 = decode_ipv4(frame)
     _validate_ipv4_options(ipv4)
     ipv4_checksum_valid = validate_ipv4_checksum(ipv4)
     tcp = None
@@ -186,6 +196,7 @@ def analyze_packet(observation: PacketObservation) -> PacketAnalysis:
     return PacketAnalysis(
         observation=observation,
         ethernet=ethernet,
+        link_layer=link_layer,
         ipv4=ipv4,
         tcp=tcp,
         udp=udp,

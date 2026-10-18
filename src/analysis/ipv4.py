@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
+from typing import Union
 
 from analysis.ethernet import EthernetFrame
+from analysis.link_layer import LinkLayerFrame
 from analysis.option_envelope import _validate_option_envelope
 
 
@@ -72,9 +74,9 @@ def _validate_ipv4_options(packet: IPv4Packet) -> None:
     _validate_option_envelope(packet.options, "IPv4", IPv4DecodeError)
 
 
-def decode_ipv4(frame: EthernetFrame) -> IPv4Packet:
-    if not isinstance(frame, EthernetFrame):
-        raise TypeError("frame must be an EthernetFrame")
+def decode_ipv4(frame: Union[EthernetFrame, LinkLayerFrame]) -> IPv4Packet:
+    if not isinstance(frame, (EthernetFrame, LinkLayerFrame)):
+        raise TypeError("frame must be an EthernetFrame or LinkLayerFrame")
     if frame.ether_type != 0x0800:
         raise IPv4DecodeError("IPv4 decoding requires EtherType 0x0800")
     raw_bytes = frame.payload

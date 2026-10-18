@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
+from typing import Union
 
 from analysis.ethernet import EthernetFrame
+from analysis.link_layer import LinkLayerFrame
 
 
 class IPv6DecodeError(ValueError):
@@ -50,9 +52,9 @@ class IPv6Packet:
         return 40
 
 
-def decode_ipv6(frame: EthernetFrame) -> IPv6Packet:
-    if not isinstance(frame, EthernetFrame):
-        raise TypeError("frame must be an EthernetFrame")
+def decode_ipv6(frame: Union[EthernetFrame, LinkLayerFrame]) -> IPv6Packet:
+    if not isinstance(frame, (EthernetFrame, LinkLayerFrame)):
+        raise TypeError("frame must be an EthernetFrame or LinkLayerFrame")
     if frame.ether_type != 0x86DD:
         raise IPv6DecodeError("IPv6 decoding requires EtherType 0x86DD")
     raw_bytes = frame.payload

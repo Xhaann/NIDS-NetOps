@@ -377,7 +377,7 @@ class ICMPv6PacketAnalysisTests(unittest.TestCase):
             "tcp_checksum_valid", "udp_checksum_valid", "icmp_checksum_valid", "ipv6",
             "ipv6_extension_headers", "ipv6_fragmentation", "ipv6_icmpv6",
         )
-        self.assertEqual(tuple(entry.name for entry in fields(PacketAnalysis)), expected + ("ipv6_tcp", "ipv6_udp"))
+        self.assertEqual(tuple(entry.name for entry in fields(PacketAnalysis)), expected + ("ipv6_tcp", "ipv6_udp", "link_layer"))
         for protocol, payload in ((6, TCP_BYTES), (17, UDP_BYTES), (1, ICMP_BYTES), (253, b"")):
             with self.subTest(protocol=protocol):
                 with patch.object(packet_analysis, "decode_icmpv6", side_effect=AssertionError("IPv4 dispatch")):
