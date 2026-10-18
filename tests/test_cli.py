@@ -635,7 +635,7 @@ class CLITests(unittest.TestCase):
 
     def test_stdout_failure_propagates_once_without_diagnostic_or_retry(self):
         error = BrokenPipeError("closed output")
-        output = Mock()
+        output = Mock(spec=["write"])
         output.write.side_effect = error
         with patch.object(sys, "stdout", output), patch.object(cli, "diagnose_error") as diagnose, \
              patch.object(cli, "run_detection_pipeline", return_value=DetectionPipelineResult((), ())) as pipeline:

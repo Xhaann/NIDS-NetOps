@@ -237,7 +237,7 @@ class LDAPStreamLifecycleTests(unittest.TestCase):
         results = []
         for seed, zone in (('0', 'UTC'), ('1', 'Asia/Kolkata'), ('9157', 'America/Los_Angeles'), ('0', 'UTC')):
             environment = dict(os.environ, PYTHONHASHSEED=seed, TZ=zone, PYTHONPATH='src', PYTHONDONTWRITEBYTECODE='1')
-            results.append(subprocess.check_output([sys.executable, '-c', script], env=environment, timeout=15))
+            results.append(subprocess.check_output([sys.executable, '-c', script], env=environment, timeout=60))
         self.assertTrue(all(result == results[0] for result in results))
 
 

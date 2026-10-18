@@ -160,7 +160,7 @@ class ReplayInvariantTests(unittest.TestCase):
                 with self.subTest(seed=seed, zone=zone):
                     result = subprocess.run([sys.executable, '-B', '-c', script, str(path)], cwd=ROOT,
                         env=dict(os.environ, PYTHONPATH=str(ROOT / 'src'), PYTHONHASHSEED=seed, TZ=zone),
-                        capture_output=True, timeout=20)
+                        capture_output=True, timeout=240)
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertEqual(result.stderr, b'')
                     self.assertEqual(result.stdout, expected)

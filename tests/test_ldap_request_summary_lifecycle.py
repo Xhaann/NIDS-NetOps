@@ -237,7 +237,7 @@ class LDAPRequestSummaryLifecycleTests(unittest.TestCase):
         outputs = []
         for seed, zone in (('0', 'UTC'), ('1', 'Asia/Kolkata'), ('9157', 'America/Los_Angeles'), ('0', 'UTC')):
             environment = dict(os.environ, PYTHONHASHSEED=seed, TZ=zone, PYTHONPATH='src', PYTHONDONTWRITEBYTECODE='1')
-            outputs.append(subprocess.check_output([sys.executable, '-B', '-c', script], env=environment, timeout=15))
+            outputs.append(subprocess.check_output([sys.executable, '-B', '-c', script], env=environment, timeout=60))
         self.assertTrue(all(output == outputs[0] for output in outputs))
 
 

@@ -1,7 +1,9 @@
 import unittest
 from contextlib import ExitStack
 from dataclasses import FrozenInstanceError, fields, replace
+from functools import reduce
 from math import fsum
+from operator import add
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
@@ -183,7 +185,7 @@ class PerformanceBenchmarkTests(unittest.TestCase):
         observations = (1e16, 1.0, 1.0)
         result = PerformanceBenchmarkResult(methodology(), observations)
         self.assertEqual(result.total_elapsed_seconds, fsum(observations))
-        self.assertNotEqual(result.total_elapsed_seconds, sum(observations))
+        self.assertNotEqual(result.total_elapsed_seconds, reduce(add, observations))
         tiny = PerformanceBenchmarkResult(methodology(1), (0.000000000123456789,))
         self.assertEqual(tiny.mean_elapsed_seconds, 0.000000000123456789)
 
