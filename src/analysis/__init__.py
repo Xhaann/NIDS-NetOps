@@ -153,7 +153,7 @@ from analysis.directional_flow_statistics import (
     DirectionalFlowStatisticsError,
     update_directional_flow_statistics,
 )
-from analysis.ethernet import EthernetDecodeError, EthernetFrame, decode_ethernet
+from analysis.ethernet import EthernetDecodeError, EthernetFrame, VLANTag, decode_ethernet
 from analysis.directional_inter_arrival_features import (
     DirectionalInterArrivalFeatures,
     DirectionalInterArrivalFeaturesError,
@@ -469,6 +469,7 @@ __all__ = [
     "DirectionalInterArrivalStatisticsError",
     "EthernetDecodeError",
     "EthernetFrame",
+    "VLANTag",
     "FeatureContractVersion",
     "FlowDirection",
     "FlowDirectionError",

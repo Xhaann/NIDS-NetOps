@@ -77,6 +77,7 @@ _PACKET_ANALYSIS_UNSUPPORTED_MESSAGES = (
 
 _ETHERNET_UNSUPPORTED_MESSAGES = (
     "Ethernet decoding requires LinkType(1)",
+    "Ethernet frame exceeds the supported VLAN tag depth",
 )
 
 _IPV4_UNSUPPORTED_MESSAGES = (
@@ -197,9 +198,10 @@ def _classify_known_failure(
         return PacketAnalysisFailureClassification.INCOMPLETE
     if any(type(error) is error_type and message in messages for error_type, messages in structural):
         return PacketAnalysisFailureClassification.STRUCTURAL_FAILURE
-    if type(error) is EthernetDecodeError and message.startswith(
-        "Ethernet frame is too short: expected at least 14 bytes, got "
-    ):
+    if type(error) is EthernetDecodeError and message.startswith((
+        "Ethernet frame is too short: expected at least 14 bytes, got ",
+        "Ethernet VLAN tag is too short: expected at least ",
+    )):
         return PacketAnalysisFailureClassification.INCOMPLETE
     return None
 
